@@ -24,6 +24,7 @@ Agent Flow reads a small set of files that agents write into each worktree (`.ag
 Planning. The MVP is Phases 0 to 2 (framing, data capture, read-only panel).
 
 - Product plan: [`docs/plan.md`](docs/plan.md)
+- Design mockup: [`docs/design/`](docs/design/)
 - Acceptance scenarios: [`features/`](features/)
 - Backlog: [issues](https://github.com/AskmethatFR/agent-flow/issues) and [milestones](https://github.com/AskmethatFR/agent-flow/milestones)
 

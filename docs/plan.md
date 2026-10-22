@@ -29,7 +29,7 @@ Three outcomes, in this order:
 
 ## Design reference
 
-Mockup (version 3, plan rail + step detail + "To decide" queue): https://claude.ai/artifact/NocHqz1tD73noArYsUxipc (may require claude.ai access; a static copy will be added to `docs/`).
+Mockup (version 3, plan rail + step detail + "To decide" queue + agents + mobile view): [`docs/design/agent-flow-mockup.html`](design/agent-flow-mockup.html) (interactive, open in a browser) and [`docs/design/agent-flow-mockup.pdf`](design/agent-flow-mockup.pdf). The mockup text is in French and uses fictitious data: it is an information reference only. The product UI is in English.
 
 The mockup shows budget bars: they are out of scope, show time spent only.
 

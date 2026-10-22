@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Agent Flow – maquette du plugin Paseo</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:#111317;color:#e8e9ec;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+a{color:#6ea8fe}
+.wrap{max-width:1360px;margin:0 auto;padding:28px 24px;display:flex;flex-direction:column;gap:20px}
+.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace}
+.small{font-size:12px} .muted{color:#9aa1ad}
+.card{background:#1a1d23;border:1px solid #2a2e36;border-radius:12px;padding:18px}
+.issue{flex:1 1 260px;background:#1a1d23;border:1px solid #2a2e36;border-radius:10px;padding:10px 14px;display:flex;flex-direction:column;gap:2px}
+.row-between{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center}
+.railwrap{overflow-x:auto}
+.rail{list-style:none;margin:0;padding:0 0 4px;display:flex;gap:4px;min-width:1060px}
+.station{flex:1 1 0;min-width:128px;display:flex}
+.stbtn{font:inherit;color:inherit;text-align:left;cursor:pointer;width:100%;display:flex;flex-direction:column;gap:5px;padding:10px;border-radius:10px}
+.dotrow{display:flex;align-items:center;height:20px;width:100%}
+.pend{align-self:flex-start;font-size:12px;font-weight:600;color:#111317;background:#f0a35e;border-radius:999px;padding:1px 8px}
+.cols{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}
+.h3{margin:0 0 4px;font-size:13px;font-weight:600;color:#9aa1ad;text-transform:uppercase;letter-spacing:.06em}
+.fact{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;justify-content:space-between;padding:10px 0;border-top:1px solid #2a2e36;font-size:14px;line-height:1.4}
+.tag-v{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#9aa1ad}
+.tag-d{font-size:12px;color:#c3c7cf;border:1px dashed #5a606b;border-radius:6px;padding:1px 7px}
+.tag-w{font-size:12px;font-weight:600;color:#f5bd85;border:1px dashed #f0a35e;border-radius:6px;padding:1px 7px}
+.entry{display:grid;grid-template-columns:52px minmax(0,1fr);gap:14px;padding:12px 0;border-top:1px solid #2a2e36}
+.kind{font-size:12px;font-weight:600;padding:1px 8px;border-radius:6px}
+.empty{margin:0;padding:10px 0;border-top:1px solid #2a2e36;font-size:14px;color:#9aa1ad}
+.qcard{background:#111317;border:1px solid #5a4330;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.b-primary,.b-secondary{font:inherit;font-size:14px;min-height:44px;padding:0 14px;border-radius:8px;cursor:pointer}
+.b-primary{font-weight:600;border:1px solid #6ea8fe;background:#6ea8fe;color:#0d1117}
+.b-secondary{border:1px solid #3a3f48;background:transparent;color:#e8e9ec}
+.agent{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid #2a2e36}
+.badge{font-size:13px;font-weight:600;border-radius:999px;padding:2px 10px}
+.phone{display:flex;justify-content:center;overflow-x:auto}
+.phone > div{border-radius:24px;border:1px solid #2a2e36}
+@media print{ .page-break{break-before:page} }
+</style>
+</head>
+<body>
+<main class="wrap" id="desktop">
+<p class="small muted" style="margin:0">Maquette · données fictives · vue bureau (cliquable : étapes du plan et boutons « À trancher »)</p>
+<section aria-label="Issues en cours" style="display:flex;flex-wrap:wrap;gap:12px">
+<div class="issue" style="border:2px solid #6ea8fe"><div class="mono small muted">#142 · affichée</div><div style="font-size:14px;font-weight:600">Magic link</div><div style="font-size:13px;color:#c3c7cf" id="issueLine"></div></div>
+<div class="issue"><div class="mono small muted">#138</div><div style="font-size:14px;font-weight:600">Export CSV des positions</div><div style="font-size:13px;color:#c3c7cf">Étape 3/6 · rien à trancher</div></div>
+<div class="issue" style="border-color:#5a4330"><div class="mono small muted">#145</div><div style="font-size:14px;font-weight:600">Refacto module paiement</div><div style="font-size:13px;color:#f5bd85">Étape 4/6 · tourne en rond · même test en échec 4 fois</div></div>
+</section>
+<header style="display:flex;flex-direction:column;gap:6px">
+<div class="mono small muted">#142 · worktree feat/magic-link</div>
+<h1 style="margin:0;font-size:26px;font-weight:600;letter-spacing:-.01em">Authentification par magic link</h1>
+<p style="margin:0;font-size:15px;color:#c3c7cf;line-height:1.5" id="verdict"></p>
+</header>
+<section class="card" style="padding:16px;display:flex;flex-direction:column;gap:10px">
+<div class="row-between" style="align-items:baseline"><h2 style="margin:0;font-size:16px;font-weight:600">Plan</h2><span class="small muted">Clique une étape pour voir ce qui est prouvé et ce qui a été décidé</span></div>
+<div class="railwrap"><ol class="rail" id="rail"></ol></div>
+</section>
+<div class="cols">
+<section class="card" id="detail" style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column;gap:14px"></section>
+<aside style="flex:1 1 340px;min-width:0;display:flex;flex-direction:column;gap:20px">
+<section class="card" style="display:flex;flex-direction:column;gap:12px">
+<div class="row-between"><h2 style="margin:0;font-size:16px;font-weight:600">À trancher</h2><span class="badge" id="queueBadge"></span></div>
+<span class="small muted">Le plus ancien en premier</span>
+<div id="queue" style="display:flex;flex-direction:column;gap:12px"></div>
+</section>
+<section class="card" style="display:flex;flex-direction:column;gap:4px">
+<h2 style="margin:0 0 6px;font-size:16px;font-weight:600">Agents</h2>
+<div id="agents"></div>
+<span class="small muted" style="border-top:1px solid #2a2e36;padding-top:10px;line-height:1.5">Boucle signalée à 3 échecs identiques du même test ou 40 k tokens sans nouveau test vert.</span>
+</section>
+</aside>
+</div>
+</main>
+<section class="wrap page-break" aria-label="Vue mobile">
+<h2 style="margin:0;font-size:18px;font-weight:600">Vue mobile</h2>
+<div class="phone">
+<div style="width: 390px; height: 844px; box-sizing: border-box; overflow: hidden; background: #111317; color: #e8e9ec; font-family: Inter, system-ui, sans-serif; padding: 20px 16px; display: flex; flex-direction: column; gap: 14px">
+
+<section style="background: #1a1d23; border: 1px solid #2a2e36; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 4px">
+<div style="font-family: JetBrains Mono, monospace; font-size: 12px; color: #9aa1ad">#142 · Magic link</div>
+<div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; margin: 6px 0 2px" aria-hidden="true">
+<span style="height: 6px; border-radius: 3px; background: #9aa1ad"></span>
+<span style="height: 6px; border-radius: 3px; background: #f0a35e"></span>
+<span style="height: 6px; border-radius: 3px; background: #9aa1ad"></span>
+<span style="height: 6px; border-radius: 3px; background: #6ea8fe"></span>
+<span style="height: 6px; border-radius: 3px; background: #3a3f48"></span>
+<span style="height: 6px; border-radius: 3px; background: #3a3f48"></span>
+<span style="height: 6px; border-radius: 3px; background: #3a3f48"></span>
+</div>
+<div style="font-size: 14px; font-weight: 600">Étape 4/7 · Implémentation</div>
+<div style="font-size: 13px; color: #c3c7cf">38 min · 3/5 scénarios verts (vérifié)</div>
+<div style="font-size: 13px; color: #f5bd85">Archi : 1 déclaration contredite · +1 étape proposée</div>
+<div style="font-size: 14px; font-weight: 600; color: #f5bd85; margin-top: 4px">4 décisions t’attendent, la plus ancienne depuis 68 min</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-size: 14px; font-weight: 600">À trancher, les plus bloquants d’abord</h2>
+
+<div style="background: #1a1d23; border: 1px solid #5a4330; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; justify-content: space-between; gap: 8px; font-size: 12px"><span style="color: #e8e9ec; font-weight: 600">Dev B · question</span><span style="color: #f5bd85; font-weight: 600">47 min</span></div>
+<div style="font-size: 14px; line-height: 1.4">Lien valable sur deux appareils ?</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<button type="button" style="font: inherit; font-size: 14px; font-weight: 600; min-height: 44px; border-radius: 8px; border: 1px solid #6ea8fe; background: #6ea8fe; color: #0d1117">Usage unique</button>
+<button type="button" style="font: inherit; font-size: 14px; min-height: 44px; border-radius: 8px; border: 1px solid #3a3f48; background: transparent; color: #e8e9ec">15 min partout</button>
+</div>
+</div>
+
+<div style="background: #1a1d23; border: 1px solid #5a4330; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; justify-content: space-between; gap: 8px; font-size: 12px"><span style="color: #e8e9ec; font-weight: 600">Dev A · hors périmètre</span><span style="color: #9aa1ad">21 min</span></div>
+<div style="font-size: 14px; line-height: 1.4">2 fichiers modifiés hors issue</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<button type="button" style="font: inherit; font-size: 14px; font-weight: 600; min-height: 44px; border-radius: 8px; border: 1px solid #6ea8fe; background: #6ea8fe; color: #0d1117">Accepter</button>
+<button type="button" style="font: inherit; font-size: 14px; min-height: 44px; border-radius: 8px; border: 1px solid #3a3f48; background: transparent; color: #e8e9ec">Faire annuler</button>
+</div>
+</div>
+
+<div style="background: #1a1d23; border: 1px solid #5a4330; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; justify-content: space-between; gap: 8px; font-size: 12px"><span style="color: #e8e9ec; font-weight: 600">Dev A · étape ajoutée</span><span style="color: #9aa1ad">9 min</span></div>
+<div style="font-size: 14px; line-height: 1.4">Migration EF Core pour les tokens</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<button type="button" style="font: inherit; font-size: 14px; font-weight: 600; min-height: 44px; border-radius: 8px; border: 1px solid #6ea8fe; background: #6ea8fe; color: #0d1117">Autoriser</button>
+<button type="button" style="font: inherit; font-size: 14px; min-height: 44px; border-radius: 8px; border: 1px solid #3a3f48; background: transparent; color: #e8e9ec">Refuser</button>
+</div>
+</div>
+
+<div style="font-size: 13px; color: #9aa1ad">+ 1 hors spec (limite de 5 demandes par heure), 68 min</div>
+</section>
+
+
+<a href="#desktop" style="margin-top: auto; display: flex; align-items: center; justify-content: center; min-height: 44px; border-radius: 8px; border: 1px solid #3a3f48; color: #e8e9ec; text-decoration: none; font-size: 14px; font-weight: 500">Ouvrir le plan et les décisions</a>
+
+</div>
+
+</div>
+</section>
+<script>
+const state = { answers: {}, sel: 's4' };
+const CHECK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg>';
+function set(id, text) { state.answers[id] = text; render(); }
+function pick(id) { state.sel = id; render(); }
+
+function model() {
+  const answers = state.answers, selId = state.sel;
+  const migration = answers.d1;
+  const rawSteps = [
+    { id: 's1', title: 'Spec Gherkin', role: 'PM', status: 'done', time: '12 min',
+      facts: [{ text: '5 scénarios rédigés et validés par toi', kind: 'v', source: 'ton approbation sur l’issue' }] },
+    { id: 's2', title: 'Architecture', role: 'Archi', status: 'done', time: '18 min',
+      facts: [{ text: 'Choix du token documenté dans un ADR', kind: 'v', source: 'fichier ADR dans le dépôt' },
+              { text: 'Le schéma de données couvre tous les besoins', kind: 'w', source: 'Archi' }] },
+    { id: 's3', title: 'Tests rouges', role: 'Dev A', status: 'done', time: '9 min',
+      facts: [{ text: '5 tests en échec, un par scénario', kind: 'v', source: 'dotnet test' }] },
+    { id: 's4', title: 'Implémentation', role: 'Dev A + B', status: 'current', time: '38 min',
+      facts: [{ text: '3 scénarios sur 5 passent au vert', kind: 'v', source: 'dotnet test il y a 2 min' },
+              { text: 'Build CI vert sur le dernier commit', kind: 'v', source: 'GitHub Actions' },
+              { text: 'Le scénario 4 est presque terminé', kind: 'd', source: 'Dev A' }] },
+    { id: 'sx', title: 'Migration EF Core', role: 'Dev A', status: migration === 'Autoriser' ? 'todo' : 'proposed',
+      time: migration === 'Autoriser' ? 'ajoutée avec ton accord' : 'pas commencée',
+      facts: [{ text: 'Nécessaire car la table des tokens manque au schéma', kind: 'd', source: 'Dev A' }] },
+    { id: 's5', title: 'Mutation testing', role: 'QA', status: 'todo', time: 'pas commencée',
+      facts: [{ text: 'Pas commencé', kind: 'v', source: 'aucun rapport Stryker' }] },
+    { id: 's6', title: 'Revue sécurité', role: 'Sécu', status: 'todo', time: 'pas commencée',
+      facts: [{ text: 'Pas commencé', kind: 'v', source: 'aucune revue enregistrée' }] },
+    { id: 's7', title: 'Review finale', role: 'Dev B', status: 'todo', time: 'pas commencée',
+      facts: [{ text: 'Pas commencé', kind: 'v', source: 'aucune review sur la PR' }] }
+  ].filter((s) => !(s.id === 'sx' && migration === 'Refuser'));
+
+  const rawQueue = [
+    { id: 'd3', step: 's4', kind: 'Hors spec', who: 'Dev A', wait: 68, text: 'Limite de 5 demandes de lien par heure et par email',
+      detail: 'Aucun scénario Gherkin ne demande cette règle. Confiance moyenne.', mono: false, a: 'Ajouter à la spec', b: 'Retirer' },
+    { id: 'q1', step: 's4', kind: 'Question', who: 'Dev B', wait: 47, text: 'Le lien reste-t-il valable si l’utilisateur l’ouvre sur deux appareils ?',
+      detail: 'Dev B est en pause tant que tu n’as pas répondu.', mono: false, a: 'Usage unique', b: 'Valable 15 min partout' },
+    { id: 'd2', step: 's4', kind: 'Hors périmètre', who: 'Dev A', wait: 21, text: '2 fichiers modifiés hors du périmètre de l’issue',
+      detail: 'src/Api/Program.cs · appsettings.json', mono: true, a: 'Accepter', b: 'Faire annuler' },
+    { id: 'd1', step: 'sx', kind: 'Étape ajoutée', who: 'Dev A', wait: 9, text: 'Ajouter une étape : migration EF Core',
+      detail: 'Contredit le schéma déclaré complet à l’étape Architecture.', mono: false, a: 'Autoriser', b: 'Refuser' }
+  ];
+  const stepName = { s1: 'Spec', s2: 'Archi', s3: 'Tests rouges', s4: 'Implémentation', sx: 'Migration', s5: 'Mutation', s6: 'Sécu', s7: 'Review' };
+  const pendingByStep = {};
+  rawQueue.forEach((q) => { if (!answers[q.id]) pendingByStep[q.step] = (pendingByStep[q.step] || 0) + 1; });
+  const pendingTotal = rawQueue.filter((q) => !answers[q.id]).length;
+  const oldest = rawQueue.find((q) => !answers[q.id]);
+  const plannedCount = rawSteps.filter((s) => s.status !== 'proposed').length;
+  return { rawSteps, rawQueue, stepName, pendingByStep, pendingTotal, oldest, plannedCount, answers, selId };
+}
+
+const dot = {
+  done: 'flex:none;width:14px;height:14px;border-radius:50%;background:#9aa1ad',
+  current: 'flex:none;width:14px;height:14px;border-radius:50%;background:#6ea8fe;box-shadow:0 0 0 3px #1a1d23,0 0 0 5px #6ea8fe',
+  todo: 'flex:none;width:14px;height:14px;border-radius:50%;box-sizing:border-box;border:2px solid #5a606b',
+  proposed: 'flex:none;width:14px;height:14px;border-radius:50%;box-sizing:border-box;border:2px dashed #f0a35e'
+};
+const statusText = { done: 'Fait', current: 'En cours', todo: 'À venir', proposed: 'Proposée, attend ton accord' };
+const statusColor = { done: '#9aa1ad', current: '#9cc4ff', todo: '#9aa1ad', proposed: '#f5bd85' };
+const kindStyles = {
+  'Décision': 'background:rgba(110,168,254,0.16);color:#9cc4ff',
+  'Étape': 'background:#262a32;color:#c3c7cf',
+  'Question': 'background:rgba(240,163,94,0.16);color:#f5bd85',
+  'Écart': 'border:1px dashed #f0a35e;color:#f5bd85;padding:0 7px'
+};
+const journal = [
+  { step: 's1', time: '09:12', kind: 'Décision', role: 'PM', model: 'Sonnet', title: 'Magic link plutôt qu’un code OTP par SMS', why: 'Pas de coût par envoi, parcours plus court. Écarté : OTP SMS, mot de passe.' },
+  { step: 's2', time: '09:40', kind: 'Décision', role: 'Archi', model: 'Opus', title: 'Token aléatoire stocké hashé, durée de vie 15 min', why: 'Révocable à tout moment. Écarté : JWT sans état, impossible à révoquer.' },
+  { step: 's3', time: '10:30', kind: 'Étape', role: 'Dev A', model: 'OpenCode', title: 'Les 5 scénarios traduits en tests rouges', why: '' },
+  { step: 's4', time: '10:41', kind: 'Écart', role: 'Dev A', model: 'Sonnet', title: 'Limite de 5 demandes par heure et par email', why: 'Ajoutée sans scénario correspondant. Confiance moyenne.' },
+  { step: 's4', time: '11:20', kind: 'Décision', role: 'Dev A', model: 'Sonnet', title: 'Horloge injectée via TimeProvider pour tester l’expiration', why: 'Teste la durée de vie sans attente réelle. Confiance haute.' },
+  { step: 's4', time: '11:48', kind: 'Question', role: 'Dev B', model: 'Opus', title: 'Le lien vaut-il pour deux appareils ?', why: 'Le scénario 4 ne tranche pas.' },
+  { step: 'sx', time: '11:02', kind: 'Écart', role: 'Dev A', model: 'Sonnet', title: 'Demande d’ajout de l’étape migration EF Core', why: 'La table des tokens n’existe pas dans le schéma prévu.' }
+];
+
+function factHtml(f) {
+  let tag = '';
+  if (f.kind === 'v') tag = `<span class="tag-v">${CHECK}vérifié · ${f.source}</span>`;
+  if (f.kind === 'd') tag = `<span class="tag-d">déclaré par ${f.source}</span>`;
+  if (f.kind === 'w') tag = `<span class="tag-w">déclaré par ${f.source} · contredit ensuite</span>`;
+  return `<div class="fact"><span>${f.text}</span>${tag}</div>`;
+}
+
+function render() {
+  const m = model();
+  let n = 0;
+  const views = m.rawSteps.map((s, i) => {
+    const proposed = s.status === 'proposed';
+    const num = proposed ? '+' : String(++n);
+    const wrong = s.facts.some((f) => f.kind === 'w');
+    const statusLine = s.status === 'done' ? (wrong ? 'Fait · 1 déclaration contredite' : 'Fait · vérifié') : statusText[s.status];
+    const color = wrong ? '#f5bd85' : statusColor[s.status];
+    return { s, num, proposed, wrong, statusLine, color, last: i === m.rawSteps.length - 1 };
+  });
+
+  document.getElementById('issueLine').textContent = 'Étape 4/' + m.plannedCount + ' · ' + (m.pendingTotal ? m.pendingTotal + ' à trancher' : 'rien à trancher');
+  document.getElementById('verdict').innerHTML = 'Étape 4 sur ' + m.plannedCount + ', Implémentation depuis 38 min, 3 scénarios sur 5 verts. ' +
+    `<span style="font-weight:600;color:${m.pendingTotal ? '#f5bd85' : '#9cc4ff'}">` +
+    (m.pendingTotal ? m.pendingTotal + ' décision' + (m.pendingTotal > 1 ? 's t’attendent' : ' t’attend') + ', la plus ancienne depuis ' + m.oldest.wait + ' min.' : 'Rien ne t’attend.') + '</span>';
+
+  document.getElementById('rail').innerHTML = views.map((v) => {
+    const sel = v.s.id === m.selId;
+    const pend = m.pendingByStep[v.s.id] || 0;
+    const btn = `background:${sel ? '#242833' : 'transparent'};border:1px ${v.proposed ? 'dashed #5a4330' : 'solid ' + (sel ? '#4a505b' : 'transparent')}`;
+    const line = v.last ? 'display:none' : `flex:1;height:2px;margin-left:8px;background:${v.s.status === 'done' ? '#9aa1ad' : '#3a3f48'}`;
+    return `<li class="station"><button type="button" class="stbtn" aria-pressed="${sel}" style="${btn}" onclick="pick('${v.s.id}')">
+      <span class="dotrow"><span style="${dot[v.s.status]}" aria-hidden="true"></span><span style="${line}" aria-hidden="true"></span></span>
+      <span class="mono small muted">${v.num} · ${v.s.role}</span>
+      <span style="font-size:14px;font-weight:${v.s.status === 'current' ? 600 : 500};color:${v.s.status === 'todo' ? '#c3c7cf' : '#e8e9ec'}">${v.s.title}</span>
+      <span style="font-size:12px;color:${v.color}">${v.statusLine}</span>
+      <span class="small muted">${v.s.time}</span>
+      ${pend ? `<span class="pend">${pend} à trancher</span>` : ''}
+    </button></li>`;
+  }).join('');
+
+  const cur = views.find((v) => v.s.id === m.selId) || views.find((v) => v.s.id === 's4');
+  const entries = journal.filter((e) => e.step === cur.s.id);
+  document.getElementById('detail').innerHTML = `
+    <div class="row-between"><h2 style="margin:0;font-size:18px;font-weight:600">${cur.num === '+' ? 'Étape proposée' : 'Étape ' + cur.num} · ${cur.s.title}</h2>
+    <span style="font-size:13px;color:${cur.color}">${cur.statusLine}</span></div>
+    <div style="font-size:13px;color:#c3c7cf">Temps passé : <span style="color:#e8e9ec;font-weight:600">${cur.s.time}</span></div>
+    <div><h3 class="h3">Où on en est</h3>${cur.s.facts.map(factHtml).join('')}</div>
+    <div><h3 class="h3">Décisions de cette étape</h3>
+    ${entries.length ? entries.map((e) => `<div class="entry"><span class="mono muted" style="font-size:13px;padding-top:2px">${e.time}</span>
+      <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><span class="kind" style="${kindStyles[e.kind]}">${e.kind}</span>
+        <span style="font-size:13px;font-weight:600">${e.role}</span><span class="mono small muted">${e.model}</span></div>
+        <span style="font-size:14px;font-weight:500;line-height:1.4">${e.title}</span>
+        ${e.why ? `<span style="font-size:13px;color:#c3c7cf;line-height:1.5">${e.why}</span>` : ''}
+      </div></div>`).join('') : '<p class="empty">Aucune décision pour l’instant.</p>'}
+    </div>`;
+
+  const qb = document.getElementById('queueBadge');
+  qb.textContent = String(m.pendingTotal);
+  qb.style.cssText = m.pendingTotal ? 'background:#f0a35e;color:#111317' : 'background:#2a2e36;color:#c3c7cf';
+  document.getElementById('queue').innerHTML = m.rawQueue.map((q) => {
+    const ans = m.answers[q.id];
+    const waitColor = ans ? '#9cc4ff' : (q.wait >= 30 ? '#f5bd85' : '#c3c7cf');
+    return `<div class="qcard" style="border-color:${ans ? '#2a2e36' : '#5a4330'}">
+      <div class="row-between" style="align-items:baseline"><span class="small muted"><span style="font-weight:600;color:#f5bd85">${q.kind}</span> · ${q.who} · ${m.stepName[q.step]}</span>
+      <span style="font-size:13px;font-weight:600;white-space:nowrap;color:${waitColor}">${ans ? 'tranché' : q.wait + ' min'}</span></div>
+      <span style="font-size:14px;font-weight:500;line-height:1.4">${q.text}</span>
+      <span class="${q.mono ? 'mono' : ''}" style="font-size:${q.mono ? 12 : 13}px;color:#c3c7cf;line-height:1.45">${q.detail}</span>
+      ${ans ? `<span style="font-size:13px;color:#9cc4ff">Tranché : « ${ans} », renvoyé à ${q.who}.</span>` :
+        `<div style="display:flex;flex-wrap:wrap;gap:8px"><button type="button" class="b-primary" onclick="set('${q.id}', '${q.a.replace(/'/g, "\\'")}')">${q.a}</button>
+        <button type="button" class="b-secondary" onclick="set('${q.id}', '${q.b.replace(/'/g, "\\'")}')">${q.b}</button></div>`}
+    </div>`;
+  }).join('');
+
+  const q1 = m.answers.q1;
+  const agents = [
+    ['Dev A', 'Sonnet · medium', 'Implémentation, scénario 4 · pas de boucle · 14 k tokens depuis le dernier test vert', '#6ea8fe'],
+    ['Dev B', 'Opus · high', q1 ? 'Reprend avec ta réponse' : 'En pause sur ta question', q1 ? '#6ea8fe' : '#f0a35e'],
+    ['QA', 'Sonnet · medium', 'Démarre après l’implémentation', '#5a606b'],
+    ['Sécu', 'Opus · high', 'Démarre après le mutation testing', '#5a606b']
+  ];
+  document.getElementById('agents').innerHTML = agents.map((a) => `<div class="agent"><span style="flex:none;margin-top:5px;width:10px;height:10px;border-radius:50%;background:${a[3]}" aria-hidden="true"></span>
+    <div style="display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-size:14px;font-weight:600">${a[0]} <span class="mono small muted" style="font-weight:400">${a[1]}</span></span>
+    <span style="font-size:13px;color:#c3c7cf;line-height:1.4">${a[2]}</span></div></div>`).join('');
+}
+render();
+
+</script>
+</body>
+</html>

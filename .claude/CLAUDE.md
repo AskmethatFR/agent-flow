@@ -16,7 +16,7 @@ Extends the global agentic-team rules; never replaces them.
 - Mutation testing on `core` with StrykerJS.
 - Adapters and `panel` are tested through integration tests where useful.
 - Data contracts under `.agent-flow/` are frozen in Phase 0; changing one is a contract change (Security lane).
-- Everything is written in English.
+- Everything is written in English, UI text included (the French mockup is reference only).
 
 ## Backlog
 
