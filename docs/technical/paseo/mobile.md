@@ -6,6 +6,7 @@ status: "current"
 updated: "2026-10-26"
 links:
   - "paseo-api-version"
+  - "paseo-agent-state"
 answers:
   - "Does the Agent Flow spike panel render on the Paseo mobile app?"
   - "What differences exist between the Paseo desktop and mobile rendering of the Agent Flow panel?"
