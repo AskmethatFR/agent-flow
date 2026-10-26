@@ -25,4 +25,5 @@
 | ID | Title | Status | Updated | Links | Path |
 |---|---|---|---|---|---|
 | `ci-pull-request-posture` | CI posture on pull requests (`ci`, `bdd`) | current | 2026-10-26 | [[workspace-layout-core-boundary]] | `docs/technical/decisions/ci-pull-request-posture.md` |
+| `host-adapter-boundary` | Host-adapter boundary between core and each host (plan.md Q7) | current | 2026-10-26 | [[workspace-layout-core-boundary]], [[paseo-api-version]], [[paseo-agent-state]], [[capture-events]], [[scope-origin]] | `docs/technical/decisions/host-adapter-boundary.md` |
 | `workspace-layout-core-boundary` | Workspace layout and the core import boundary | current | 2026-10-26 | [[capture-events]] | `docs/technical/decisions/workspace-layout-core-boundary.md` |
