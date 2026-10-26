@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "TaskCreate|TaskUpdate|Agent|TodoWrite", "hooks": [{ "type": "command", "command": "node \"$AF_SPIKE_DIR/claude-code/record-hook.mjs\"" }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "TaskCreate|TaskUpdate|Agent|TodoWrite", "hooks": [{ "type": "command", "command": "node \"$AF_SPIKE_DIR/claude-code/record-hook.mjs\"" }] }
+    ],
+    "TaskCreated": [
+      { "hooks": [{ "type": "command", "command": "node \"$AF_SPIKE_DIR/claude-code/record-hook.mjs\"" }] }
+    ],
+    "TaskCompleted": [
+      { "hooks": [{ "type": "command", "command": "node \"$AF_SPIKE_DIR/claude-code/record-hook.mjs\"" }] }
+    ],
+    "SubagentStart": [
+      { "hooks": [{ "type": "command", "command": "node \"$AF_SPIKE_DIR/claude-code/record-hook.mjs\"" }] }
+    ],
+    "SubagentStop": [
+      { "hooks": [{ "type": "command", "command": "node \"$AF_SPIKE_DIR/claude-code/record-hook.mjs\"" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "node \"$AF_SPIKE_DIR/claude-code/record-hook.mjs\"" }] }
+    ],
+    "SessionEnd": [
+      { "hooks": [{ "type": "command", "command": "node \"$AF_SPIKE_DIR/claude-code/record-hook.mjs\"" }] }
+    ]
+  }
+}

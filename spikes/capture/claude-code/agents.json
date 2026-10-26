@@ -1,0 +1,7 @@
+{
+  "step-worker": {
+    "description": "Performs the work of one plan step. Reply with the single word ok.",
+    "prompt": "Reply with the single word ok.",
+    "model": "haiku"
+  }
+}

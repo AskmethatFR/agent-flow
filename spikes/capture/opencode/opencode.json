@@ -1,0 +1,19 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "experimental": {
+    "todo": true
+  },
+  "permission": {
+    "bash": "deny",
+    "edit": "deny",
+    "webfetch": "deny"
+  },
+  "agent": {
+    "step-worker": {
+      "description": "Performs the work of one plan step.",
+      "mode": "subagent",
+      "prompt": "Reply with the single word ok.",
+      "tools": {}
+    }
+  }
+}
