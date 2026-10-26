@@ -163,6 +163,33 @@ describe("agent state hooks", () => {
     });
   });
 
+  const inactiveReading = {
+    agentId: "E",
+    status: "idle",
+    workspaceId: null,
+    turnActive: false,
+    requiresAttention: false,
+    attentionReason: null,
+    labels: {},
+  };
+  const inactiveRows = [
+    { name: "absent", overrides: {} },
+    {
+      name: "cleared",
+      overrides: { activeTurn: null, requiresAttention: false, attentionReason: null },
+    },
+  ] as const;
+
+  for (const row of inactiveRows) {
+    it(`reads ${row.name} optional fields as inactive`, async () => {
+      const hooks = startHooks(agentSnapshot({ id: "E", ...row.overrides }));
+
+      await hooks.turnEnded("E");
+
+      assert.deepEqual(JSON.parse(hooks.lines[0]).reading, inactiveReading);
+    });
+  }
+
   it("never logs titles, paths, errors, permission inputs or timeline content", async () => {
     const hooks = startHooks(
       agentSnapshot({
@@ -170,6 +197,8 @@ describe("agent state hooks", () => {
         title: SENTINEL,
         cwd: SENTINEL,
         lastError: SENTINEL,
+        runtimeInfo: { provider: "claude", sessionId: SENTINEL },
+        persistence: { provider: "claude", sessionId: SENTINEL },
         pendingPermissions: [
           { id: "perm-1", provider: "claude", name: SENTINEL, kind: "tool", input: { command: SENTINEL } },
         ],
