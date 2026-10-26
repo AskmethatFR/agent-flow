@@ -11,3 +11,8 @@
 ## T3
 
 ## T4
+
+| ID | Title | Status | Updated | Links | Path |
+|---|---|---|---|---|---|
+| `ci-pull-request-posture` | CI posture on pull requests | current | 2026-10-26 | [[workspace-layout-core-boundary]] | `docs/technical/decisions/ci-pull-request-posture.md` |
+| `workspace-layout-core-boundary` | Workspace layout and the core import boundary | current | 2026-10-26 | [[capture-events]] | `docs/technical/decisions/workspace-layout-core-boundary.md` |

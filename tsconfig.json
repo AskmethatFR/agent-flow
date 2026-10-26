@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.base.json",
+  "include": [
+    "core/src",
+    "core/test",
+    "daemon/src",
+    "panel/index.client.tsx",
+    "panel/**/*.test.ts",
+    "panel/**/*.test.tsx",
+    "capture/*/src",
+    "features/**/*.ts",
+    "vitest.config.ts"
+  ]
+}

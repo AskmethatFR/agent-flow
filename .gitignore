@@ -6,3 +6,4 @@ reports/
 *.log
 .DS_Store
 .agent-flow/
+.claude/settings.local.json
