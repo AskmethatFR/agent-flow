@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agent-flow:schema:plan:1",
+  "title": "plan.json",
+  "type": "object",
+  "required": ["issue", "title", "steps"],
+  "additionalProperties": false,
+  "properties": {
+    "issue": { "type": "string" },
+    "title": { "type": "string" },
+    "steps": {
+      "description": "step ids are unique",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "role", "status", "origin", "startedAt", "endedAt"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "title": { "type": "string" },
+          "role": { "type": "string" },
+          "status": { "type": "string", "enum": ["todo", "in_progress", "done"] },
+          "origin": { "type": "string", "enum": ["planned", "proposed"] },
+          "startedAt": { "type": ["string", "null"] },
+          "endedAt": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}
