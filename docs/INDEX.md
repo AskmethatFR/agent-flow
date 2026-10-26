@@ -10,6 +10,12 @@
 
 ## T3
 
+| ID | Title | Status | Updated | Links | Path |
+|---|---|---|---|---|---|
+| `paseo-api-version` | Paseo version, plugin API, permission model, plugin root/entries (#18, #42) | current | 2026-10-26 | — | `docs/technical/paseo/api-version.md` |
+
+- `features/phase-0/host-panel-desktop.feature` — #10 Paseo host spike: empty panel renders on desktop (S1)
+
 ## T4
 
 | ID | Title | Status | Updated | Links | Path |
