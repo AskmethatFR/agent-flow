@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { sanitize } from "./shared/recorder.mjs"
 import { findLeaks } from "./shared/secrets.mjs"
 
 const root = dirname(fileURLToPath(import.meta.url))
@@ -111,12 +112,21 @@ const checkRuntime = (runtime) => {
   ]
 }
 
-const checkDetectors = () =>
-  Object.entries(detectorFixtures).map(([name, fixture]) => ({
+const pemBody = "MIIEvQIBADANBgkqhkiG9w0BAQEFAASC"
+const pemBlock = `-----BEGIN ${"RSA PRIVATE KEY"}-----\n${pemBody}\n${pemBody}\n-----END ${"RSA PRIVATE KEY"}-----`
+
+const checkDetectors = () => [
+  ...Object.entries(detectorFixtures).map(([name, fixture]) => ({
     name: `detector flags ${name}`,
     ok: findLeaks(fixture).length > 0,
     detail: "",
-  }))
+  })),
+  {
+    name: "sanitize redacts a full PEM block, body included",
+    ok: !sanitize(`key: ${pemBlock} tail`).includes(pemBody),
+    detail: "",
+  },
+]
 
 let failed = false
 const sections = [

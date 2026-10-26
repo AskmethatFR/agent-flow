@@ -10,7 +10,7 @@ export const tokenPatterns = [
   new RegExp("\\b" + "AI" + "za[A-Za-z0-9_-]{30,}"),
   new RegExp("Bearer\\s+[A-Za-z0-9._-]{20,}"),
   new RegExp("\\b" + "e" + "y[A-Za-z0-9_-]{8,}\\.e" + "y[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}"),
-  new RegExp("-----BEGIN " + "[A-Z ]*PRIVATE KEY-----"),
+  new RegExp("-----BEGIN " + "[A-Z ]*PRIVATE KEY-----[\\s\\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)"),
   new RegExp("://[^/\\s:@]+:[^/\\s@]+@"),
 ]
 
