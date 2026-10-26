@@ -113,7 +113,10 @@ const checkRuntime = (runtime) => {
 }
 
 const pemBody = "MIIEvQIBADANBgkqhkiG9w0BAQEFAASC"
-const pemBlock = `-----BEGIN ${"RSA PRIVATE KEY"}-----\n${pemBody}\n${pemBody}\n-----END ${"RSA PRIVATE KEY"}-----`
+const pemHeader = `-----BEGIN ${"RSA PRIVATE KEY"}-----`
+const pemBlock = `${pemHeader}\n${pemBody}\n${pemBody}\n-----END ${"RSA PRIVATE KEY"}-----`
+const afterBlock = sanitize(`key: ${pemBlock} tail`)
+const withoutFooter = sanitize(`key: ${pemHeader}\n${pemBody}`)
 
 const checkDetectors = () => [
   ...Object.entries(detectorFixtures).map(([name, fixture]) => ({
@@ -123,7 +126,17 @@ const checkDetectors = () => [
   })),
   {
     name: "sanitize redacts a full PEM block, body included",
-    ok: !sanitize(`key: ${pemBlock} tail`).includes(pemBody),
+    ok: !afterBlock.includes(pemBody),
+    detail: "",
+  },
+  {
+    name: "sanitize keeps the text that follows a PEM block",
+    ok: afterBlock.endsWith(" tail"),
+    detail: "",
+  },
+  {
+    name: "sanitize redacts a PEM body that has no footer",
+    ok: !withoutFooter.includes(pemBody),
     detail: "",
   },
 ]
