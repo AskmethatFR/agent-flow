@@ -1,8 +1,10 @@
 {
   "name": "agent-flow-spike",
   "private": true,
+  "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test \"server/*.test.ts\""
   },
   "devDependencies": {
     "@getpaseo/plugin": "0.11.4",
