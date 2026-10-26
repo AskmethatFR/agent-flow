@@ -7,6 +7,7 @@ const project = (name: string, root: string, include: string[]) => ({
 export default defineConfig({
   test: {
     projects: [
+      project('features', 'features', ['support/**/*.test.ts']),
       project('core', 'core', ['src/**/*.test.ts', 'test/**/*.test.ts']),
       project('daemon', 'daemon', ['src/**/*.test.ts']),
       project('panel', 'panel', ['**/*.test.{ts,tsx}']),
