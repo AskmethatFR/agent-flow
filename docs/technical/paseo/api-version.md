@@ -39,7 +39,7 @@ Spike #10 answers the question with a throwaway client-only plugin at `spikes/pa
 | SDK pinned for typecheck | `@getpaseo/plugin` `0.11.4` (devDependency) |
 | Paseo CLI on the host | `0.11.4` (`paseo --version`) |
 | Paseo daemon on the host | `0.11.4` (`paseo daemon status --json` → `daemonVersion`) |
-| Paseo desktop app | pending — human reports the version from Settings |
+| Paseo desktop app | `0.13.0` (Settings on Paseo desktop, reported by the human) |
 
 | Option | Verdict | Why |
 |---|---|---|
@@ -127,7 +127,7 @@ Run on 2026-10-26 in `spikes/paseo/` against the local daemon (daemon and CLI `0
 | Status | `paseo plugin ls agent-flow-spike --json` | `"status": "running"`, no error |
 | Logs | `paseo plugin logs agent-flow-spike` | `11:08:51.738Z [paseo] Loading plugin`, `11:08:52.198Z [paseo] Plugin ready` |
 | Desktop render | Ctrl+K → "Open Agent Flow" on Paseo desktop | rendered: empty panel, screenshot at docs/technical/paseo/evidence/desktop-empty-panel.png |
-| Desktop app version | Settings on Paseo desktop | pending — human report |
+| Desktop app version | Settings on Paseo desktop | `0.13.0`; the panel rendered with a 0.13.0 app against the 0.11.4 daemon |
 
 The installation is a `directory` source pointing at `spikes/paseo/` in the ticket's uncommitted,
 mutable worktree on the shared daemon. The loader picks up an entry by file name alone, so any
@@ -139,7 +139,7 @@ outlive the worktree (see Cleanup).
 - **Daemon side: verified.** The client-only plugin installs, loads and reports `running` on Paseo 0.11.4,
   and its source typechecks against `@getpaseo/plugin` 0.11.4.
 - **Desktop render: rendered (AC2).** The "Agent Flow" workspace tab shows the empty panel on Paseo desktop
-  (screenshot at docs/technical/paseo/evidence/desktop-empty-panel.png). The desktop app version is still pending.
+  (screenshot at docs/technical/paseo/evidence/desktop-empty-panel.png). Desktop app `0.13.0`, daemon `0.11.4`.
 
 ## Consequences / Constraints
 
@@ -157,4 +157,4 @@ outlive the worktree (see Cleanup).
 ## Open questions / Gaps
 
 - [ ] #18: whether Paseo's server bundle resolves a TypeScript-source workspace package (`daemon`, `core`) is unverified.
-- [ ] The desktop app version on the human's machine (pending evidence).
+- [x] The desktop app version on the human's machine: `0.13.0`.
