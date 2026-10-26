@@ -126,7 +126,7 @@ Run on 2026-10-26 in `spikes/paseo/` against the local daemon (daemon and CLI `0
 | Install plugin | `paseo plugin install <worktree>/spikes/paseo --json` | trust notice printed, then `"id":"agent-flow-spike"`, `"enabled":true`, `"status":"running"`, `installation.identity.kind: "directory"` |
 | Status | `paseo plugin ls agent-flow-spike --json` | `"status": "running"`, no error |
 | Logs | `paseo plugin logs agent-flow-spike` | `11:08:51.738Z [paseo] Loading plugin`, `11:08:52.198Z [paseo] Plugin ready` |
-| Desktop render | Ctrl+K → "Open Agent Flow" on Paseo desktop | pending — human screenshot reference |
+| Desktop render | Ctrl+K → "Open Agent Flow" on Paseo desktop | rendered: empty panel, screenshot at docs/technical/paseo/evidence/desktop-empty-panel.png |
 | Desktop app version | Settings on Paseo desktop | pending — human report |
 
 The installation is a `directory` source pointing at `spikes/paseo/` in the ticket's uncommitted,
@@ -138,8 +138,8 @@ outlive the worktree (see Cleanup).
 
 - **Daemon side: verified.** The client-only plugin installs, loads and reports `running` on Paseo 0.11.4,
   and its source typechecks against `@getpaseo/plugin` 0.11.4.
-- **Desktop render: pending (AC2).** It waits on the human's screenshot and the desktop app version. Until
-  they arrive, the spike does not claim that the panel renders.
+- **Desktop render: rendered (AC2).** The "Agent Flow" workspace tab shows the empty panel on Paseo desktop
+  (screenshot at docs/technical/paseo/evidence/desktop-empty-panel.png). The desktop app version is still pending.
 
 ## Consequences / Constraints
 
