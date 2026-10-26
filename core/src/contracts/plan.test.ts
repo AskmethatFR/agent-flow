@@ -230,12 +230,12 @@ describe('validatePlan', () => {
   })
 
   it('reports two missing step keys in schema order', () => {
-    const { role: _role, status: _status, ...step } = validStep
+    const { title: _title, role: _role, ...step } = validStep
     expect(validatePlan(planText(step))).toEqual({
       accepted: false,
       errors: [
+        { file: 'plan.json', location: 's4', field: 'title', message: 'is required' },
         { file: 'plan.json', location: 's4', field: 'role', message: 'is required' },
-        { file: 'plan.json', location: 's4', field: 'status', message: 'is required' },
       ],
     })
   })

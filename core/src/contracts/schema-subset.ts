@@ -76,7 +76,7 @@ function* walk(schema: JsonSchema, value: unknown, path: Path): Generator<Schema
     return
   }
   const { items } = schema
-  if (typeof value === 'string' && value.length < (schema.minLength ?? 0)) {
+  if (typeof value === 'string' && [...value].length < (schema.minLength ?? 0)) {
     yield violation(path, `length must be at least ${schema.minLength}`)
     return
   }

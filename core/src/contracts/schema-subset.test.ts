@@ -50,6 +50,12 @@ describe('findViolations', () => {
     ['an array shorter than the minimum', ['a'], []],
     ['one below the minimum', 'ab', [{ path: [], message: 'length must be at least 3' }]],
     ['empty', '', [{ path: [], message: 'length must be at least 3' }]],
+    ['three astral characters, exactly at the minimum', '\u{1F600}'.repeat(3), []],
+    [
+      'two astral characters, one below the minimum',
+      '\u{1F600}'.repeat(2),
+      [{ path: [], message: 'length must be at least 3' }],
+    ],
   ])('checks minLength on a string that is %s', (_, value, expected) => {
     expect([...findViolations({ minLength: 3 }, value)]).toEqual(expected)
   })
