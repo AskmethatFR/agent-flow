@@ -1,0 +1,6 @@
+{
+  "id": "agent-flow-spike",
+  "requirements": {
+    "paseo": ">=0.11.4"
+  }
+}
