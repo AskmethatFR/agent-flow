@@ -4,16 +4,18 @@
     "todo": true
   },
   "permission": {
-    "bash": "deny",
-    "edit": "deny",
-    "webfetch": "deny"
+    "*": "deny",
+    "todowrite": "allow",
+    "task": "allow"
   },
   "agent": {
     "step-worker": {
       "description": "Performs the work of one plan step.",
       "mode": "subagent",
       "prompt": "Reply with the single word ok.",
-      "tools": {}
+      "permission": {
+        "*": "deny"
+      }
     }
   }
 }

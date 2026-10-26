@@ -1,17 +1,36 @@
 import { existsSync, readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { findLeaks } from "./shared/secrets.mjs"
 
 const root = dirname(fileURLToPath(import.meta.url))
 
-const tokenShapes = [
-  new RegExp("\\b" + "s" + "k-[A-Za-z0-9_-]{16,}"),
-  new RegExp("\\b" + "gh" + "p_[A-Za-z0-9]{20,}"),
-  new RegExp("\\b" + "gh" + "o_[A-Za-z0-9]{20,}"),
-  new RegExp("\\b" + "xo" + "x[bp]-[A-Za-z0-9-]{10,}"),
-  new RegExp("\\b" + "AK" + "IA[A-Z0-9]{16}\\b"),
-  new RegExp("Bearer\\s+[A-Za-z0-9._-]{20,}"),
-]
+const detectorFixtures = {
+  jwt: "e" + "yJhbGciOiJIUzI1NiJ9." + "e" + "yJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijk",
+  githubFineGrained: "github" + "_pat_" + "A".repeat(30),
+  githubServer: "gh" + "s_" + "A".repeat(30),
+  stripeLive: "s" + "k_live_" + "A".repeat(24),
+  googleKey: "AI" + "za" + "A".repeat(35),
+  pem: "-----BEGIN " + "RSA PRIVATE KEY-----",
+  urlCredentials: "https" + "://user:pass" + "word@example.test/x",
+  dashEncodedHome: "/tmp/x/-home-dev-projects-x",
+  tmpClaude: "/tmp/claude-" + "1001/x",
+}
+
+const singleRun = {
+  "claude-code": (records) => {
+    const sessions = new Set(records.map((r) => r.payload?.session_id))
+    const ends = records.filter((r) => r.source === "SessionEnd")
+    return sessions.size === 1 && ends.length === 1 && records.at(-1)?.source === "SessionEnd"
+  },
+  opencode: (records) => {
+    const ends = records.filter((r) => r.source === "location.shutdown")
+    return ends.length === 1 && records.at(-1)?.source === "location.shutdown"
+  },
+}
+
+const atIsMonotonic = (records) =>
+  records.every((r, i) => i === 0 || r.at >= records[i - 1].at)
 
 const loadSamples = (runtime) => {
   const file = join(root, runtime, "samples", "events.jsonl")
@@ -83,15 +102,30 @@ const checkRuntime = (runtime) => {
     { name: "c: >=1 completed transition", ok: done.length >= 1, detail: `${done.length}` },
     { name: "d: completed after in_progress (same item)", ok: ordered, detail: `${ordered}` },
     { name: "e: >=1 subagent event", ok: subagents >= 1, detail: `${subagents}` },
-    { name: "f: no home path", ok: !text.includes("/home/"), detail: file },
-    { name: "g: no token-shaped string", ok: !tokenShapes.some((re) => re.test(text)), detail: file },
+    { name: "f+g: no path or token leak", ok: findLeaks(text).length === 0, detail: findLeaks(text).join(" ") || file },
+    {
+      name: "h: single run, shutdown/session end is the last record",
+      ok: singleRun[runtime](records) && atIsMonotonic(records),
+      detail: `${records.length} records`,
+    },
   ]
 }
 
+const checkDetectors = () =>
+  Object.entries(detectorFixtures).map(([name, fixture]) => ({
+    name: `detector flags ${name}`,
+    ok: findLeaks(fixture).length > 0,
+    detail: "",
+  }))
+
 let failed = false
-for (const runtime of Object.keys(extractors)) {
-  console.log(`== ${runtime}`)
-  for (const check of checkRuntime(runtime)) {
+const sections = [
+  ...Object.keys(extractors).map((runtime) => [runtime, checkRuntime(runtime)]),
+  ["detectors", checkDetectors()],
+]
+for (const [title, checks] of sections) {
+  console.log(`== ${title}`)
+  for (const check of checks) {
     if (!check.ok) failed = true
     console.log(`${check.ok ? "PASS" : "FAIL"}  ${check.name}  ${check.detail}`)
   }

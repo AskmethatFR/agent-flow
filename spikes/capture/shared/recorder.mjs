@@ -2,26 +2,37 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { basename, dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+import { secretKey, tokenPatterns } from "./secrets.mjs"
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..")
 const home = homedir()
-const SECRET_KEY = /token|secret|key|auth|cookie|password/i
+const dashed = (path) => path.replaceAll("/", "-")
 const PATH_KEYS = new Set(["transcript_path", "agent_transcript_path"])
 const MAX_STRING = 200
-const tokenShape = new RegExp(
-  "\\b(?:" + "s" + "k-|gh" + "p_|gh" + "o_|xo" + "x[bp]-)[A-Za-z0-9_-]{16,}",
-  "g",
-)
+const TRUNCATED = "…[truncated]"
+const globalTokenPatterns = tokenPatterns.map((re) => new RegExp(re.source, "g"))
 
-const scrubString = (value) => {
-  const scrubbed = value
+const redactTokens = (value) =>
+  globalTokenPatterns.reduce((text, re) => text.replace(re, "<redacted>"), value)
+
+const scrubPaths = (value) =>
+  value
     .split(repoRoot)
     .join("<repo>")
     .split(home)
     .join("~")
-    .replace(tokenShape, "<redacted>")
-  return scrubbed.length > MAX_STRING ? `${scrubbed.slice(0, MAX_STRING)}…[truncated]` : scrubbed
-}
+    .split(dashed(repoRoot))
+    .join("-<repo>")
+    .split(dashed(home))
+    .join("-<home>")
+    .replace(/\/tmp\/claude-\d+/g, "/tmp/claude-<uid>")
+
+const truncate = (value) =>
+  value.length > MAX_STRING && !value.endsWith(TRUNCATED)
+    ? `${value.slice(0, MAX_STRING)}${TRUNCATED}`
+    : value
+
+const scrubString = (value) => truncate(redactTokens(scrubPaths(value)))
 
 export const sanitize = (value, key = "") => {
   if (typeof value === "string") {
@@ -31,7 +42,7 @@ export const sanitize = (value, key = "") => {
   if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value)
-        .filter(([k]) => !SECRET_KEY.test(k))
+        .filter(([k]) => !secretKey.test(k))
         .map(([k, v]) => [k, sanitize(v, k)]),
     )
   }

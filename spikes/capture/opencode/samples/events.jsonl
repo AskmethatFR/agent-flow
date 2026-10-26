@@ -152,14 +152,3 @@
 {"seq":152,"at":"2026-10-26T07:42:18.767Z","runtime":"opencode","source":"session.usage.updated","kind":"bus","payload":{"type":"session.usage.updated","shape":["sessionID","cost","tokens","tokens.input","tokens.output","tokens.reasoning","tokens.cache","tokens.cache.read","tokens.cache.write"]}}
 {"seq":153,"at":"2026-10-26T07:42:19.051Z","runtime":"opencode","source":"session.execution.succeeded","kind":"bus","payload":{"type":"session.execution.succeeded","shape":["sessionID"]}}
 {"seq":154,"at":"2026-10-26T07:42:19.425Z","runtime":"opencode","source":"location.shutdown","kind":"bus","payload":{"type":"location.shutdown","shape":[]}}
-{"seq":155,"at":"2026-10-26T07:47:35.837Z","runtime":"opencode","source":"integration.updated","kind":"bus","payload":{"type":"integration.updated","shape":[]}}
-{"seq":156,"at":"2026-10-26T07:47:36.048Z","runtime":"opencode","source":"model.updated","kind":"bus","payload":{"type":"model.updated","shape":[]}}
-{"seq":157,"at":"2026-10-26T07:47:36.551Z","runtime":"opencode","source":"provider.updated","kind":"bus","payload":{"type":"provider.updated","shape":[]}}
-{"seq":158,"at":"2026-10-26T07:47:36.764Z","runtime":"opencode","source":"integration.updated","kind":"bus","payload":{"type":"integration.updated","shape":[]}}
-{"seq":159,"at":"2026-10-26T07:47:37.022Z","runtime":"opencode","source":"model.updated","kind":"bus","payload":{"type":"model.updated","shape":[]}}
-{"seq":160,"at":"2026-10-26T07:47:37.277Z","runtime":"opencode","source":"provider.updated","kind":"bus","payload":{"type":"provider.updated","shape":[]}}
-{"seq":161,"at":"2026-10-26T07:47:37.429Z","runtime":"opencode","source":"models-dev.refreshed","kind":"bus","payload":{"type":"models-dev.refreshed","shape":[]}}
-{"seq":162,"at":"2026-10-26T07:53:16.332Z","runtime":"opencode","source":"skill.updated","kind":"bus","payload":{"type":"skill.updated","shape":[]}}
-{"seq":163,"at":"2026-10-26T07:53:17.253Z","runtime":"opencode","source":"skill.updated","kind":"bus","payload":{"type":"skill.updated","shape":[]}}
-{"seq":164,"at":"2026-10-26T08:14:34.297Z","runtime":"opencode","source":"skill.updated","kind":"bus","payload":{"type":"skill.updated","shape":[]}}
-{"seq":165,"at":"2026-10-26T08:14:34.596Z","runtime":"opencode","source":"skill.updated","kind":"bus","payload":{"type":"skill.updated","shape":[]}}
