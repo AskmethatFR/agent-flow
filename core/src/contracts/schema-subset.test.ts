@@ -40,10 +40,35 @@ describe('findViolations', () => {
     ['an array node without items', { type: 'array' }, [1]],
     ['an items node reached by a non-array value', { items: { type: 'string' } }, 7],
   ])('accepts %s', (_, schema, value) => {
-    expect(findViolations(schema as JsonSchema, value)).toEqual([])
+    expect([...findViolations(schema as JsonSchema, value)]).toEqual([])
+  })
+
+  it.each([
+    ['exactly at the minimum', 'abc', []],
+    ['above the minimum', 'abcd', []],
+    ['a number', 7, []],
+    ['an array shorter than the minimum', ['a'], []],
+    ['one below the minimum', 'ab', [{ path: [], message: 'length must be at least 3' }]],
+    ['empty', '', [{ path: [], message: 'length must be at least 3' }]],
+  ])('checks minLength on a string that is %s', (_, value, expected) => {
+    expect([...findViolations({ minLength: 3 }, value)]).toEqual(expected)
+  })
+
+  it('walks lazily, so a consumer that stops pulling stops the walk', () => {
+    let indexReads = 0
+    const items = new Proxy(Array.from({ length: 1000 }, () => 7), {
+      get(target, property, receiver) {
+        if (typeof property === 'string' && /^\d+$/.test(property)) indexReads += 1
+        return Reflect.get(target, property, receiver)
+      },
+    })
+    const [first] = findViolations({ type: 'array', items: { type: 'string' } }, items)
+    expect(first).toEqual({ path: [0], message: 'must be string' })
+    expect(indexReads).toBeLessThan(10)
   })
 
   it.each(['$schema', '$id', 'title', 'description'])('ignores the annotation %s', (keyword) => {
-    expect(findViolations({ [keyword]: 'text', type: 'string' } as JsonSchema, 'value')).toEqual([])
+    const schema = { [keyword]: 'text', type: 'string' } as JsonSchema
+    expect([...findViolations(schema, 'value')]).toEqual([])
   })
 })

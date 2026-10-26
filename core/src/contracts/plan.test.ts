@@ -124,6 +124,151 @@ describe('validatePlan', () => {
     )
   })
 
+  it('rejects an empty step id and locates the step by position', () => {
+    expect(validatePlan(planText({ ...validStep, id: '' }))).toEqual(
+      rejection('steps[0]', 'id', 'length must be at least 1'),
+    )
+  })
+
+  const stepsText = (...ids: string[]): string =>
+    JSON.stringify({ ...validPlan, steps: ids.map((id) => ({ ...validStep, id })) })
+
+  const duplicate = (location: string) => ({
+    file: 'plan.json',
+    location,
+    field: 'id',
+    message: 'must be unique',
+  })
+
+  it.each([
+    ['one repeat', ['s4', 's4'], ['s4']],
+    ['a triple', ['s4', 's4', 's4'], ['s4', 's4']],
+    ['repeats in document order', ['a', 'b', 'a', 'b'], ['a', 'b']],
+    ['an unsafe repeated id located by position', ['a b', 'a b'], ['steps[1]']],
+  ])('rejects duplicate step ids: %s', (_, ids, locations) => {
+    expect(validatePlan(stepsText(...ids))).toEqual({
+      accepted: false,
+      errors: locations.map(duplicate),
+    })
+  })
+
+  it('accepts distinct step ids', () => {
+    expect(validatePlan(stepsText('s4', 's5'))).toEqual({ accepted: true })
+  })
+
+  it('reports schema violations instead of duplicates when both exist', () => {
+    const text = JSON.stringify({
+      ...validPlan,
+      steps: [validStep, { ...validStep, status: 'paused' }],
+    })
+    expect(validatePlan(text)).toEqual(
+      rejection('s4', 'status', 'must be one of todo, in_progress, done'),
+    )
+  })
+
+  const paddedTo = (length: number): string => {
+    const text = JSON.stringify(validPlan)
+    return text + ' '.repeat(length - text.length)
+  }
+
+  it('accepts a document of exactly 1048576 characters', () => {
+    expect(validatePlan(paddedTo(1_048_576))).toEqual({ accepted: true })
+  })
+
+  it.each([paddedTo(1_048_577), 'x'.repeat(1_048_577)])(
+    'rejects a document of 1048577 characters with the single ceiling error without parsing it',
+    (text) => {
+      expect(validatePlan(text)).toEqual(rejection(null, null, 'exceeds 1048576 characters'))
+    },
+  )
+
+  const manyBadSteps = (count: number): string =>
+    JSON.stringify({
+      ...validPlan,
+      steps: Array.from({ length: count }, (_, index) => ({
+        ...validStep,
+        id: `s${index}`,
+        status: 'paused',
+      })),
+    })
+
+  const tooMany = {
+    file: 'plan.json',
+    location: null,
+    field: null,
+    message: 'too many errors, only the first 100 are shown',
+  }
+
+  it.each([1, 99, 100])('lists all %i errors without a marker', (count) => {
+    const result = validatePlan(manyBadSteps(count))
+    expect(result.accepted === false && result.errors).toHaveLength(count)
+    expect(result.accepted === false && result.errors).not.toContainEqual(tooMany)
+  })
+
+  it.each([101, 250])('keeps the first 100 of %i errors and appends one marker', (count) => {
+    const result = validatePlan(manyBadSteps(count))
+    if (result.accepted) throw new Error('expected a rejection')
+    expect(result.errors).toHaveLength(101)
+    expect(result.errors[0]?.location).toBe('s0')
+    expect(result.errors[99]?.location).toBe('s99')
+    expect(result.errors[100]).toEqual(tooMany)
+  })
+
+  it.each([
+    [101, 100],
+    [102, 101],
+  ])('caps duplicate-id errors too (%i steps, %i repeats)', (steps, repeats) => {
+    const result = validatePlan(stepsText(...Array.from({ length: steps }, () => 's4')))
+    if (result.accepted) throw new Error('expected a rejection')
+    expect(result.errors).toHaveLength(repeats > 100 ? 101 : repeats)
+    expect(result.errors.at(-1)).toEqual(repeats > 100 ? tooMany : duplicate('s4'))
+  })
+
+  it('locates a non-string id on the second step by its position', () => {
+    const text = JSON.stringify({ ...validPlan, steps: [validStep, { ...validStep, id: 7 }] })
+    expect(validatePlan(text)).toEqual(rejection('steps[1]', 'id', 'must be string'))
+  })
+
+  it('reports two missing step keys in schema order', () => {
+    const { role: _role, status: _status, ...step } = validStep
+    expect(validatePlan(planText(step))).toEqual({
+      accepted: false,
+      errors: [
+        { file: 'plan.json', location: 's4', field: 'role', message: 'is required' },
+        { file: 'plan.json', location: 's4', field: 'status', message: 'is required' },
+      ],
+    })
+  })
+
+  it.each([['steps[1]'], ['s4\n'], ['a'.repeat(65)], ['a b'], ['x/y']])(
+    'locates a step with the unsafe id %j by position',
+    (id) => {
+      expect(validatePlan(planText({ ...validStep, id, status: 'paused' }))).toEqual(
+        rejection('steps[0]', 'status', 'must be one of todo, in_progress, done'),
+      )
+    },
+  )
+
+  it.each([['a'.repeat(64)], ['s-4.a_b:c']])('echoes the safe id %j as the location', (id) => {
+    expect(validatePlan(planText({ ...validStep, id, status: 'paused' }))).toEqual(
+      rejection(id, 'status', 'must be one of todo, in_progress, done'),
+    )
+  })
+
+  const unsafeKeys = ['bad\nkey', 'a'.repeat(65), 'a b', 'x[0]']
+
+  it.each(unsafeKeys)('hides the undeclared step key %j', (key) => {
+    expect(validatePlan(planText({ ...validStep, [key]: 1 }))).toEqual(
+      rejection('s4', null, 'has a field whose name cannot be shown'),
+    )
+  })
+
+  it.each(unsafeKeys)('hides the undeclared plan key %j', (key) => {
+    expect(validatePlan(JSON.stringify({ ...validPlan, [key]: 1 }))).toEqual(
+      rejection(null, null, 'has a field whose name cannot be shown'),
+    )
+  })
+
   it('locates each error on its own step, in document order', () => {
     const text = JSON.stringify({
       ...validPlan,

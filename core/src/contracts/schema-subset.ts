@@ -5,6 +5,7 @@ export type JsonSchema = {
   readonly description?: string
   readonly type?: string | readonly string[]
   readonly enum?: readonly string[]
+  readonly minLength?: number
   readonly required?: readonly string[]
   readonly properties?: Readonly<Record<string, JsonSchema>>
   readonly additionalProperties?: boolean
@@ -38,6 +39,7 @@ const supportedKeywords = new Set([
   'description',
   'type',
   'enum',
+  'minLength',
   'required',
   'properties',
   'additionalProperties',
@@ -61,39 +63,45 @@ const assertSupported = (schema: JsonSchema): void => {
   if (schema.items !== undefined) assertSupported(schema.items)
 }
 
-const violation = (path: Path, message: string): SchemaViolation[] => [{ path, message }]
+const violation = (path: Path, message: string): SchemaViolation => ({ path, message })
 
-const walk = (schema: JsonSchema, value: unknown, path: Path): SchemaViolation[] => {
+function* walk(schema: JsonSchema, value: unknown, path: Path): Generator<SchemaViolation> {
   const types = typeNames(schema)
   if (types.length > 0 && !types.some((name) => matchesType(name, value))) {
-    return violation(path, `must be ${types.join(' or ')}`)
+    yield violation(path, `must be ${types.join(' or ')}`)
+    return
   }
   if (schema.enum !== undefined && !schema.enum.includes(value as string)) {
-    return violation(path, `must be one of ${schema.enum.join(', ')}`)
+    yield violation(path, `must be one of ${schema.enum.join(', ')}`)
+    return
   }
-  if (isObject(value)) return walkObject(schema, value, path)
-  if (schema.items !== undefined && Array.isArray(value)) {
-    const items = schema.items
-    return value.flatMap((item, index) => walk(items, item, [...path, index]))
+  const { items } = schema
+  if (typeof value === 'string' && value.length < (schema.minLength ?? 0)) {
+    yield violation(path, `length must be at least ${schema.minLength}`)
+    return
   }
-  return []
+  if (isObject(value)) {
+    yield* walkObject(schema, value, path)
+  } else if (items !== undefined && Array.isArray(value)) {
+    for (const [index, item] of value.entries()) yield* walk(items, item, [...path, index])
+  }
 }
 
-const walkObject = (schema: JsonSchema, value: object, path: Path): SchemaViolation[] => {
-  const missing = (schema.required ?? [])
-    .filter((key) => !Object.hasOwn(value, key))
-    .flatMap((key) => violation([...path, key], 'is required'))
+function* walkObject(schema: JsonSchema, value: object, path: Path): Generator<SchemaViolation> {
+  for (const key of schema.required ?? []) {
+    if (!Object.hasOwn(value, key)) yield violation([...path, key], 'is required')
+  }
   const properties = schema.properties ?? {}
-  const nested = Object.entries(value).flatMap(([key, child]) => {
+  for (const [key, child] of Object.entries(value)) {
     if (Object.hasOwn(properties, key)) {
-      return walk(properties[key] as JsonSchema, child, [...path, key])
+      yield* walk(properties[key] as JsonSchema, child, [...path, key])
+    } else if (schema.additionalProperties === false) {
+      yield violation([...path, key], 'is not allowed')
     }
-    return schema.additionalProperties === false ? violation([...path, key], 'is not allowed') : []
-  })
-  return [...missing, ...nested]
+  }
 }
 
-export function findViolations(schema: JsonSchema, value: unknown): SchemaViolation[] {
+export function findViolations(schema: JsonSchema, value: unknown): Iterable<SchemaViolation> {
   assertSupported(schema)
   return walk(schema, value, [])
 }
