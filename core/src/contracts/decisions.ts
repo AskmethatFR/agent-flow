@@ -77,7 +77,9 @@ export const readDecisions = (text: string): ReadDecisionsResult => {
   for (const [index, line] of lines.entries()) {
     const location = index + 1
     if (errors.length >= MAX_ERRORS && line.length < MINIMUM_RECORD_LENGTH) {
-      errors.push(invalidJsonError(location))
+      if (errors.length === MAX_ERRORS) {
+        errors.push(invalidJsonError(location))
+      }
       continue
     }
     if (blankLine.test(line)) {
