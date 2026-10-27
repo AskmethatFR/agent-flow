@@ -7,7 +7,7 @@ Extends the global agentic-team rules; never replaces them.
 - `core/`: pure TypeScript, no host import (no Paseo, no Node-only host API). Parsers, step timing, drift and loop detection. Everything testable without a host lives here.
 - Host adapters (`daemon/` for Paseo, a local host later): file watching, RPCs, SDK calls. No business rule.
 - `panel/`: React Native. Display and user input only, never computes.
-- The Paseo plugin API is experimental (v0.7 → v0.8): keep host code thin so a breaking change stays in the adapter.
+- The Paseo plugin API is experimental (Agent Flow targets `requirements.paseo: ">=0.11.4"`, 0.8 entry-split baseline): keep host code thin so a breaking change stays in the adapter.
 
 ## Development
 

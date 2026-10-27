@@ -40,7 +40,7 @@ The mockup shows budget bars: they are out of scope, show time spent only.
 - Plugins run on desktop, browser, iOS and Android. One codebase for desktop and mobile.
 - Paseo compiles TypeScript itself; most plugins need no build step.
 - Backend logic runs daemon-side through plugin RPCs and the Paseo TypeScript SDK.
-- **The plugin API is experimental** and breaking changes are expected (v0.7 current, v0.8 upcoming). Keep business logic out of the UI layer.
+- **The plugin API is experimental** and breaking changes are expected (a plugin declares its supported Paseo range in `paseo-plugin.json` → `requirements.paseo`; Agent Flow targets `">=0.11.4"`, the 0.8 entry-split baseline). Keep business logic out of the UI layer.
 
 Docs: https://paseo.sh/docs/plugins and https://paseo.sh/docs/plugins/reference
 
@@ -120,7 +120,7 @@ The layout above is the Paseo host. A later local/standalone host reuses `core` 
 
 | Phase | What we build | Done when |
 |---|---|---|
-| **0. Framing** | Pick Paseo API version (v0.7 or v0.8). Spike: hello-world workspace panel; confirm the SDK can read agent state and send a message to an agent. Freeze data contracts. Confirm capture options for Claude Code and OpenCode v2. | An empty panel renders on desktop and mobile. Contracts are frozen. Open questions below have answers. |
+| **0. Framing** | Target the Paseo range `requirements.paseo: ">=0.11.4"` (decided, #10). Spike: hello-world workspace panel; confirm the SDK can read agent state and send a message to an agent. Freeze data contracts. Confirm capture options for Claude Code and OpenCode v2. | An empty panel renders on desktop and mobile. Contracts are frozen. Open questions below have answers. |
 | **1. Data capture** | Hooks/plugins for Claude Code and OpenCode v2 that write `plan.json` with timestamps. CLAUDE.md / agent rules so every role appends to `decisions.jsonl`. | A real issue produces correct files with no human intervention, for both agent runtimes. |
 | **2. Read-only panel** | Daemon watches `.agent-flow/`. Panel shows the plan rail with time spent per step, step detail, decisions per step, agent state. | A real issue can be followed end to end without opening a terminal. |
 | **3. Verified facts** | Parse `dotnet test` results (TRX), CI status via `gh`, Stryker report. Display verified and declared facts separately. | Every completed step shows at least one verified fact. |
@@ -202,9 +202,29 @@ Scenario: Loop is detected
 ## Open questions (answer in Phase 0)
 
 1. Which Paseo API version do we target: v0.7 or v0.8?
+
+   Answer: neither "v0.7" nor "v0.8" as such — Paseo has no separate plugin API version; the plugin declares `requirements.paseo: ">=0.11.4"` in `paseo-plugin.json` (the 0.8 runtime-entry split into `index.client.*` / `index.server.*` is the baseline). Record: #10, `docs/technical/paseo/api-version.md`.
+
 2. Can a plugin send a message to a running agent through the SDK, or must answers go through `responses.jsonl` only?
+
+   Answer: pending — blocked by #27 (spike: message a running agent and decide how a blocked agent waits). Record: #27.
+
 3. What is the OpenCode v2 equivalent of Claude Code hooks for capturing plan updates?
+
+   Answer: OpenCode v2 has no hooks; the equivalent is a plugin module (`.opencode/plugins/*.js`, `export default { id, async setup(ctx) }`) using `ctx.tool.hook("execute.before" | "execute.after")` and the bus stream `ctx.event.subscribe()`; Claude Code keeps command hooks (JSON on stdin, registered in settings). Record: #12, `docs/technical/capture/events.md`.
+
 4. How does a blocked agent wait: stop and poll `responses.jsonl`, or a Paseo-native mechanism?
+
+   Answer: pending — blocked by #27 (spike: message a running agent and decide how a blocked agent waits). Record: #27.
+
 5. Where does `scope.json` come from: a section of the GitHub issue template, or written by the PM/Architect role?
+
+   Answer: derived from the `## Touches` section of the GitHub issue and written by a confined writer that reads the issue body, invoked by the role that runs `refine-ticket` (PM spawn or orchestrator); no implementing role and no Architect writes it. Record: #36, `docs/technical/decisions/scope-origin.md`.
+
 6. Loop threshold: is "3 identical failures" enough, or do we also need a token-based threshold?
+
+   Answer: "3 identical failures" is enough — a loop is the same test failing 3 consecutive runs with the same failure message, computed from verified test reports only; no token-based threshold in v1. Record: #36, `docs/technical/decisions/loop-threshold.md`.
+
 7. Host-adapter boundary: what does a non-Paseo host (local CLI or web) need from `core`, and which interfaces does each host implement?
+
+   Answer: functional core, host shell — `core` exposes only pure, synchronous functions over plain values (raw `.agent-flow/` text and instants in; values and `ContractError` lists out; nothing throws) and calls nothing on the host; each host implements six capabilities: file access, change notification, agent state, message delivery, clock, snapshot transport (message delivery is provisional — `responses.jsonl` floor decided, Paseo path pending #27). Record: #25, `docs/technical/decisions/host-adapter-boundary.md`.
