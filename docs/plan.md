@@ -40,7 +40,7 @@ The mockup shows budget bars: they are out of scope, show time spent only.
 - Plugins run on desktop, browser, iOS and Android. One codebase for desktop and mobile.
 - Paseo compiles TypeScript itself; most plugins need no build step.
 - Backend logic runs daemon-side through plugin RPCs and the Paseo TypeScript SDK.
-- **The plugin API is experimental** and breaking changes are expected (v0.7 current, v0.8 upcoming). Keep business logic out of the UI layer.
+- **The plugin API is experimental** and breaking changes are expected (a plugin declares its supported Paseo range in `paseo-plugin.json` → `requirements.paseo`; Agent Flow targets `">=0.11.4"`, the 0.8 entry-split baseline). Keep business logic out of the UI layer.
 
 Docs: https://paseo.sh/docs/plugins and https://paseo.sh/docs/plugins/reference
 
@@ -120,7 +120,7 @@ The layout above is the Paseo host. A later local/standalone host reuses `core` 
 
 | Phase | What we build | Done when |
 |---|---|---|
-| **0. Framing** | Pick Paseo API version (v0.7 or v0.8). Spike: hello-world workspace panel; confirm the SDK can read agent state and send a message to an agent. Freeze data contracts. Confirm capture options for Claude Code and OpenCode v2. | An empty panel renders on desktop and mobile. Contracts are frozen. Open questions below have answers. |
+| **0. Framing** | Target the Paseo range `requirements.paseo: ">=0.11.4"` (decided, #10). Spike: hello-world workspace panel; confirm the SDK can read agent state and send a message to an agent. Freeze data contracts. Confirm capture options for Claude Code and OpenCode v2. | An empty panel renders on desktop and mobile. Contracts are frozen. Open questions below have answers. |
 | **1. Data capture** | Hooks/plugins for Claude Code and OpenCode v2 that write `plan.json` with timestamps. CLAUDE.md / agent rules so every role appends to `decisions.jsonl`. | A real issue produces correct files with no human intervention, for both agent runtimes. |
 | **2. Read-only panel** | Daemon watches `.agent-flow/`. Panel shows the plan rail with time spent per step, step detail, decisions per step, agent state. | A real issue can be followed end to end without opening a terminal. |
 | **3. Verified facts** | Parse `dotnet test` results (TRX), CI status via `gh`, Stryker report. Display verified and declared facts separately. | Every completed step shows at least one verified fact. |
