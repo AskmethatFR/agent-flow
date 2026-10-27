@@ -313,6 +313,23 @@ describe('serializeDecision', () => {
     expect(JSON.parse(result.line)).toEqual(decisionWith({ why }))
   })
 
+  const serializedAtLength = (total: number): Record<string, unknown> => {
+    const fixed = lineText(decisionWith()).length - (validDecision.why as string).length
+    return decisionWith({ why: 'x'.repeat(total - fixed) })
+  }
+
+  it('accepts a decision whose serialized line is exactly 1048576 characters', () => {
+    const decision = serializedAtLength(1_048_576)
+    expect(serializeDecision(decision)).toEqual({ accepted: true, line: lineText(decision) })
+  })
+
+  it('rejects a decision whose serialized line exceeds 1048576 characters', () => {
+    expect(serializeDecision(serializedAtLength(1_048_577))).toEqual({
+      accepted: false,
+      error: { file: 'decisions.jsonl', location: null, field: null, message: 'exceeds 1048576 characters' },
+    })
+  })
+
   it('escapes the unicode next-line character U+0085 inside string values', () => {
     const why = 'waiting\u0085then'
     const result = serializeDecision(decisionWith({ why }))

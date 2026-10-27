@@ -44,7 +44,7 @@ const violationError = (violation: SchemaViolation, location: number | null): Co
   message: violation.message,
 })
 
-const lineError = (location: number, message: string): ContractError => ({
+const lineError = (location: number | null, message: string): ContractError => ({
   file,
   location,
   field: null,
@@ -120,6 +120,9 @@ export const serializeDecision = (value: unknown): SerializeDecisionResult => {
     .replaceAll('\u2028', '\\u2028')
     .replaceAll('\u2029', '\\u2029')
     .replaceAll('\u0085', '\\u0085')
+  if (line.length > MAX_TEXT_LENGTH) {
+    return { accepted: false, error: lineError(null, `exceeds ${MAX_TEXT_LENGTH} characters`) }
+  }
   const document: unknown = JSON.parse(line)
   const violation = firstViolation(document)
   if (violation !== undefined) {
