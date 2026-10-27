@@ -3,7 +3,7 @@ id: "paseo-agent-state"
 type: "technical"
 owner: "architect"
 status: "current"
-updated: "2026-10-26"
+updated: "2026-10-27"
 links:
   - "paseo-api-version"
   - "capture-events"
@@ -13,6 +13,7 @@ answers:
   - "How is the agent working on the current step identified: by agent id, worktree, step or role?"
 decided_in:
   - "#26"
+  - "#27"
 ---
 
 # Reading agent state through the Paseo SDK
@@ -70,7 +71,7 @@ The reader takes a narrow port, `AgentRefSource = { ref(agentId): Pick<PaseoAgen
 | `agent.requiresAttention` | `boolean \| undefined` | typed (`:483`); observed live: `true` on both lines, including while `status` was `running` |
 | `agent.attentionReason` | `finished`, `error`, `permission`, `null`, `undefined` | typed (same file, `:484-488`); `finished` observed live, `error` and `permission` not observed |
 
-The logged reading is `{ agentId, status, workspaceId, turnActive, requiresAttention, attentionReason, labels }`: `turnActive` is `activeTurn != null`, absent optionals read as `false` / `null`.
+The logged line is `{ source, event, agentId, status, turnActive, attentionReason }` (reduced by #27): `turnActive` is `activeTurn != null`, an absent `attentionReason` reads as `null`. A null or failed read logs no line. `readAgentState` still returns `workspaceId`, `requiresAttention` and `labels`; the hook does not log them.
 
 **Attention is sticky.** `requiresAttention: true` with `attentionReason: "finished"` was still set on the `agent.turn_started` line while `status` was `running` (observed): it carries over from the previous turn and is not a live-state signal. #21 must not read it as "the agent needs the human now".
 
@@ -89,7 +90,7 @@ The logged reading is `{ agentId, status, workspaceId, turnActive, requiresAtten
 | Log persistence | The plugin's stdout is also written to the daemon's own log, `~/.paseo/daemon.log` (mode 0644, size-rotated), as "Plugin output" (`plugins/runtime.js:967`; rotation settings `config.js:96-105`). That copy survives `paseo plugin remove`. Anything the plugin prints stays on disk, so the allowlist below is a hard limit |
 | Least privilege here | The spike calls `on` and `agents.ref().refresh()` only: no `agents.create`, no `terminals.*`, no `config.*`, no `before` hook, no `server.handle` |
 
-**MUST NOT log** (the allowlist in `spikes/paseo/server/read-agent-state.ts`): `title` (it echoes user prompts), `cwd` (home paths), `pendingPermissions` (tool inputs), `lastError`, `runtimeInfo`, `persistence`, `turn_ended.timeline` (conversation content), and the whole `project` placement that `refresh()` returns next to the agent (`projectKey`, `projectName`, `workspaceName`, `checkout` paths and `checkout.currentBranch`; `session.js:1279-1284`). Of `labels`, only keys starting `agent-flow.` are kept. The unit test pins this with a sentinel string planted in each of those fields (snapshot: `title`, `cwd`, `lastError`, `runtimeInfo`, `persistence`, `pendingPermissions`; event: agent `title`, `cwd`, `timeline`). The spike drops `project`, but its test fake returns `project: null`, so no sentinel pins that yet (open item for #21).
+**MUST NOT log** (the reader's allowlist in `spikes/paseo/server/read-agent-state.ts`, narrowed again by the log line in `spikes/paseo/server/agent-state-hooks.ts`, reduced by #27): `title` (it echoes user prompts), `cwd` (home paths), `pendingPermissions` (tool inputs), `lastError`, `runtimeInfo`, `persistence`, `turn_ended.timeline` (conversation content), and the whole `project` placement that `refresh()` returns next to the agent (`projectKey`, `projectName`, `workspaceName`, `checkout` paths and `checkout.currentBranch`; `session.js:1279-1284`). `labels`, `workspaceId` and `requiresAttention` are not logged either (reduced by #27; the reader still keeps the `agent-flow.`-prefixed labels for the message hook's targeting). The unit test pins this with a sentinel string planted in each of those fields (snapshot: `title`, `cwd`, `lastError`, `runtimeInfo`, `persistence`, `pendingPermissions`, `workspaceId`, `labels`; event: agent `title`, `cwd`, `timeline`) and with a deepEqual on the whole line, so any extra key fails; a failed read's error text is never logged. The spike drops `project`, but its test fake returns `project: null`, so no sentinel pins that yet (open item for #21).
 
 **Never forward a workspace's `gitRuntime`.** `remoteUrl` is `null` in the agent's `project.checkout` on the `refresh()` and `list` paths (`workspace-registry-model.js:101`). The raw `remote.origin.url` git config value, however, is read by `checkout-git.js:855-862` and reaches clients as `gitRuntime.remoteUrl` in `workspaces.list` descriptors (`session.js:4151-4157`, `:4184`). That value can embed credentials, so it must never be logged or forwarded (doc-sourced).
 
@@ -118,7 +119,7 @@ The logged reading is `{ agentId, status, workspaceId, turnActive, requiresAtten
 <br>- on another host: its own equivalent.
 <br>Satisfying this is the launch convention's job, owned by #21 / #41. Until it holds, no Paseo agent state can be attached to an item | observed + doc-sourced |
 | 8 | **Step and role**: Paseo's status is per agent session. Role subagents (architect, dev, QA) run inside that session and are not Paseo agents (observed), so step and role come from the current step of `<worktree>/.agent-flow/plan.json` (`docs/plan.md:62-96`, [[capture-events]]) | observed |
-| 9 | **Launch labels dropped as the identity key.** The worktree already identifies the item. Labels exist on Paseo only and would need the same launch convention. The spike's allowlist still keeps `agent-flow.`-prefixed labels (a code fact), but no meaning is assigned to them | decided |
+| 9 | **Launch labels dropped as the identity key.** The worktree already identifies the item. Labels exist on Paseo only and would need the same launch convention. The spike's reader (`readAgentState`) still keeps `agent-flow.`-prefixed labels, only for the #27 message hook's targeting; the logged state line drops them (reduced by #27). No identity meaning is assigned to them | decided |
 
 **The key is a path, so it stays in the daemon.** #21 resolves and compares it there. **Nothing from `project`, the agent's `cwd` or `<worktree>` leaves the daemon**: the only things logged or sent are `workspaceId` and the match result (allowlist, § Permissions).
 
@@ -154,7 +155,7 @@ Observations:
 ## Consequences / Constraints
 
 - **MUST**: read state with `agents.ref(id).refresh()` unless a later ticket shows a better call; a hook agent carries no status.
-- **MUST**: log only the allowlisted fields above; add a field only with a matching case in `agent-state-hooks.test.ts`.
+- **MUST**: log only `agentId`, `status`, `turnActive` and `attentionReason` (reduced by #27); add a field only with a matching case in `agent-state-hooks.test.ts`.
 - **MUST**: take step and role from `.agent-flow/plan.json`, never from Paseo.
 - **MUST**: identify an item's agent by its worktree.
   - On Paseo, map `workspaceId` → `project.checkout.worktreeRoot` and compare real paths for equality inside the daemon.

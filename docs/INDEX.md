@@ -15,11 +15,13 @@
 | ID | Title | Status | Updated | Links | Path |
 |---|---|---|---|---|---|
 | `paseo-api-version` | Paseo version, plugin API, permission model, plugin root/entries (#18, #42) | current | 2026-10-26 | — | `docs/technical/paseo/api-version.md` |
-| `paseo-agent-state` | Reading agent state through the Paseo SDK: calls, statuses, permissions, agent identification (#26) | current | 2026-10-26 | `paseo-api-version`, `capture-events` | `docs/technical/paseo/agent-state.md` |
+| `paseo-agent-state` | Reading agent state through the Paseo SDK: calls, statuses, permissions, agent identification (#26) | current | 2026-10-27 | `paseo-api-version`, `capture-events` | `docs/technical/paseo/agent-state.md` |
+| `paseo-messaging` | Messaging an agent via the Paseo SDK, how a blocked agent waits (#27) | current | 2026-10-27 | `paseo-api-version`, `paseo-agent-state`, `host-adapter-boundary` | `docs/technical/paseo/messaging.md` |
 | `paseo-mobile` | Paseo mobile render: desktop/mobile differences, kill-criterion verdict (#31) | current | 2026-10-26 | `paseo-api-version`, `paseo-agent-state` | `docs/technical/paseo/mobile.md` |
 
 - `features/phase-0/host-panel-desktop.feature` — #10 Paseo host spike: empty panel renders on desktop (S1)
 - `features/phase-0/host-agent-state.feature` — #26 Paseo host spike: daemon reads a running agent's state (S1)
+- `features/phase-0/host-agent-message.feature` — #27 Paseo host spike: daemon delivers a message to a running agent (S1)
 - `features/phase-0/host-panel-mobile.feature` — #31 Paseo host spike: empty panel renders on mobile (S1)
 
 ## T4

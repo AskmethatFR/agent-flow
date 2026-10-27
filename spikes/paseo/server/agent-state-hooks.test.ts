@@ -48,7 +48,7 @@ function hookAgent(id: string, overrides: Partial<PluginHookAgent> = {}): Plugin
   };
 }
 
-function startHooks(refreshed: PaseoAgent | null) {
+function startHooks(refreshed: PaseoAgent | null | Error) {
   const handlers = new Map<string, Parameters<AgentStateHookServer["on"]>[1]>();
   const unsubscribed: string[] = [];
   const requestedIds: string[] = [];
@@ -67,7 +67,12 @@ function startHooks(refreshed: PaseoAgent | null) {
         ref(agentId) {
           requestedIds.push(agentId);
           return {
-            refresh: async () => (refreshed === null ? null : { agent: refreshed, project: null }),
+            refresh: async () => {
+              if (refreshed instanceof Error) {
+                throw refreshed;
+              }
+              return refreshed === null ? null : { agent: refreshed, project: null };
+            },
           };
         },
       },
@@ -117,60 +122,69 @@ describe("agent state hooks", () => {
 
       await (row.event === "agent.turn_started" ? hooks.turnStarted(row.id) : hooks.turnEnded(row.id));
 
-      assert.equal(hooks.lines.length, 1);
-      const logged = JSON.parse(hooks.lines[0]);
-      assert.equal(logged.event, row.event);
-      assert.equal(logged.agentId, row.id);
-      assert.equal(logged.reading.status, row.status);
+      assert.deepEqual(hooks.lines.map((line) => JSON.parse(line)), [
+        {
+          source: "agent-flow-spike",
+          event: row.event,
+          agentId: row.id,
+          status: row.status,
+          turnActive: false,
+          attentionReason: null,
+        },
+      ]);
       assert.deepEqual(hooks.requestedIds, [row.id]);
     });
   }
 
-  it("logs a null reading when the SDK knows no such agent", async () => {
-    const hooks = startHooks(null);
+  const noStateRows = [
+    { name: "the SDK has no state for the agent", refreshed: null },
+    { name: "the read fails", refreshed: new Error(SENTINEL) },
+  ];
 
-    await hooks.turnStarted("unknown");
+  for (const row of noStateRows) {
+    it(`logs no line when ${row.name}`, async () => {
+      const hooks = startHooks(row.refreshed);
 
-    assert.equal(hooks.lines.length, 1);
-    const logged = JSON.parse(hooks.lines[0]);
-    assert.equal(logged.agentId, "unknown");
-    assert.equal(logged.reading, null);
-  });
+      await hooks.turnStarted("unknown");
+      await hooks.turnEnded("unknown");
 
-  it("projects the allowlisted fields and keeps only agent-flow labels", async () => {
+      assert.deepEqual(hooks.lines, []);
+    });
+  }
+
+  it("logs exactly agentId, status, turnActive and attentionReason, never labels, workspace or requiresAttention", async () => {
     const hooks = startHooks(
       agentSnapshot({
         id: "C",
         status: "running",
-        workspaceId: "ws-1",
+        workspaceId: SENTINEL,
         activeTurn: { turnId: "turn-1", startedAt: null },
         requiresAttention: true,
         attentionReason: "permission",
-        labels: { "agent-flow.step": "s4", other: "x" },
+        labels: { "agent-flow.step": SENTINEL, other: SENTINEL },
       }),
     );
 
     await hooks.turnStarted("C");
 
-    assert.deepEqual(JSON.parse(hooks.lines[0]).reading, {
+    assert.deepEqual(JSON.parse(hooks.lines[0]), {
+      source: "agent-flow-spike",
+      event: "agent.turn_started",
       agentId: "C",
       status: "running",
-      workspaceId: "ws-1",
       turnActive: true,
-      requiresAttention: true,
       attentionReason: "permission",
-      labels: { "agent-flow.step": "s4" },
     });
+    assert.ok(!hooks.lines[0].includes(SENTINEL), hooks.lines[0]);
   });
 
-  const inactiveReading = {
+  const inactiveLine = {
+    source: "agent-flow-spike",
+    event: "agent.turn_ended",
     agentId: "E",
     status: "idle",
-    workspaceId: null,
     turnActive: false,
-    requiresAttention: false,
     attentionReason: null,
-    labels: {},
   };
   const inactiveRows = [
     { name: "absent", overrides: {} },
@@ -186,7 +200,7 @@ describe("agent state hooks", () => {
 
       await hooks.turnEnded("E");
 
-      assert.deepEqual(JSON.parse(hooks.lines[0]).reading, inactiveReading);
+      assert.deepEqual(JSON.parse(hooks.lines[0]), inactiveLine);
     });
   }
 
