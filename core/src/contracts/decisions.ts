@@ -108,14 +108,17 @@ const notSerializable = (): SerializeDecisionResult => ({
   error: { file, location: null, field: null, message: 'is not serializable' },
 })
 
-export const serializeDecision = (value: unknown): SerializeDecisionResult => {
-  let emitted: unknown
+const emitLine = (value: unknown): string | undefined => {
   try {
-    emitted = JSON.stringify(value)
+    return JSON.stringify(value)
   } catch {
-    return notSerializable()
+    return undefined
   }
-  if (typeof emitted !== 'string') return notSerializable()
+}
+
+export const serializeDecision = (value: unknown): SerializeDecisionResult => {
+  const emitted = emitLine(value)
+  if (emitted === undefined) return notSerializable()
   const line = emitted
     .replaceAll('\u2028', '\\u2028')
     .replaceAll('\u2029', '\\u2029')
