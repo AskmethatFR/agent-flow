@@ -2,7 +2,7 @@
 id: "paseo-messaging"
 type: "technical"
 owner: "architect"
-status: "draft"
+status: "current"
 updated: "2026-10-27"
 links:
   - "paseo-api-version"
@@ -20,7 +20,7 @@ decided_in:
 
 > **One-liner**: the SDK call a Paseo plugin's server entry uses to deliver a message to an agent, how a blocked agent waits for its answer, and the permissions and side effects of that call.
 > **Links**: [[paseo-api-version]] (plugin layout and trust model), [[paseo-agent-state]] (the read side, reach and log persistence), [[host-adapter-boundary]] (capability "Message delivery", points 1-5). Scenario file: `features/phase-0/host-agent-message.feature` (S1, `@manual`).
-> **State of this record**: SDK call, permissions and verdict rule written; Evidence and Verdict **pending live capture**.
+> **State of this record**: verdict "belief holds", live evidence recorded 2026-10-27 (see Evidence and Verdict).
 
 ## Context
 
@@ -45,14 +45,14 @@ Host anchors are doc-sourced from the host's `@getpaseo/server` 0.11.4 package, 
 
 | Call / fact | Where | Behavior | Label |
 |---|---|---|---|
-| `context.paseo.agents.ref(id).send(text, options?)` | `PaseoAgentHandle` (`index.d.ts:282`) | `Promise<void>`; resolves when the daemon accepts the message | typed |
+| `context.paseo.agents.ref(id).send(text, options?)` | `PaseoAgentHandle` (`index.d.ts:282`) | `Promise<void>`; resolves when the daemon accepts the message | typed; observed live (see Evidence) |
 | `options` = `SendMessageOptions` | `index.d.ts:196`, `daemon-client.d.ts:149-158` | `messageId?`, `activeTurnBehavior?`, `images?`, `attachments?`; a random `messageId` is generated when omitted (`daemon-client.js:2111`) | typed + doc-sourced |
 | `activeTurnBehavior` | `messages.js:975` | `"interrupt"` or `"steer"`; omitted = `"interrupt"` (`daemon-client.d.ts:151`, `session.js:6172`) | doc-sourced |
 | Ack | `session.js:6176-6177`, `:6194-6201`; `agent-prompt.js:144` | when a new turn starts, the daemon waits for the run to start (up to 60 s), then answers `accepted: true` | doc-sourced |
 | Rejection | `session.js:6208-6214`; `daemon-client.js:2136-2137` | `accepted: false` with a friendly error text; the client throws `Error(<that text>)` | doc-sourced |
 | Idle agent | `agent-prompt.js:20-25`; `agent-manager.js:1835-1840` | steer finds no active turn and falls through to a new turn | doc-sourced |
 | Mid-turn agent | `agent-prompt.js:4-19` | steered into the running turn if the provider supports it, otherwise the turn is replaced (`replaceRunning: true`, `agent-prompt.js:203`) | doc-sourced; not exercised |
-| Receipt | `agent-prompt.js:199-201`; `agent-manager.js:1532-1533`, `:3324-3337`, `:3564-3565` | the prompt is stored as a timeline item `{ type: "user_message", text, clientMessageId: <messageId> }` (`messages.js:498-504`), and the next `agent.turn_ended` hands the plugin that timeline | doc-sourced |
+| Receipt | `agent-prompt.js:199-201`; `agent-manager.js:1532-1533`, `:3324-3337`, `:3564-3565` | the prompt is stored as a timeline item `{ type: "user_message", text, clientMessageId: <messageId> }` (`messages.js:498-504`), and the next `agent.turn_ended` hands the plugin that timeline | doc-sourced; observed live as `message.received` `received: true` (see Evidence) |
 | Delivery receipt | `message-receipts/index.js:19`, `:31-47`; `websocket-server.js:342` | each send is keyed by (agentId, messageId) and recorded as a file under `~/.paseo/agent-requests/` (`pending`, then `completed`), kept for good: it outlives `paseo plugin remove`. Same key and same request after completion: resolves without sending again. Same key, different request: rejected with `agent_request_key_conflict`. A receipt left `pending` (daemon crash mid-send): every retry is rejected with `agent_request_outcome_unknown` | doc-sourced |
 | `handle.run()` / `waitForFinish()` / `respondToPermission()` | `index.d.ts:283-287` | send-and-wait, wait, answer a pending permission | doc-sourced alternatives, not used |
 
@@ -115,7 +115,7 @@ Run by the orchestrator on the shared daemon; each install, run and remove is a 
 
 0. Pre-check: list the agents carrying the label `agent-flow.message-target=27`, active and archived. Proceed only if there are none. Labels can be set on any existing agent by any client with `workspace.write` (`update_agent_request`, `authorization/operation-permissions.js:185`), and the first labelled agent to end a turn after install gets the single send.
 1. `paseo plugin install "<worktree>/spikes/paseo" --json`, before launching the target, or its first turn end is missed. This build registers both hooks. The state hooks log a reduced line (`agentId`, `status`, `turnActive`, `attentionReason`) for every agent on the daemon.
-2. `paseo run --background --label agent-flow.message-target=27 "Reply with the single word OK."` (one small model run). Paseo may steer a finish notification into the orchestrator; that is expected noise.
+2. `paseo run --background --provider <provider/model> --label agent-flow.message-target=27 "Reply with the single word OK."` (one small model run). `--provider` is required: without it the CLI refuses the run with `MISSING_PROVIDER` and creates no agent (observed). Paseo may steer a finish notification into the orchestrator; that is expected noise.
 3. `paseo plugin logs agent-flow-spike`, waiting for, in order: `message.sent` with `outcome: "accepted"` for the target id, then `message.received` with `received: true`. Post-check: the `message.sent` agentId MUST equal the id printed by `paseo run`. On a mismatch, remove the plugin at once and record the miss.
 4. Cross-check: the target's status from its own state lines and from `paseo inspect <target> --json`, and the target's activity showing a user message equal to "ping from agent-flow" (recorded as match yes/no only).
 5. Archive or kill the target; `paseo plugin remove agent-flow-spike`; `paseo plugin ls --json` shows it absent. The daemon is not restarted.
@@ -131,11 +131,37 @@ Redaction rule: quote from `paseo plugin logs agent-flow-spike` only the spike's
 
 ## Evidence
 
-**Pending live capture.**
+Run on 2026-10-27 on the local daemon (0.11.4) by the orchestrator, with a human approval for each install, run and remove; the lane only edits files. Build: the spike code at 9dd54be (the same code as a046021), with both hooks registered (the message hook, and the state hook with its 4-field line). Output was redacted per the redaction rule above before it reached this record. Times are UTC.
+
+| Step | Command / source | Result | Label |
+|---|---|---|---|
+| 0 Pre-check (C1) | list agents labelled `agent-flow.message-target=27`, active and archived, all directories | 0 agents, checked before the install | observed |
+| 1 Install | `paseo plugin install "<worktree>/spikes/paseo" --json` | exit 0; `paseo plugin ls` shows `agent-flow-spike` enabled | observed |
+| 2 Target | `paseo run --background --provider claude/claude-haiku-5-5 --label agent-flow.message-target=27 "Reply with the single word OK."` | exit 0, target `21785b1c…`. A first attempt without `--provider` was refused with `MISSING_PROVIDER` and created no agent | observed |
+| 3 Plugin load | `paseo plugin logs agent-flow-spike` | `[paseo] Loading plugin` 10:56:09.874, `[paseo] Plugin ready` 10:56:14.624 | observed |
+| 3 Target's first turn | same | 11:06:11.674 `agent.turn_started` `21785b1c…` `{status:"running", turnActive:true, attentionReason:null}`; 11:06:30.936 `agent.turn_ended` `{status:"idle", turnActive:false, attentionReason:"finished"}` | observed |
+| 3 Send | same | 11:06:31.037 `agent.turn_started` `21785b1c…` `{status:"running", turnActive:true, attentionReason:"finished"}`; 11:06:31.056 `{"event":"message.sent","agentId":"21785b1c…","outcome":"accepted"}` | observed |
+| 3 Receipt | same | 11:06:33.700 `agent.turn_ended` `21785b1c…` `{status:"idle", turnActive:false, attentionReason:"finished"}`; 11:06:33.702 `{"event":"message.received","agentId":"21785b1c…","received":true}` | observed |
+| 3 Other agents | same | 6 state lines from other agents (counted only); 0 `Lifecycle hook … failed` blocks | observed |
+| Post-check (C1) | `message.sent` agentId vs the `paseo run` id | match | observed |
+| 4 Cross-check | `paseo inspect <target> --json`; `paseo logs <target>` | status `idle`; the target's activity holds a user message equal to "ping from agent-flow": yes | observed |
+| 5 Clean-up | archive the target; `paseo plugin remove agent-flow-spike`; `paseo plugin ls` | archive exit 0; remove exit 0; only the two other plugins listed; 0 active labelled agents remain | observed |
+| Window | n/a | install to remove: 10:56:09Z to about 11:11:37Z (~15 min); daemon not restarted | observed |
+
+Observations:
+
+- **Order of lines.** The steered `agent.turn_started` (11:06:31.037) is logged before `message.sent` (11:06:31.056). This is expected: `send` resolves only after the daemon has started the run (`session.js:6176-6177`, doc-sourced). The whole round trip from the send to the receipt took about 2.6 s.
+- **Idle delivery.** The send left the hook on the target's `agent.turn_ended` with `status: "idle"`. Steer found no active turn and started a new one, as the call path predicts (`agent-prompt.js:20-25`, doc-sourced).
+- **Sticky attention.** `attentionReason: "finished"` stays set on the `running` line of the steered turn, as [[paseo-agent-state]] observed for #26.
+- **What stays on the daemon.** The 4-field state lines and the `message.*` lines in `~/.paseo/daemon.log`, and one receipt file under `~/.paseo/agent-requests/` with no text (§ Permissions). None of it is quoted here.
 
 ## Verdict
 
-**Pending live capture.** The verdict follows the rule in § How a blocked agent waits. On kill or inconclusive, scenario S1 of `features/phase-0/host-agent-message.feature` is re-sliced by the PM, never parked.
+**Belief holds.** The verdict rule fixed before the run (§ How a blocked agent waits) is met: the live plugin log shows `message.sent` with `outcome: "accepted"` and then `message.received` with `received: true` for the same target id `21785b1c…`, and that id matches the one `paseo run` printed. The target's own activity holds the user message "ping from agent-flow" (AC1: SDK delivery observed live through `agents.ref(id).send()`).
+
+Delivery was observed into an **idle** agent between turns, as planned (T-1, T-2). Steering into a running turn stays not exercised (Open questions). Scenario S1 of `features/phase-0/host-agent-message.feature` (`@manual`) is satisfied by this evidence: the agent is running in a workspace, the daemon sends "ping from agent-flow" through the host SDK, and the agent receives it.
+
+For Q4 this selects the recommendation in § How a blocked agent waits: the blocked agent ends its turn, and the host wakes it with the content-free template once the answer is in `responses.jsonl`. The kill branch (stop and poll `responses.jsonl`) is not needed. The floor still applies whenever a wake is not sent or is lost.
 
 ## Consequences / Constraints
 
