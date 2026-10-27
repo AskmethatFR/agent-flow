@@ -1,0 +1,285 @@
+import { describe, expect, it } from 'vitest'
+import decisionsSchema from '../../../schemas/decisions.schema.json' with { type: 'json' }
+import { readDecisions, validateDecisions } from './index'
+
+const validDecision = {
+  at: '2026-10-22T11:20:00Z',
+  step: 's4',
+  role: 'dev-a',
+  kind: 'decision',
+  title: 'Inject TimeProvider to test expiration',
+  why: 'Tests token lifetime without real waiting',
+  rejected: ['real waits in tests'],
+  confidence: 'high',
+  model: 'sonnet',
+}
+
+const decisionWith = (overlays: Record<string, unknown> = {}): Record<string, unknown> => ({
+  ...validDecision,
+  ...overlays,
+})
+
+const lineText = (value: unknown): string => JSON.stringify(value)
+
+const fileText = (...lines: string[]): string => lines.join('\n')
+
+const decisionText = (decision: Record<string, unknown>): string => lineText(decision)
+
+const rejection = (location: number | null, field: string | null, message: string) => ({
+  accepted: false,
+  errors: [{ file: 'decisions.jsonl', location, field, message }],
+})
+
+const readError = (location: number | null, field: string | null, message: string) => ({
+  file: 'decisions.jsonl',
+  location,
+  field,
+  message,
+})
+
+const tooManyMarker = readError(null, null, 'too many errors, only the first 100 are shown')
+
+describe('decisions.schema.json', () => {
+  it('declares the schema version in its $id', () => {
+    expect(decisionsSchema.$id).toBe('urn:agent-flow:schema:decision:1')
+  })
+})
+
+describe('validateDecisions', () => {
+  it.each(['decision', 'step_event', 'question', 'deviation'] as const)(
+    'accepts a decision whose kind is %s',
+    (kind) => {
+      expect(validateDecisions(decisionText({ ...validDecision, kind }))).toEqual({
+        accepted: true,
+      })
+    },
+  )
+
+  it.each(['high', 'medium', 'low'] as const)(
+    'accepts a decision whose confidence is %s',
+    (confidence) => {
+      expect(validateDecisions(decisionText({ ...validDecision, confidence }))).toEqual({
+        accepted: true,
+      })
+    },
+  )
+
+  it('accepts a decision without its optional model', () => {
+    const { model: _model, ...decision } = validDecision
+    expect(validateDecisions(decisionText(decision))).toEqual({ accepted: true })
+  })
+
+  it('accepts a decision without its optional rejected', () => {
+    const { rejected: _rejected, ...decision } = validDecision
+    expect(validateDecisions(decisionText(decision))).toEqual({ accepted: true })
+  })
+
+  it('accepts a decision whose rejected is empty', () => {
+    expect(validateDecisions(decisionText({ ...validDecision, rejected: [] }))).toEqual({
+      accepted: true,
+    })
+  })
+
+  it.each(['{', 'not json'])('rejects text that is not JSON (%j)', (text) => {
+    expect(validateDecisions(text)).toEqual(rejection(1, null, 'is not valid JSON'))
+  })
+
+  it('accepts an empty file as zero decisions', () => {
+    expect(validateDecisions('')).toEqual({ accepted: true })
+  })
+
+  it.each(['7', 'null', '"text"', '[]', 'true'])('rejects a line that is %s', (text) => {
+    expect(validateDecisions(text)).toEqual(rejection(1, null, 'must be object'))
+  })
+
+  it.each(['at', 'step', 'role', 'kind', 'title', 'why', 'confidence'])(
+    'rejects a decision missing its %s',
+    (key) => {
+      const { [key]: _removed, ...decision } = validDecision as Record<string, unknown>
+      expect(validateDecisions(decisionText(decision))).toEqual(rejection(1, key, 'is required'))
+    },
+  )
+
+  it.each([
+    ['kind', 'bogus', 'must be one of decision, step_event, question, deviation'],
+    ['confidence', 'certain', 'must be one of high, medium, low'],
+  ])('rejects a decision whose %s is outside its enum (%s)', (key, value, message) => {
+    expect(validateDecisions(decisionText({ ...validDecision, [key]: value }))).toEqual(
+      rejection(1, key, message),
+    )
+  })
+
+  it.each([
+    ['at', 'must be string'],
+    ['step', 'must be string'],
+    ['role', 'must be string'],
+    ['model', 'must be string'],
+    ['title', 'must be string'],
+    ['why', 'must be string'],
+    ['confidence', 'must be string'],
+    ['rejected', 'must be array'],
+  ])('rejects a decision whose %s has the wrong type', (key, message) => {
+    expect(validateDecisions(decisionText({ ...validDecision, [key]: 7 }))).toEqual(
+      rejection(1, key, message),
+    )
+  })
+
+  it.each(['at', 'step', 'role', 'model', 'title', 'why'])(
+    'rejects a decision whose %s is empty',
+    (key) => {
+      expect(validateDecisions(decisionText({ ...validDecision, [key]: '' }))).toEqual(
+        rejection(1, key, 'length must be at least 1'),
+      )
+    },
+  )
+
+  it.each(['extra', 'constructor', '__proto__'])('rejects an undeclared %s', (key) => {
+    const decision = JSON.parse(JSON.stringify(validDecision))
+    Object.defineProperty(decision, key, { value: 1, enumerable: true })
+    expect(validateDecisions(decisionText(decision))).toEqual(
+      rejection(1, key, 'is not allowed'),
+    )
+  })
+
+  it.each([
+    [7, 'must be string'],
+    ['', 'length must be at least 1'],
+  ])('rejects a decision whose rejected contains %j', (item, message) => {
+    expect(validateDecisions(decisionText({ ...validDecision, rejected: [item] }))).toEqual(
+      rejection(1, 'rejected', message),
+    )
+  })
+
+  it('reports the first violation only when a line violates several rules', () => {
+    const text = fileText(
+      lineText(decisionWith()),
+      '{"step":"s4","role":"dev-a","kind":"bogus","title":"t","why":"w","confidence":"high"}',
+      lineText(decisionWith({ step: 's5' })),
+    )
+    expect(validateDecisions(text)).toEqual(rejection(2, 'at', 'is required'))
+  })
+
+  const paddedTo = (length: number): string => {
+    const text = decisionText(validDecision)
+    return text + ' '.repeat(length - text.length)
+  }
+
+  it('accepts a file of exactly 1048576 characters', () => {
+    expect(validateDecisions(paddedTo(1_048_576))).toEqual({ accepted: true })
+  })
+
+  it('rejects a file of 1048577 characters with the single ceiling error without parsing it', () => {
+    expect(validateDecisions('x'.repeat(1_048_577))).toEqual(
+      rejection(null, null, 'exceeds 1048576 characters'),
+    )
+  })
+})
+
+describe('readDecisions', () => {
+  it('returns 3 decisions and 1 error naming line 3 for 3 valid lines and 1 malformed line', () => {
+    const text = fileText(
+      lineText(decisionWith({ step: 's4' })),
+      lineText(decisionWith({ step: 's5' })),
+      '{not json',
+      lineText(decisionWith({ step: 's6' })),
+    )
+    expect(readDecisions(text)).toEqual({
+      decisions: [decisionWith({ step: 's4' }), decisionWith({ step: 's5' }), decisionWith({ step: 's6' })],
+      errors: [readError(3, null, 'is not valid JSON')],
+    })
+  })
+
+  it('reports the first violation only for a mid-file line that violates several rules', () => {
+    const text = fileText(
+      lineText(decisionWith()),
+      '{"step":"s4","role":"dev-a","kind":"bogus","title":"t","why":"w","confidence":"high"}',
+      lineText(decisionWith({ step: 's5' })),
+    )
+    expect(readDecisions(text)).toEqual({
+      decisions: [decisionWith(), decisionWith({ step: 's5' })],
+      errors: [readError(2, 'at', 'is required')],
+    })
+  })
+
+  it.each(['', '   '])('rejects an interior %j line as invalid JSON', (blank) => {
+    const text = fileText(lineText(decisionWith()), blank, lineText(decisionWith({ step: 's5' })))
+    expect(readDecisions(text)).toEqual({
+      decisions: [decisionWith(), decisionWith({ step: 's5' })],
+      errors: [readError(2, null, 'is not valid JSON')],
+    })
+  })
+
+  it('accepts lines with trailing carriage returns (CRLF)', () => {
+    const text = `${decisionText(validDecision)}\r\n${decisionText({ ...validDecision, step: 's5' })}`
+    expect(readDecisions(text)).toEqual({
+      decisions: [decisionWith(), decisionWith({ step: 's5' })],
+      errors: [],
+    })
+  })
+
+  it('does not create a record for the trailing newline of a file', () => {
+    expect(readDecisions(`${decisionText(validDecision)}\n`)).toEqual({
+      decisions: [decisionWith()],
+      errors: [],
+    })
+  })
+
+  it('rejects a second consecutive trailing newline as a blank line', () => {
+    expect(readDecisions(`${decisionText(validDecision)}\n\n`)).toEqual({
+      decisions: [decisionWith()],
+      errors: [readError(2, null, 'is not valid JSON')],
+    })
+  })
+
+  it('accepts an empty file as zero decisions', () => {
+    expect(readDecisions('')).toEqual({ decisions: [], errors: [] })
+  })
+
+  it('rejects a first-line byte order mark as invalid JSON', () => {
+    expect(readDecisions(`\uFEFF${decisionText(validDecision)}`)).toEqual({
+      decisions: [],
+      errors: [readError(1, null, 'is not valid JSON')],
+    })
+  })
+
+  it('matches the validator on the 1048577-character ceiling', () => {
+    expect(readDecisions('x'.repeat(1_048_577))).toEqual({
+      decisions: [],
+      errors: [readError(null, null, 'exceeds 1048576 characters')],
+    })
+  })
+
+  it('accepts a file of exactly 1048576 characters as one decision', () => {
+    const padded = decisionText(validDecision) + ' '.repeat(1_048_576 - decisionText(validDecision).length)
+    expect(readDecisions(padded)).toEqual({ decisions: [decisionWith()], errors: [] })
+  })
+
+  it.each([1, 99, 100])('shows every one of %i malformed lines without a cap marker', (count) => {
+    const text = fileText(...Array.from({ length: count }, () => '{not json'))
+    const result = readDecisions(text)
+    expect(result.errors).toHaveLength(count)
+    expect(result.errors).not.toContainEqual(tooManyMarker)
+  })
+
+  it('returns every valid decision next to 101 malformed lines and caps the errors', () => {
+    const text = fileText(
+      lineText(decisionWith({ step: 's1' })),
+      ...Array.from({ length: 51 }, () => '{not json'),
+      lineText(decisionWith({ step: 's2' })),
+      ...Array.from({ length: 50 }, () => '{not json'),
+    )
+    const result = readDecisions(text)
+    expect(result.decisions).toEqual([decisionWith({ step: 's1' }), decisionWith({ step: 's2' })])
+    expect(result.errors).toHaveLength(101)
+    expect(result.errors[0]).toEqual(readError(2, null, 'is not valid JSON'))
+    expect(result.errors[99]).toEqual(readError(102, null, 'is not valid JSON'))
+    expect(result.errors[100]).toEqual(tooManyMarker)
+  })
+})
+
+describe('serializeDecision', () => {
+  it.todo('serializes a valid decision to exactly one line')
+  it.todo('keeps U+2028 and U+2029 escaped inside string values')
+  it.todo('produces no line and an error for an invalid decision')
+  it.todo('produces no line and an error for a non-object input')
+})
