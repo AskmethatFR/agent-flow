@@ -48,7 +48,7 @@ function hookAgent(id: string): PluginHookAgent {
 }
 
 function startHooks(
-  agents: Record<string, PaseoAgent | null>,
+  agents: Record<string, PaseoAgent | null | Error>,
   send: () => Promise<void> = async () => {},
 ) {
   const handlers = new Map<string, Parameters<AgentMessageHookServer["on"]>[1]>();
@@ -70,6 +70,9 @@ function startHooks(
           return {
             refresh: async () => {
               const agent = agents[agentId] ?? null;
+              if (agent instanceof Error) {
+                throw agent;
+              }
               return agent === null ? null : { agent, project: null };
             },
             send: (text, options) => {
@@ -119,10 +122,21 @@ describe("agent message hooks", () => {
     ]);
   });
 
+  it("gives each plugin process its own message id", async () => {
+    const first = startHooks({ T: agentSnapshot("T", TARGET_LABELS) });
+    const second = startHooks({ T: agentSnapshot("T", TARGET_LABELS) });
+
+    await first.turnEnded("T");
+    await second.turnEnded("T");
+
+    assert.notEqual(first.sent[0].options?.messageId, second.sent[0].options?.messageId);
+  });
+
   const notTargetRows = [
     { name: "an unlabelled agent", agent: agentSnapshot("U", {}) },
     { name: "an agent labelled for another ticket", agent: agentSnapshot("U", { "agent-flow.message-target": "26" }) },
     { name: "an agent the SDK cannot read", agent: null },
+    { name: "an agent whose read fails", agent: new Error(SENTINEL) },
   ];
 
   for (const row of notTargetRows) {
@@ -135,10 +149,26 @@ describe("agent message hooks", () => {
       assert.deepEqual(hooks.lines, []);
     });
   }
-  const secondTurnRows = [
-    { name: "a later turn of the same agent", ids: ["T", "T"], concurrent: false },
-    { name: "a later turn of another labelled agent", ids: ["T", "V"], concurrent: false },
-    { name: "two labelled turns ending together", ids: ["T", "V"], concurrent: true },
+  type Hooks = ReturnType<typeof startHooks>;
+  const secondTurnRows: { name: string; drive: (hooks: Hooks) => Promise<unknown> }[] = [
+    {
+      name: "a later turn of the same agent",
+      drive: async (hooks) => {
+        await hooks.turnEnded("T");
+        await hooks.turnEnded("T");
+      },
+    },
+    {
+      name: "a later turn of another labelled agent",
+      drive: async (hooks) => {
+        await hooks.turnEnded("T");
+        await hooks.turnEnded("V");
+      },
+    },
+    {
+      name: "two labelled turns ending together",
+      drive: (hooks) => Promise.all([hooks.turnEnded("T"), hooks.turnEnded("V")]),
+    },
   ];
 
   for (const row of secondTurnRows) {
@@ -148,13 +178,7 @@ describe("agent message hooks", () => {
         V: agentSnapshot("V", TARGET_LABELS),
       });
 
-      if (row.concurrent) {
-        await Promise.all(row.ids.map((id) => hooks.turnEnded(id)));
-      } else {
-        for (const id of row.ids) {
-          await hooks.turnEnded(id);
-        }
-      }
+      await row.drive(hooks);
 
       assert.equal(hooks.sent.length, 1);
     });

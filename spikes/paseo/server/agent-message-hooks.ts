@@ -54,7 +54,7 @@ export function registerAgentMessageHooks(
       }
       return;
     }
-    const reading = await readAgentState(context.paseo.agents, agentId);
+    const reading = await readAgentState(context.paseo.agents, agentId).catch(() => null);
     if (ping !== null || reading?.labels[TARGET_LABEL] !== TARGET_VALUE) {
       return;
     }
