@@ -54,7 +54,7 @@ const lineError = (location: number, message: string): ContractError => ({
 export const readDecisions = (text: string): ReadDecisionsResult => {
   if (text.length > MAX_TEXT_LENGTH) return rejectedWith(`exceeds ${MAX_TEXT_LENGTH} characters`)
   const lines = text.split('\n')
-  if (lines.length > 0 && lines.at(-1) === '') lines.pop()
+  if (lines.at(-1) === '') lines.pop()
   const decisions: Decision[] = []
   const errors: ContractError[] = []
   for (const [index, line] of lines.entries()) {
@@ -81,4 +81,15 @@ export const validateDecisions = (text: string): ValidationResult => {
   const [first, ...rest] = errors
   if (first === undefined) return { accepted: true }
   return { accepted: false, errors: [first, ...rest] }
+}
+
+export const serializeDecision = (value: unknown): SerializeDecisionResult => {
+  const violation = firstViolation(value)
+  if (violation !== undefined) {
+    return { accepted: false, error: violationError(violation, null) }
+  }
+  const line = JSON.stringify(value)
+    .replaceAll('\u2028', '\\u2028')
+    .replaceAll('\u2029', '\\u2029')
+  return { accepted: true, line }
 }

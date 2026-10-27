@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import decisionsSchema from '../../../schemas/decisions.schema.json' with { type: 'json' }
-import { readDecisions, validateDecisions } from './index'
+import { readDecisions, serializeDecision, validateDecisions } from './index'
 
 const validDecision = {
   at: '2026-10-22T11:20:00Z',
@@ -278,8 +278,61 @@ describe('readDecisions', () => {
 })
 
 describe('serializeDecision', () => {
-  it.todo('serializes a valid decision to exactly one line')
-  it.todo('keeps U+2028 and U+2029 escaped inside string values')
-  it.todo('produces no line and an error for an invalid decision')
-  it.todo('produces no line and an error for a non-object input')
+  const decisionWithout = (key: string): Record<string, unknown> => {
+    const { [key]: _omitted, ...decision } = validDecision as Record<string, unknown>
+    return decision
+  }
+
+  it('serializes a valid decision to exactly one line', () => {
+    expect(serializeDecision(decisionWith())).toEqual({
+      accepted: true,
+      line: lineText(validDecision),
+    })
+  })
+
+  it('keeps U+2028 and U+2029 escaped inside string values', () => {
+    const why = 'waiting\u2028then\u2029gone'
+    const result = serializeDecision(decisionWith({ why }))
+    if (!result.accepted) throw new Error('expected a serialization line')
+    expect(result.line).not.toMatch(/[\n\r\u2028\u2029]/)
+    expect(result.line).toContain('waiting\\u2028then\\u2029gone')
+    expect(JSON.parse(result.line)).toEqual(decisionWith({ why }))
+  })
+
+  it.each([
+    ['missing its confidence', decisionWithout('confidence'), 'confidence', 'is required'],
+    [
+      'outside the kind enum',
+      decisionWith({ kind: 'bogus' }),
+      'kind',
+      'must be one of decision, step_event, question, deviation',
+    ],
+    ['carrying an undeclared extra field', decisionWith({ extra: 1 }), 'extra', 'is not allowed'],
+    ['carrying an empty title', decisionWith({ title: '' }), 'title', 'length must be at least 1'],
+    ['carrying a non-string rejected item', decisionWith({ rejected: [7] }), 'rejected', 'must be string'],
+  ])('produces no line and an error for a decision that is %s', (_, decision, field, message) => {
+    expect(serializeDecision(decision)).toEqual({
+      accepted: false,
+      error: { file: 'decisions.jsonl', location: null, field, message },
+    })
+  })
+
+  it('produces no line and an error for a decision carrying an undeclared __proto__ field', () => {
+    const decision = JSON.parse(JSON.stringify(validDecision))
+    Object.defineProperty(decision, '__proto__', { value: 1, enumerable: true })
+    expect(serializeDecision(decision)).toEqual({
+      accepted: false,
+      error: { file: 'decisions.jsonl', location: null, field: '__proto__', message: 'is not allowed' },
+    })
+  })
+
+  it.each([7, null, 'text', [], true])(
+    'produces no line and an error for the non-object %j',
+    (value) => {
+      expect(serializeDecision(value)).toEqual({
+        accepted: false,
+        error: { file: 'decisions.jsonl', location: null, field: null, message: 'must be object' },
+      })
+    },
+  )
 })
