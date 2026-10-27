@@ -318,13 +318,35 @@ describe('serializeDecision', () => {
     return decisionWith({ why: 'x'.repeat(total - fixed) })
   }
 
-  it('accepts a decision whose serialized line is exactly 1048576 characters', () => {
-    const decision = serializedAtLength(1_048_576)
+  it('accepts a decision whose serialized line is exactly 1048575 characters', () => {
+    const decision = serializedAtLength(1_048_575)
     expect(serializeDecision(decision)).toEqual({ accepted: true, line: lineText(decision) })
   })
 
-  it('rejects a decision whose serialized line exceeds 1048576 characters', () => {
-    expect(serializeDecision(serializedAtLength(1_048_577))).toEqual({
+  it('rejects a decision whose serialized line is 1048576 characters', () => {
+    expect(serializeDecision(serializedAtLength(1_048_576))).toEqual({
+      accepted: false,
+      error: { file: 'decisions.jsonl', location: null, field: null, message: 'exceeds 1048576 characters' },
+    })
+  })
+
+  it('round-trips its longest accepted line through readDecisions with the file newline', () => {
+    const decision = serializedAtLength(1_048_575)
+    const result = serializeDecision(decision)
+    if (!result.accepted) throw new Error('expected a serialization line')
+    expect(readDecisions(`${result.line}\n`)).toEqual({ decisions: [decision], errors: [] })
+  })
+
+  it('counts the escape expansion in the line bound', () => {
+    const fixed = lineText(decisionWith({ why: '' })).length
+    const expandedTo = (total: number): Record<string, unknown> => {
+      const escapes = 174_000
+      return decisionWith({ why: '\u0085'.repeat(escapes) + 'x'.repeat(total - fixed - 6 * escapes) })
+    }
+    const atLimit = serializeDecision(expandedTo(1_048_575))
+    if (!atLimit.accepted) throw new Error('expected a serialization line')
+    expect(atLimit.line).toHaveLength(1_048_575)
+    expect(serializeDecision(expandedTo(1_048_576))).toEqual({
       accepted: false,
       error: { file: 'decisions.jsonl', location: null, field: null, message: 'exceeds 1048576 characters' },
     })

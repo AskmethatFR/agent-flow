@@ -114,7 +114,7 @@ export const serializeDecision = (value: unknown): SerializeDecisionResult => {
       .replaceAll('\u2028', '\\u2028')
       .replaceAll('\u2029', '\\u2029')
       .replaceAll('\u0085', '\\u0085')
-    if (line.length > MAX_TEXT_LENGTH) {
+    if (line.length > MAX_TEXT_LENGTH - 1) {
       return { accepted: false, error: lineError(null, `exceeds ${MAX_TEXT_LENGTH} characters`) }
     }
     const document: unknown = JSON.parse(line)
