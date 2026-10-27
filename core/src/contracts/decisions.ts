@@ -83,13 +83,26 @@ export const validateDecisions = (text: string): ValidationResult => {
   return { accepted: false, errors: [first, ...rest] }
 }
 
+const notSerializable = (): SerializeDecisionResult => ({
+  accepted: false,
+  error: { file, location: null, field: null, message: 'is not serializable' },
+})
+
 export const serializeDecision = (value: unknown): SerializeDecisionResult => {
-  const violation = firstViolation(value)
+  let emitted: unknown
+  try {
+    emitted = JSON.stringify(value)
+  } catch {
+    return notSerializable()
+  }
+  if (typeof emitted !== 'string') return notSerializable()
+  const line = emitted
+    .replaceAll('\u2028', '\\u2028')
+    .replaceAll('\u2029', '\\u2029')
+  const document: unknown = JSON.parse(line)
+  const violation = firstViolation(document)
   if (violation !== undefined) {
     return { accepted: false, error: violationError(violation, null) }
   }
-  const line = JSON.stringify(value)
-    .replaceAll('\u2028', '\\u2028')
-    .replaceAll('\u2029', '\\u2029')
   return { accepted: true, line }
 }

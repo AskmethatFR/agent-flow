@@ -335,4 +335,75 @@ describe('serializeDecision', () => {
       })
     },
   )
+
+  it('rejects a decision whose inherited toJSON forges the record', () => {
+    const value = JSON.parse(JSON.stringify(validDecision))
+    Object.setPrototypeOf(value, { toJSON: () => ({ forged: 1 }) })
+    expect(serializeDecision(value)).toEqual({
+      accepted: false,
+      error: { file: 'decisions.jsonl', location: null, field: 'at', message: 'is required' },
+    })
+  })
+
+  it('rejects a toJSON that returns nothing instead of a line', () => {
+    const value = JSON.parse(JSON.stringify(validDecision))
+    Object.defineProperty(value, 'toJSON', { value: () => undefined, enumerable: false })
+    expect(serializeDecision(value)).toEqual({
+      accepted: false,
+      error: { file: 'decisions.jsonl', location: null, field: null, message: 'is not serializable' },
+    })
+  })
+
+  it('rejects a toJSON that throws instead of throwing', () => {
+    const value = JSON.parse(JSON.stringify(validDecision))
+    Object.defineProperty(value, 'toJSON', {
+      value: () => {
+        throw new Error('boom')
+      },
+      enumerable: false,
+    })
+    expect(serializeDecision(value)).toEqual({
+      accepted: false,
+      error: { file: 'decisions.jsonl', location: null, field: null, message: 'is not serializable' },
+    })
+  })
+
+  it('rejects a getter that throws instead of throwing', () => {
+    const value = JSON.parse(JSON.stringify(validDecision))
+    Object.defineProperty(value, 'at', {
+      enumerable: true,
+      get() {
+        throw new Error('boom')
+      },
+    })
+    expect(serializeDecision(value)).toEqual({
+      accepted: false,
+      error: { file: 'decisions.jsonl', location: null, field: null, message: 'is not serializable' },
+    })
+  })
+
+  it('never writes the forged value of a getter that changes between reads', () => {
+    let reads = 0
+    const value = JSON.parse(JSON.stringify(validDecision))
+    Object.defineProperty(value, 'kind', {
+      enumerable: true,
+      get() {
+        reads += 1
+        return reads === 1 ? 'decision' : 'bogus'
+      },
+    })
+    expect(serializeDecision(value)).toEqual({
+      accepted: true,
+      line: lineText(validDecision),
+    })
+  })
+
+  it('rejects a toJSON that returns a plain string instead of a record', () => {
+    const value = JSON.parse(JSON.stringify(validDecision))
+    Object.defineProperty(value, 'toJSON', { value: () => 'forged', enumerable: false })
+    expect(serializeDecision(value)).toEqual({
+      accepted: false,
+      error: { file: 'decisions.jsonl', location: null, field: null, message: 'must be object' },
+    })
+  })
 })
