@@ -3,7 +3,7 @@ id: "paseo-agent-state"
 type: "technical"
 owner: "architect"
 status: "current"
-updated: "2026-10-26"
+updated: "2026-10-27"
 links:
   - "paseo-api-version"
   - "capture-events"
@@ -13,6 +13,7 @@ answers:
   - "How is the agent working on the current step identified: by agent id, worktree, step or role?"
 decided_in:
   - "#26"
+  - "#27"
 ---
 
 # Reading agent state through the Paseo SDK
@@ -118,7 +119,7 @@ The logged line is `{ source, event, agentId, status, turnActive, attentionReaso
 <br>- on another host: its own equivalent.
 <br>Satisfying this is the launch convention's job, owned by #21 / #41. Until it holds, no Paseo agent state can be attached to an item | observed + doc-sourced |
 | 8 | **Step and role**: Paseo's status is per agent session. Role subagents (architect, dev, QA) run inside that session and are not Paseo agents (observed), so step and role come from the current step of `<worktree>/.agent-flow/plan.json` (`docs/plan.md:62-96`, [[capture-events]]) | observed |
-| 9 | **Launch labels dropped as the identity key.** The worktree already identifies the item. Labels exist on Paseo only and would need the same launch convention. The spike's allowlist still keeps `agent-flow.`-prefixed labels (a code fact), but no meaning is assigned to them | decided |
+| 9 | **Launch labels dropped as the identity key.** The worktree already identifies the item. Labels exist on Paseo only and would need the same launch convention. The spike's reader (`readAgentState`) still keeps `agent-flow.`-prefixed labels, only for the #27 message hook's targeting; the logged state line drops them (reduced by #27). No identity meaning is assigned to them | decided |
 
 **The key is a path, so it stays in the daemon.** #21 resolves and compares it there. **Nothing from `project`, the agent's `cwd` or `<worktree>` leaves the daemon**: the only things logged or sent are `workspaceId` and the match result (allowlist, § Permissions).
 
