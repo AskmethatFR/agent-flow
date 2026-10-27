@@ -48,3 +48,4 @@
 
 - `features/phase-0/plan-contract.feature` — #23 Frozen data contracts: plan.json schema (S1, S2)
 - `features/phase-0/decisions-contract.feature` — #32 Frozen data contracts: decisions.jsonl schema and reader (S1, S2)
+- `features/phase-2/snapshot-steps.feature` — #38 Core snapshot: steps with time spent and current step (S1-S5)
