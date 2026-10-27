@@ -1,6 +1,6 @@
 import decisionsSchema from '../../../schemas/decisions.schema.json' with { type: 'json' }
 import type { ContractError, ValidationResult } from './contract-error'
-import { MAX_TEXT_LENGTH, capErrors, safeLabel } from './contract-error'
+import { MAX_ERRORS, MAX_TEXT_LENGTH, capErrors, safeLabel } from './contract-error'
 import { findViolations } from './schema-subset'
 import type { SchemaViolation } from './schema-subset'
 
@@ -51,8 +51,11 @@ const lineError = (location: number | null, message: string): ContractError => (
   message,
 })
 
+const invalidJsonError = (location: number): ContractError => lineError(location, 'is not valid JSON')
+
 const blankLine = /^[ \t\r]*$/
 const requiredKeys = decisionsSchema.required
+const MINIMUM_RECORD_LENGTH = 91
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -73,15 +76,19 @@ export const readDecisions = (text: string): ReadDecisionsResult => {
   const errors: ContractError[] = []
   for (const [index, line] of lines.entries()) {
     const location = index + 1
+    if (errors.length >= MAX_ERRORS && line.length < MINIMUM_RECORD_LENGTH) {
+      errors.push(invalidJsonError(location))
+      continue
+    }
     if (blankLine.test(line)) {
-      errors.push(lineError(location, 'is not valid JSON'))
+      errors.push(invalidJsonError(location))
       continue
     }
     let document: unknown
     try {
       document = JSON.parse(line)
     } catch {
-      errors.push(lineError(location, 'is not valid JSON'))
+      errors.push(invalidJsonError(location))
       continue
     }
     const missing = missingRequiredKey(document)

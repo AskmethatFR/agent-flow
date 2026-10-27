@@ -279,6 +279,8 @@ describe('readDecisions', () => {
   it.each([
     ['blank', '\n'.repeat(1_048_575), readError(1, null, 'is not valid JSON')],
     ['record-shaped', '{}\n'.repeat(349_000), readError(1, 'at', 'is required')],
+    ['junk', 'x\n'.repeat(524_288), readError(1, null, 'is not valid JSON')],
+    ['unterminated', '{\n'.repeat(524_288), readError(1, null, 'is not valid JSON')],
   ])('reads a flood of %s lines in bounded time with the contract intact', (_, text, firstError) => {
     const start = performance.now()
     const result = readDecisions(text)
@@ -288,6 +290,29 @@ describe('readDecisions', () => {
     expect(result.errors[0]).toEqual(firstError)
     expect(result.errors[100]).toEqual(tooManyMarker)
     expect(elapsed).toBeLessThan(4000)
+  })
+
+  it('returns every valid decision found after the error cap', () => {
+    const text = fileText(
+      ...Array.from({ length: 120 }, () => 'x'),
+      lineText(decisionWith({ step: 's1' })),
+      lineText(decisionWith({ step: 's2' })),
+    )
+    const result = readDecisions(text)
+    expect(result.decisions).toEqual([decisionWith({ step: 's1' }), decisionWith({ step: 's2' })])
+    expect(result.errors).toHaveLength(101)
+    expect(result.errors[0]).toEqual(readError(1, null, 'is not valid JSON'))
+    expect(result.errors[100]).toEqual(tooManyMarker)
+  })
+
+  it('parses a shortest valid record on the line after the error cap', () => {
+    const shortest = '{"at":"x","step":"x","role":"x","kind":"decision","title":"x","why":"x","confidence":"low"}'
+    expect(shortest).toHaveLength(91)
+    const text = fileText(...Array.from({ length: 120 }, () => 'x'), shortest)
+    const result = readDecisions(text)
+    expect(result.decisions).toEqual([JSON.parse(shortest)])
+    expect(result.errors).toHaveLength(101)
+    expect(result.errors[100]).toEqual(tooManyMarker)
   })
 })
 
