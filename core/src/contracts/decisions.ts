@@ -51,6 +51,20 @@ const lineError = (location: number, message: string): ContractError => ({
   message,
 })
 
+const blankLine = /^[ \t\r]*$/
+const requiredKeys = decisionsSchema.required
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const missingRequiredKey = (document: unknown): string | undefined => {
+  if (!isPlainObject(document)) return undefined
+  for (const key of requiredKeys) {
+    if (!Object.hasOwn(document, key)) return key
+  }
+  return undefined
+}
+
 export const readDecisions = (text: string): ReadDecisionsResult => {
   if (text.length > MAX_TEXT_LENGTH) return rejectedWith(`exceeds ${MAX_TEXT_LENGTH} characters`)
   const lines = text.split('\n')
@@ -59,6 +73,10 @@ export const readDecisions = (text: string): ReadDecisionsResult => {
   const errors: ContractError[] = []
   for (const [index, line] of lines.entries()) {
     const location = index + 1
+    if (blankLine.test(line)) {
+      errors.push(lineError(location, 'is not valid JSON'))
+      continue
+    }
     let document: unknown
     try {
       document = JSON.parse(line)
@@ -66,7 +84,9 @@ export const readDecisions = (text: string): ReadDecisionsResult => {
       errors.push(lineError(location, 'is not valid JSON'))
       continue
     }
-    const violation = firstViolation(document)
+    const missing = missingRequiredKey(document)
+    const violation =
+      missing === undefined ? firstViolation(document) : { path: [missing], message: 'is required' }
     if (violation !== undefined) {
       errors.push(violationError(violation, location))
       continue

@@ -275,6 +275,20 @@ describe('readDecisions', () => {
     expect(result.errors[99]).toEqual(readError(102, null, 'is not valid JSON'))
     expect(result.errors[100]).toEqual(tooManyMarker)
   })
+
+  it.each([
+    ['blank', '\n'.repeat(1_048_575), readError(1, null, 'is not valid JSON')],
+    ['record-shaped', '{}\n'.repeat(349_000), readError(1, 'at', 'is required')],
+  ])('reads a flood of %s lines in bounded time with the contract intact', (_, text, firstError) => {
+    const start = performance.now()
+    const result = readDecisions(text)
+    const elapsed = performance.now() - start
+    expect(result.decisions).toEqual([])
+    expect(result.errors).toHaveLength(101)
+    expect(result.errors[0]).toEqual(firstError)
+    expect(result.errors[100]).toEqual(tooManyMarker)
+    expect(elapsed).toBeLessThan(4000)
+  })
 })
 
 describe('serializeDecision', () => {
