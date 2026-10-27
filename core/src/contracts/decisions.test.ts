@@ -313,6 +313,15 @@ describe('serializeDecision', () => {
     expect(JSON.parse(result.line)).toEqual(decisionWith({ why }))
   })
 
+  it('escapes the unicode next-line character U+0085 inside string values', () => {
+    const why = 'waiting\u0085then'
+    const result = serializeDecision(decisionWith({ why }))
+    if (!result.accepted) throw new Error('expected a serialization line')
+    expect(result.line).not.toMatch(/[\n\r\u0085\u2028\u2029]/)
+    expect(result.line).toContain('waiting\\u0085then')
+    expect(JSON.parse(result.line)).toEqual(decisionWith({ why }))
+  })
+
   it.each([
     ['missing its confidence', decisionWithout('confidence'), 'confidence', 'is required'],
     [

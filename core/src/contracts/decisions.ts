@@ -119,6 +119,7 @@ export const serializeDecision = (value: unknown): SerializeDecisionResult => {
   const line = emitted
     .replaceAll('\u2028', '\\u2028')
     .replaceAll('\u2029', '\\u2029')
+    .replaceAll('\u0085', '\\u0085')
   const document: unknown = JSON.parse(line)
   const violation = firstViolation(document)
   if (violation !== undefined) {
