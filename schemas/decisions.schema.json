@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agent-flow:schema:decision:1",
+  "title": "decisions.jsonl",
+  "type": "object",
+  "required": ["at", "step", "role", "kind", "title", "why", "confidence"],
+  "additionalProperties": false,
+  "properties": {
+    "at": { "type": "string", "minLength": 1 },
+    "step": { "type": "string", "minLength": 1 },
+    "role": { "type": "string", "minLength": 1 },
+    "model": { "type": "string", "minLength": 1 },
+    "kind": { "type": "string", "enum": ["decision", "step_event", "question", "deviation"] },
+    "title": { "type": "string", "minLength": 1 },
+    "why": { "type": "string", "minLength": 1 },
+    "rejected": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "confidence": { "type": "string", "enum": ["high", "medium", "low"] }
+  }
+}
