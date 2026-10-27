@@ -26,7 +26,7 @@ decided_in:
 
 Spike #27 answers two questions from `docs/plan.md`: can the daemon deliver a message to a running agent through the Paseo SDK (Q2), and how does a blocked agent wait for its answer (Q4). [[host-adapter-boundary]] left the Paseo cell of "Message delivery" provisional until this record; the floor (`responses.jsonl`, written only through the host's human-answer path) applies whatever this record says.
 
-The throwaway proof gives the `agent-flow-spike` plugin a server registration, `spikes/paseo/server/agent-message-hooks.ts`, wired in `spikes/paseo/index.server.ts`. **The #27 build registers the message hooks only**: the #26 state hooks stay in the repository but are not installed, because they write a reading line for every agent of every project into `~/.paseo/daemon.log` (ruled for #27; Security wins the tie with the original plan of keeping both). The target's status is therefore cross-checked with `paseo inspect` only. On `agent.turn_ended` the hook reads the agent with `readAgentState` ([[paseo-agent-state]]); a failed read counts as "not a target" (no send, no line). If the agent carries the label `agent-flow.message-target=27` and nothing was sent yet in this plugin process, it calls `agents.ref(id).send("ping from agent-flow", { activeTurnBehavior: "steer", messageId })` once and logs `message.sent`. On each later `agent.turn_ended` of that same agent it looks in the event `timeline` for a `user_message` with that `clientMessageId` and that exact text, and logs `message.received`.
+The throwaway proof gives the `agent-flow-spike` plugin a second server registration, `spikes/paseo/server/agent-message-hooks.ts`, wired in `spikes/paseo/index.server.ts` next to the #26 state hooks. **The #27 build registers both hooks.** Human ruling for #27: the state line is reduced to `agentId`, `status`, `turnActive` and `attentionReason`; `labels`, `workspaceId` and `requiresAttention` are dropped from it, and a null or failed read logs no line ([[paseo-agent-state]]). The target's status can be cross-checked from the state line as well as `paseo inspect`. On `agent.turn_ended` the hook reads the agent with `readAgentState` ([[paseo-agent-state]]); a failed read counts as "not a target" (no send, no line). If the agent carries the label `agent-flow.message-target=27` and nothing was sent yet in this plugin process, it calls `agents.ref(id).send("ping from agent-flow", { activeTurnBehavior: "steer", messageId })` once and logs `message.sent`. On each later `agent.turn_ended` of that same agent it looks in the event `timeline` for a `user_message` with that `clientMessageId` and that exact text, and logs `message.received`.
 
 Labels in this record (same set as [[paseo-agent-state]]):
 - **typed**: read in the 0.11.4 typings.
@@ -74,7 +74,7 @@ Host anchors are doc-sourced from the host's `@getpaseo/server` 0.11.4 package, 
 
 1. The blocked agent writes its request to `requests.jsonl` and **ends its turn**: no polling loop, no sleep.
 2. The host's human-answer path appends the answer to `responses.jsonl` (the floor, unchanged, #24 schema).
-3. The Paseo adapter then sends a fixed, content-free wake: `send("agent-flow: a response to request <id> is available; read it from responses.jsonl", { activeTurnBehavior: "steer", messageId: <request id> })`. The answer itself is never in the message.
+3. The Paseo adapter then sends a fixed, content-free wake: `send("agent-flow: a response to request <id> is available; read it from responses.jsonl", { activeTurnBehavior: "steer", messageId: <request id> })`. The answer itself is never in the message. `<id>` comes from `requests.jsonl`, which any agent in the worktree can write, so it is inserted only after it passes the #24 schema validation (bounded charset and length). A request whose id fails that validation is never woken by message: no send, the floor only. No such schema exists in the repository yet, so until #24 defines it no id qualifies.
 4. The resumed agent re-reads `responses.jsonl` and acts only on its entry there, read under the provenance rule of [[host-adapter-boundary]]. **The message wakes the agent; the file decides.**
 
 Why content-free: the daemon treats a plugin send like a human-typed message, so it reaches the model as a `user_message` that cannot be told apart from a human prompt (`session.js:2825-2827`). Any same-user client with `workspace.write`, and any agent on the shared daemon that can reach Paseo's send surface, can send the blocked agent text of its own. If the answer travelled in the message, forged text could pass for an answer or an approval. With a content-free wake, a forged wake only causes a re-read of the file.
@@ -107,20 +107,20 @@ The spike's own log lines carry only `{ source, event: "message.sent", agentId, 
 ## Host-adapter boundary points 4 and 5
 
 - **Point 4.** Delivery addresses one agent id. When several agents map to one worktree, choosing the recipient depends on #21's tie rule ([[paseo-agent-state]] § AC4); delivery itself does not.
-- **Point 5.** The send carries only `text` and `messageId`: never `images`, `attachments` or anything else from the worktree.
+- **Point 5.** The send carries only the fixed wake template and `messageId`. The one worktree value in it is the request id, and only once it has passed the #24 schema validation. Never `images`, `attachments` or any other worktree content.
 
 ## Live capture procedure (planned)
 
 Run by the orchestrator on the shared daemon; each install, run and remove is a separate human approval; no lane runs it.
 
 0. Pre-check: list the agents carrying the label `agent-flow.message-target=27`, active and archived. Proceed only if there are none. Labels can be set on any existing agent by any client with `workspace.write` (`update_agent_request`, `authorization/operation-permissions.js:185`), and the first labelled agent to end a turn after install gets the single send.
-1. `paseo plugin install "<worktree>/spikes/paseo" --json`, before launching the target, or its first turn end is missed. This build registers the message hooks only; the #26 state hooks are not installed.
+1. `paseo plugin install "<worktree>/spikes/paseo" --json`, before launching the target, or its first turn end is missed. This build registers both hooks. The state hooks log a reduced line (`agentId`, `status`, `turnActive`, `attentionReason`) for every agent on the daemon.
 2. `paseo run --background --label agent-flow.message-target=27 "Reply with the single word OK."` (one small model run). Paseo may steer a finish notification into the orchestrator; that is expected noise.
 3. `paseo plugin logs agent-flow-spike`, waiting for, in order: `message.sent` with `outcome: "accepted"` for the target id, then `message.received` with `received: true`. Post-check: the `message.sent` agentId MUST equal the id printed by `paseo run`. On a mismatch, remove the plugin at once and record the miss.
-4. Cross-check: `paseo inspect <target> --json` status (the only status source, since the state hooks are not installed), and the target's activity showing a user message equal to "ping from agent-flow" (recorded as match yes/no only).
+4. Cross-check: the target's status from its own state lines and from `paseo inspect <target> --json`, and the target's activity showing a user message equal to "ping from agent-flow" (recorded as match yes/no only).
 5. Archive or kill the target; `paseo plugin remove agent-flow-spike`; `paseo plugin ls --json` shows it absent. The daemon is not restarted.
 
-Redaction rule: quote from `paseo plugin logs agent-flow-spike` only the spike's `message.sent` / `message.received` lines and the `[paseo] Loading plugin` / `Plugin ready` lines, with agent ids truncated to 8 chars + `…`. Never paste:
+Redaction rule: quote from `paseo plugin logs agent-flow-spike` only the spike's `message.sent` / `message.received` lines, the target's own state lines and the `[paseo] Loading plugin` / `Plugin ready` lines, with agent ids truncated to 8 chars + `…`. Never paste:
 - any `agent.turn_started` / `agent.turn_ended` reading line of another agent: count them only ("N lines from other agents");
 - `workspaceId` values (truncate like ids, or omit);
 - the `path` field of `paseo plugin install --json` and any absolute or home path, including user name: use `<worktree>`;
@@ -140,7 +140,8 @@ Redaction rule: quote from `paseo plugin logs agent-flow-spike` only the spike's
 ## Consequences / Constraints
 
 - **MUST**: send with `activeTurnBehavior: "steer"`; never rely on the `interrupt` default.
-- **MUST**: send only the fixed, content-free wake template (`agent-flow: a response to request <id> is available; read it from responses.jsonl`) plus its `messageId`; nothing else from the worktree.
+- **MUST**: send only the fixed, content-free wake template (`agent-flow: a response to request <id> is available; read it from responses.jsonl`) plus its `messageId`. Insert `<id>` only after it passes the #24 schema validation (bounded charset and length); nothing else from the worktree.
+- **MUST**: a request whose id fails that validation gets no message, only the floor.
 - **MUST NOT**: treat the message text as an answer or an approval. The agent acts only on its `responses.jsonl` entry, read under the provenance rule of [[host-adapter-boundary]].
 - **MUST**: keep `responses.jsonl` as the source of truth; a delivered message only wakes the agent.
 - **MUST**: a rejected or conflicting wake (`agent_request_key_conflict`, `agent_request_outcome_unknown`, any other rejection) falls back to the floor: the agent re-reads `responses.jsonl` on its next wake or poll. Never a retry loop under a fresh id.

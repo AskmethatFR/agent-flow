@@ -22,8 +22,21 @@ export function registerAgentStateHooks(
   const eventNames: AgentStateEventName[] = ["agent.turn_started", "agent.turn_ended"];
   const unsubscribers = eventNames.map((event) =>
     server.on(event, async (payload, context) => {
-      const reading = await readAgentState(context.paseo.agents, payload.agent.id);
-      log(JSON.stringify({ source: "agent-flow-spike", event, agentId: payload.agent.id, reading }));
+      const reading = await readAgentState(context.paseo.agents, payload.agent.id).catch(() => null);
+      if (reading === null) {
+        return;
+      }
+      const { status, turnActive, attentionReason } = reading;
+      log(
+        JSON.stringify({
+          source: "agent-flow-spike",
+          event,
+          agentId: payload.agent.id,
+          status,
+          turnActive,
+          attentionReason,
+        }),
+      );
     }),
   );
   return () => {
