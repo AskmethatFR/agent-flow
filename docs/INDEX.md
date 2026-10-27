@@ -31,3 +31,20 @@
 | `ci-pull-request-posture` | CI posture on pull requests (`ci`, `bdd`) | current | 2026-10-26 | [[workspace-layout-core-boundary]] | `docs/technical/decisions/ci-pull-request-posture.md` |
 | `host-adapter-boundary` | Host-adapter boundary between core and each host (plan.md Q7) | current | 2026-10-26 | [[workspace-layout-core-boundary]], [[paseo-api-version]], [[paseo-agent-state]], [[capture-events]], [[scope-origin]] | `docs/technical/decisions/host-adapter-boundary.md` |
 | `workspace-layout-core-boundary` | Workspace layout and the core import boundary | current | 2026-10-26 | [[capture-events]] | `docs/technical/decisions/workspace-layout-core-boundary.md` |
+
+## T5
+
+| ID | Title | Status | Updated | Links | Path |
+|---|---|---|---|---|---|
+| `decisions-jsonl-schema` | Frozen versioned decisions.jsonl schema: fields, enums, line framing, error shape | current | 2026-10-27 | [[workspace-layout-core-boundary]], [[host-adapter-boundary]], [[decisions-serializer-semantics]] | `docs/technical/decisions/decisions-jsonl-schema.md` |
+| `decisions-serializer-semantics` | Serializer emitted-bytes semantics: read-back validated, never throws, one line | current | 2026-10-27 | [[decisions-jsonl-schema]], [[host-adapter-boundary]] | `docs/technical/decisions/decisions-serializer-semantics.md` |
+
+## Functional nodes (owner: pm)
+
+| ID | Title | Status | Updated | Links | Path |
+|---|---|---|---|---|---|
+| `feature-catalog` | Capabilities and frozen data contracts | current | 2026-10-27 | `glossary` | `docs/functional/features.md` |
+| `glossary` | Ubiquitous language: decision, kind, confidence | current | 2026-10-27 | `feature-catalog` | `docs/functional/glossary.md` |
+
+- `features/phase-0/plan-contract.feature` — #23 Frozen data contracts: plan.json schema (S1, S2)
+- `features/phase-0/decisions-contract.feature` — #32 Frozen data contracts: decisions.jsonl schema and reader (S1, S2)
