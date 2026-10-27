@@ -108,28 +108,22 @@ const notSerializable = (): SerializeDecisionResult => ({
   error: { file, location: null, field: null, message: 'is not serializable' },
 })
 
-const emitLine = (value: unknown): string | undefined => {
-  try {
-    return JSON.stringify(value)
-  } catch {
-    return undefined
-  }
-}
-
 export const serializeDecision = (value: unknown): SerializeDecisionResult => {
-  const emitted = emitLine(value)
-  if (emitted === undefined) return notSerializable()
-  const line = emitted
-    .replaceAll('\u2028', '\\u2028')
-    .replaceAll('\u2029', '\\u2029')
-    .replaceAll('\u0085', '\\u0085')
-  if (line.length > MAX_TEXT_LENGTH) {
-    return { accepted: false, error: lineError(null, `exceeds ${MAX_TEXT_LENGTH} characters`) }
+  try {
+    const line = JSON.stringify(value)
+      .replaceAll('\u2028', '\\u2028')
+      .replaceAll('\u2029', '\\u2029')
+      .replaceAll('\u0085', '\\u0085')
+    if (line.length > MAX_TEXT_LENGTH) {
+      return { accepted: false, error: lineError(null, `exceeds ${MAX_TEXT_LENGTH} characters`) }
+    }
+    const document: unknown = JSON.parse(line)
+    const violation = firstViolation(document)
+    if (violation !== undefined) {
+      return { accepted: false, error: violationError(violation, null) }
+    }
+    return { accepted: true, line }
+  } catch {
+    return notSerializable()
   }
-  const document: unknown = JSON.parse(line)
-  const violation = firstViolation(document)
-  if (violation !== undefined) {
-    return { accepted: false, error: violationError(violation, null) }
-  }
-  return { accepted: true, line }
 }
