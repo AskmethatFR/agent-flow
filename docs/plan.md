@@ -202,9 +202,29 @@ Scenario: Loop is detected
 ## Open questions (answer in Phase 0)
 
 1. Which Paseo API version do we target: v0.7 or v0.8?
+
+   Answer: neither "v0.7" nor "v0.8" as such — Paseo has no separate plugin API version; the plugin declares `requirements.paseo: ">=0.11.4"` in `paseo-plugin.json` (the 0.8 runtime-entry split into `index.client.*` / `index.server.*` is the baseline). Record: #10, `docs/technical/paseo/api-version.md`.
+
 2. Can a plugin send a message to a running agent through the SDK, or must answers go through `responses.jsonl` only?
+
+   Answer: pending — blocked by #27 (spike: message a running agent and decide how a blocked agent waits). Record: #27.
+
 3. What is the OpenCode v2 equivalent of Claude Code hooks for capturing plan updates?
+
+   Answer: OpenCode v2 has no hooks; the equivalent is a plugin module (`.opencode/plugins/*.js`, `export default { id, async setup(ctx) }`) using `ctx.tool.hook("execute.before" | "execute.after")` and the bus stream `ctx.event.subscribe()`; Claude Code keeps command hooks (JSON on stdin, registered in settings). Record: #12, `docs/technical/capture/events.md`.
+
 4. How does a blocked agent wait: stop and poll `responses.jsonl`, or a Paseo-native mechanism?
+
+   Answer: pending — blocked by #27 (spike: message a running agent and decide how a blocked agent waits). Record: #27.
+
 5. Where does `scope.json` come from: a section of the GitHub issue template, or written by the PM/Architect role?
+
+   Answer: derived from the `## Touches` section of the GitHub issue and written by a confined writer that reads the issue body, invoked by the role that runs `refine-ticket` (PM spawn or orchestrator); no implementing role and no Architect writes it. Record: #36, `docs/technical/decisions/scope-origin.md`.
+
 6. Loop threshold: is "3 identical failures" enough, or do we also need a token-based threshold?
+
+   Answer: "3 identical failures" is enough — a loop is the same test failing 3 consecutive runs with the same failure message, computed from verified test reports only; no token-based threshold in v1. Record: #36, `docs/technical/decisions/loop-threshold.md`.
+
 7. Host-adapter boundary: what does a non-Paseo host (local CLI or web) need from `core`, and which interfaces does each host implement?
+
+   Answer: functional core, host shell — `core` exposes only pure, synchronous functions over plain values (raw `.agent-flow/` text and instants in; values and `ContractError` lists out; nothing throws) and calls nothing on the host; each host implements six capabilities: file access, change notification, agent state, message delivery, clock, snapshot transport (message delivery is provisional — `responses.jsonl` floor decided, Paseo path pending #27). Record: #25, `docs/technical/decisions/host-adapter-boundary.md`.
