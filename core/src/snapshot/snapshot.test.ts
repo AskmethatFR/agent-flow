@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, it, vi } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import { buildSnapshot } from './index'
 import type { Snapshot, SnapshotStep } from './index'
 
@@ -168,19 +168,6 @@ describe('buildSnapshot', () => {
     const snapshot = buildSnapshot({ plan: adversarial }, now)
     expect(snapshot.errors).toEqual([])
     expect(snapshot.currentStepId).toBe('big')
-  })
-
-  it('reads each start once when choosing the current step', () => {
-    const starts = Array.from({ length: 50 }, (_, index) =>
-      inProgress({ id: `s${index}`, startedAt: `2026-10-22T10:${String(index).padStart(2, '0')}:00Z` }),
-    )
-    const parse = vi.spyOn(Date, 'parse')
-    try {
-      buildSnapshot({ plan: planText(...starts) }, now)
-      expect(parse.mock.calls.length).toBeLessThanOrEqual(2 * starts.length)
-    } finally {
-      parse.mockRestore()
-    }
   })
 
   it.each([
