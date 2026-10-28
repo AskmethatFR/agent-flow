@@ -3,15 +3,19 @@ id: "feature-catalog"
 type: "functional"
 owner: "pm"
 status: "current"
-updated: "2026-10-27"
+updated: "2026-10-28"
 links:
   - "glossary"
 answers:
   - "Which data contracts under .agent-flow/ are frozen and validated?"
   - "What does core do with a decisions.jsonl file?"
   - "Which feature file pins the decisions.jsonl contract?"
+  - "How is the time spent on a plan step computed and rounded?"
+  - "Which step is the current step, and when is there none?"
+  - "What does the snapshot give for an invalid or missing plan?"
 decided_in:
   - "#32"
+  - "#38"
 ---
 
 # Feature catalog
@@ -57,8 +61,33 @@ A bad line costs only itself: the rest of the log stays readable.
 **Acceptance status**: the serializer behaviour is pinned by unit tests only; no
 scenario in `decisions-contract` covers it yet (see Open questions).
 
+### Capability: snapshot of the plan steps
+
+Core builds one [[glossary]] snapshot from a worktree's `plan.json`: every plan
+step with its time spent, and which step is the current step. The panel and the
+daemon only display it; neither recomputes it.
+
+| Situation of a step | Time spent |
+|---|---|
+| In progress | Now minus its start. |
+| Done | Its end minus its start. |
+| To do | None. |
+| Timestamp missing, unreadable, without a time-zone offset, or giving a negative duration | None. |
+
+- **Labels round down** to the minute, in four shapes: under a minute, minutes
+  only, whole hours, hours and minutes. Examples: `< 1 min`, `38 min`, `1 h`,
+  `1 h 15 min`.
+- **Current step**: the in-progress step that started last; on a tie, the first
+  in plan order. There is none when nothing is in progress.
+- **Invalid or missing plan**: errors are returned and no steps; each error names
+  the step and the field at fault.
+
+Acceptance: `snapshot-steps` S1-S5 (`features/phase-2/snapshot-steps.feature`).
+
 ## Consequences / Constraints
 
+- **MUST**: a step whose time cannot be trusted shows no time, never a guessed one.
+- **MUST NOT**: v1 carry estimates or budgets for a step.
 - **MUST**: a record that does not satisfy the decision schema is never written
   to `decisions.jsonl` and never returned as a decision.
 - **MUST**: a bad line is reported with its line number, and does not stop the
