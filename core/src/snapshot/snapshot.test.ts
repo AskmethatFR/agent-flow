@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, it } from 'vitest'
+import { describe, expect, expectTypeOf, it, vi } from 'vitest'
 import { buildSnapshot } from './index'
 import type { Snapshot, SnapshotStep } from './index'
 
@@ -146,19 +146,41 @@ describe('buildSnapshot', () => {
     expect(spentOf(planText(inProgress({ startedAt })))).toBeNull()
   })
 
-  it('answers within a fixed budget when an early start is huge and many steps follow', () => {
-    const huge = `${'a'.repeat(450_000)}Z`
-    const steps = [
-      inProgress({ id: 'big', startedAt: huge }),
+  const manyStepsAfter = (bigStart: string): string =>
+    planText(
+      inProgress({ id: 'big', startedAt: bigStart }),
       ...Array.from({ length: 4000 }, (_, index) => inProgress({ id: `s${index}`, startedAt: null })),
-    ]
-    const text = planText(...steps)
-    expect(text.length).toBeLessThan(1_048_576)
+    )
+
+  const millisecondsToBuild = (text: string): number => {
     const began = performance.now()
-    const snapshot = buildSnapshot({ plan: text }, now)
-    expect(performance.now() - began).toBeLessThan(1000)
+    buildSnapshot({ plan: text }, now)
+    return performance.now() - began
+  }
+
+  it('costs no more than a plan with a short start when an early start is huge and many steps follow', () => {
+    const adversarial = manyStepsAfter(`${'a'.repeat(450_000)}Z`)
+    const baseline = manyStepsAfter('2026-10-22T10:00:00Z')
+    expect(adversarial.length).toBeLessThan(1_048_576)
+    millisecondsToBuild(baseline)
+    const reference = millisecondsToBuild(baseline)
+    expect(millisecondsToBuild(adversarial)).toBeLessThan(reference * 5 + 50)
+    const snapshot = buildSnapshot({ plan: adversarial }, now)
     expect(snapshot.errors).toEqual([])
     expect(snapshot.currentStepId).toBe('big')
+  })
+
+  it('reads each start once when choosing the current step', () => {
+    const starts = Array.from({ length: 50 }, (_, index) =>
+      inProgress({ id: `s${index}`, startedAt: `2026-10-22T10:${String(index).padStart(2, '0')}:00Z` }),
+    )
+    const parse = vi.spyOn(Date, 'parse')
+    try {
+      buildSnapshot({ plan: planText(...starts) }, now)
+      expect(parse.mock.calls.length).toBeLessThanOrEqual(2 * starts.length)
+    } finally {
+      parse.mockRestore()
+    }
   })
 
   it.each([

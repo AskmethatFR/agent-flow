@@ -6,7 +6,7 @@ export type TimeSpent = {
 }
 
 const isoInstantWithOffset =
-  /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})/
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})/
 
 const isWholeIsoInstant = (text: string): boolean =>
   text.match(isoInstantWithOffset)?.[0] === text
