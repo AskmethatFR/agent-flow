@@ -114,6 +114,8 @@ Then(
 )
 
 Then('the snapshot has no current step', function (this: SnapshotWorld): void {
+  assert.deepEqual(this.snapshot.errors, [])
+  assert.equal(this.snapshot.steps.length, 2)
   assert.equal(this.snapshot.currentStepId, null)
 })
 

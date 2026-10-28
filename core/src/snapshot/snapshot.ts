@@ -46,9 +46,13 @@ const startOf = (step: PlanStep): number => instantOf(step.startedAt) ?? Number.
 
 const currentStepIdOf = (steps: readonly PlanStep[]): string | null => {
   let current: PlanStep | null = null
+  let currentStart = Number.NEGATIVE_INFINITY
   for (const step of steps) {
-    if (step.status === 'in_progress' && (current === null || startOf(step) > startOf(current))) {
+    if (step.status !== 'in_progress') continue
+    const start = startOf(step)
+    if (current === null || start > currentStart) {
       current = step
+      currentStart = start
     }
   }
   return current?.id ?? null

@@ -126,9 +126,39 @@ describe('buildSnapshot', () => {
     ['an offset-less start', '2026-10-22T10:00:00'],
     ['an impossible date', '2026-13-45T10:00:00Z'],
     ['an offset followed by more text', 'Thu Oct 22 2026 10:00:00 GMT+02:00 (CEST)'],
+    ['a legacy date format ending in an offset', 'Thu Oct 22 2026 10:00:00 GMT+02:00'],
+    ['a padded legacy date over 40 characters', `Thu Oct 22 2026 10:00:00${' '.repeat(40)}GMT+02:00`],
+    ['text before an ISO instant', 'Thu Oct 22 2026 10:00:00 GMT (2026-10-22T10:00:00Z'],
     ['a start after now', '2026-10-22T10:39:00Z'],
   ])('gives a step in progress no time for %s', (_, startedAt) => {
     expect(spentOf(planText(inProgress({ startedAt })))).toBeNull()
+  })
+
+  it.each([
+    ['minutes only', '2026-10-22T10:00Z'],
+    ['nine fractional digits', '2026-10-22T10:00:00.000000000Z'],
+  ])('reads an instant with %s', (_, startedAt) => {
+    expect(spentOf(planText(inProgress({ startedAt })))?.label).toBe('38 min')
+  })
+
+  it('gives no time to an instant with more than nine fractional digits', () => {
+    const startedAt = '2026-10-22T10:00:00.0000000000Z'
+    expect(spentOf(planText(inProgress({ startedAt })))).toBeNull()
+  })
+
+  it('answers within a fixed budget when an early start is huge and many steps follow', () => {
+    const huge = `${'a'.repeat(450_000)}Z`
+    const steps = [
+      inProgress({ id: 'big', startedAt: huge }),
+      ...Array.from({ length: 4000 }, (_, index) => inProgress({ id: `s${index}`, startedAt: null })),
+    ]
+    const text = planText(...steps)
+    expect(text.length).toBeLessThan(1_048_576)
+    const began = performance.now()
+    const snapshot = buildSnapshot({ plan: text }, now)
+    expect(performance.now() - began).toBeLessThan(1000)
+    expect(snapshot.errors).toEqual([])
+    expect(snapshot.currentStepId).toBe('big')
   })
 
   it.each([
@@ -160,7 +190,11 @@ describe('buildSnapshot', () => {
     buildSnapshot({ plan: planText(...steps) }, now).currentStepId
 
   it('has no current step when none is in progress', () => {
-    expect(currentOf(finished({ id: 'a' }), step({ id: 'b' }))).toBeNull()
+    const text = planText(finished({ id: 'a' }), step({ id: 'b' }))
+    const snapshot = buildSnapshot({ plan: text }, now)
+    expect(snapshot.errors).toEqual([])
+    expect(snapshot.steps.map(({ id }) => id)).toEqual(['a', 'b'])
+    expect(snapshot.currentStepId).toBeNull()
   })
 
   it.each([
