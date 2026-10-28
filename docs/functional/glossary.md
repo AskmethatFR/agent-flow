@@ -3,14 +3,16 @@ id: "glossary"
 type: "functional"
 owner: "pm"
 status: "current"
-updated: "2026-10-27"
+updated: "2026-10-28"
 links:
   - "feature-catalog"
 answers:
   - "What does a decision record mean in the business?"
   - "What do the kinds and confidence levels of a decision mean?"
+  - "What do snapshot, time spent and current step mean?"
 decided_in:
   - "#32"
+  - "#38"
 ---
 
 # Glossary — ubiquitous language
@@ -30,6 +32,10 @@ decided_in:
 | **confidence** | How sure the writing role is of a record: `high`, `medium` or `low`. |
 | **rejected** | Optional: the alternatives that were considered and set aside. |
 | **model** | Optional: the model that produced the record. |
+| **plan step** | One step of the run's plan: it is to do, in progress or done, and carries a start and an end once it has them. Distinct from **step** above, which tags a record. |
+| **snapshot** | The view of a run's plan computed once by core: every plan step with its time spent, and the current step. Consumers display it and never recompute it. |
+| **time spent** | How long a plan step has taken: in progress, up to now; done, from start to end; to do, none. Also none whenever a timestamp cannot be trusted. Rounded down to the minute. |
+| **current step** | The in-progress plan step that started last (first in plan order on a tie); none when nothing is in progress. |
 
 ## Consequences / Constraints
 

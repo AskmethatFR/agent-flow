@@ -2,6 +2,10 @@
 
 ## T1
 
+| ID | Title | Status | Updated | Links | Path |
+|---|---|---|---|---|---|
+| `snapshot-contract` | Core snapshot contract: shape, failure codes, instant rule | current | 2026-10-28 | [[host-adapter-boundary]], [[workspace-layout-core-boundary]], [[decisions-jsonl-schema]], [[feature-catalog]] | `docs/technical/decisions/snapshot-contract.md` |
+
 ## T2
 
 | ID | Title | Status | Updated | Links | Path |
@@ -43,8 +47,8 @@
 
 | ID | Title | Status | Updated | Links | Path |
 |---|---|---|---|---|---|
-| `feature-catalog` | Capabilities and frozen data contracts | current | 2026-10-27 | `glossary` | `docs/functional/features.md` |
-| `glossary` | Ubiquitous language: decision, kind, confidence | current | 2026-10-27 | `feature-catalog` | `docs/functional/glossary.md` |
+| `feature-catalog` | Capabilities, frozen data contracts, plan snapshot | current | 2026-10-28 | `glossary` | `docs/functional/features.md` |
+| `glossary` | Ubiquitous language: decision, snapshot, time spent | current | 2026-10-28 | `feature-catalog` | `docs/functional/glossary.md` |
 
 - `features/phase-0/plan-contract.feature` — #23 Frozen data contracts: plan.json schema (S1, S2)
 - `features/phase-0/decisions-contract.feature` — #32 Frozen data contracts: decisions.jsonl schema and reader (S1, S2)
