@@ -69,3 +69,10 @@ Feature: Step lifecycle
     When step "s2" is started at "2026-01-01T09:00:00.000Z"
     Then the lifecycle change is refused with an error naming step "s1"
     And the lifecycle plan is unchanged
+
+  @scenario:S9
+  Scenario: start refuses a todo step that already has an end time
+    Given a lifecycle plan where step "s1" is todo with endedAt "2026-01-01T09:00:00.000Z"
+    When step "s1" is started at "2026-01-01T10:00:00.000Z"
+    Then the lifecycle change is refused with an error naming step "s1"
+    And the lifecycle plan is unchanged

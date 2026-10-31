@@ -53,6 +53,13 @@ Given(
 )
 
 Given(
+  'a lifecycle plan where step {string} is todo with endedAt {string}',
+  function (this: LifecycleWorld, id: string, endedAt: string): void {
+    this.plan = planWith([stepOf(id, { endedAt })])
+  },
+)
+
+Given(
   'a lifecycle plan where step {string} is in progress since {string}',
   function (this: LifecycleWorld, id: string, startedAt: string): void {
     this.plan = planWith([stepOf(id, { status: 'in_progress', startedAt })])

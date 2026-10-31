@@ -19,6 +19,7 @@ type Transition = {
   readonly atField: 'startedAt' | 'endedAt'
   readonly requiredStatus: string
   readonly statusMessage: string
+  readonly staleEndMessage: (step: Step) => string | undefined
   readonly closes: (step: Step, position: number, index: number) => boolean
   readonly apply: (step: Step, at: string) => Step
 }
@@ -65,6 +66,7 @@ const starting: Transition = {
   atField: 'startedAt',
   requiredStatus: 'todo',
   statusMessage: 'must be todo to start',
+  staleEndMessage: (step) => (step.endedAt === null ? undefined : 'must be null to start'),
   closes: (step) => step.status === 'in_progress',
   apply: (step, at) => ({ ...step, status: 'in_progress', startedAt: at }),
 }
@@ -73,6 +75,7 @@ const finishing: Transition = {
   atField: 'endedAt',
   requiredStatus: 'in_progress',
   statusMessage: 'must be in_progress to finish',
+  staleEndMessage: () => undefined,
   closes: (_step, position, index) => position === index,
   apply: closed,
 }
@@ -96,6 +99,8 @@ function applyTransition(
   if (step.status !== transition.requiredStatus) {
     return refused(location, 'status', transition.statusMessage)
   }
+  const staleEnd = transition.staleEndMessage(step)
+  if (staleEnd !== undefined) return refused(location, 'endedAt', staleEnd)
   const closes = (candidate: Step, position: number): boolean =>
     transition.closes(candidate, position, index)
   const [first, ...rest] = capErrors(

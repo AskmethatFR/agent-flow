@@ -97,6 +97,13 @@ describe('startStep', () => {
     )
   })
 
+  it('refuses to start a todo step that already has an end time', () => {
+    const stale = { ...todo, endedAt: '2026-01-01T09:00:00.000Z' }
+    const result = startStep(planText(stale), 's1', at)
+    expect(result).toEqual(refusal('s1', 'endedAt', 'must be null to start'))
+    expect(Object.hasOwn(result, 'plan')).toBe(false)
+  })
+
   it.each(['{', 'not json'])('returns the validation errors of an invalid plan (%j)', (text) => {
     expect(startStep(text, 's1', at)).toEqual(refusal(null, null, 'is not valid JSON'))
   })
