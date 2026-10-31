@@ -7,8 +7,12 @@ import {
   mkdtempSync,
   openSync,
   readFileSync,
+  appendFileSync,
+  chmodSync,
+  readSync,
   readdirSync,
   readlinkSync,
+  statSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -71,6 +75,7 @@ const stepsOnDisk = (): Record<string, unknown>[] => JSON.parse(readFileSync(pla
 
 const realIo: PlanWriterIo = {
   openSync,
+  readSync,
   writeSync,
   fsyncSync,
   closeSync,
@@ -117,7 +122,7 @@ const recordingIo = (calls: string[]): Partial<PlanWriterIo> => ({
 const failingOnTemporaryFile = ((...args: Parameters<typeof openSync>) =>
   String(args[0]).endsWith('.tmp') ? failure() : openSync(...args)) as typeof openSync
 
-const partialWrite =((fd: number, buffer: Uint8Array, offset: number) => {
+const partialWrite = ((fd: number, buffer: Uint8Array, offset: number) => {
   writeSync(fd, buffer, offset, 5)
   throw new Error('injected fault')
 }) as unknown as typeof writeSync
@@ -164,6 +169,43 @@ describe('applyStepEvent', () => {
 
       expect(result).toEqual(missing('must be start or finish', 'kind'))
       expect(readdirSync(worktree)).toEqual([])
+    })
+
+    it.each<[string, unknown]>([
+      ['null', null],
+      ['undefined', undefined],
+      ['a string', 'start'],
+      ['a number', 42],
+    ])('refuses an event that is %s instead of throwing', (_name, event) => {
+      const result = applyStepEvent(worktree, event as never)
+
+      expect(result).toEqual(missing('must be start or finish', 'kind'))
+      expect(readdirSync(worktree)).toEqual([])
+    })
+
+    it.each<[string, Record<string, unknown>]>([
+      ['a step id that is not a string', { kind: 'start', stepId: 42, at: startedAt }],
+      ['an instant that is not a string', { kind: 'start', stepId: 's1', at: 7 }],
+    ])('refuses %s through the lifecycle and leaves plan.json byte-identical', (_name, event) => {
+      const plan = planWith([stepOf('s1')])
+      givenPlan(plan)
+
+      const result = applyStepEvent(worktree, event as never)
+
+      expect(result.accepted).toBe(false)
+      expect(readFileSync(planPath, 'utf8')).toBe(plan)
+    })
+  })
+
+  describe('permissions', () => {
+    it('keeps the permission bits of the plan it replaces', () => {
+      givenPlan(planWith([stepOf('s1')]))
+      chmodSync(planPath, 0o600)
+
+      const result = applyStepEvent(worktree, startOfS1)
+
+      expect(result).toEqual({ accepted: true })
+      expect(statSync(planPath).mode & 0o777).toBe(0o600)
     })
   })
 
@@ -495,6 +537,51 @@ describe('applyStepEvent', () => {
       const result = applyStepEvent(worktree, { kind: 'start', stepId: 's1', at: startedAt })
 
       expect(result).toEqual(missing('is too large'))
+    })
+
+    const countingReads = (counter: { total: number }, afterRead?: () => void): typeof readSync =>
+      ((...args: Parameters<typeof readSync>) => {
+        const count = readSync(...args)
+        counter.total += count
+        afterRead?.()
+        return count
+      }) as typeof readSync
+
+    it('never reads more than one byte past the limit from an oversized plan', () => {
+      givenPlan('a'.repeat(limit + 1000))
+      const counter = { total: 0 }
+
+      const result = writerWith({ readSync: countingReads(counter) })(worktree, startOfS1)
+
+      expect(result).toEqual(missing('is too large'))
+      expect(counter.total).toBe(limit + 1)
+    })
+
+    it('stays within the limit when the plan grows after it was opened', () => {
+      givenPlan(planWith([stepOf('s1')]))
+      const counter = { total: 0 }
+      let grown = false
+      const grow = (): void => {
+        if (grown) return
+        grown = true
+        appendFileSync(planPath, 'a'.repeat(limit))
+      }
+
+      const result = writerWith({ readSync: countingReads(counter, grow) })(worktree, startOfS1)
+
+      expect(result).toEqual(missing('is too large'))
+      expect(counter.total).toBe(limit + 1)
+    })
+
+    it('assembles a plan delivered in short reads', () => {
+      givenPlan(planWith([stepOf('s1')]))
+      const sevenBytes = ((fd: number, buffer: Uint8Array, offset: number, length: number) =>
+        readSync(fd, buffer, offset, Math.min(7, length), null)) as typeof readSync
+
+      const result = writerWith({ readSync: sevenBytes })(worktree, startOfS1)
+
+      expect(result).toEqual({ accepted: true })
+      expect(stepsOnDisk()).toEqual([stepOf('s1', { status: 'in_progress', startedAt })])
     })
   })
 

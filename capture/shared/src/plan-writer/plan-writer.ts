@@ -3,7 +3,6 @@ import {
   fstatSync,
   lstatSync,
   mkdirSync,
-  readFileSync,
   realpathSync,
 } from 'node:fs'
 import type * as NodeFs from 'node:fs'
@@ -20,7 +19,7 @@ export type StepEvent = {
 
 export type PlanWriterIo = Pick<
   typeof NodeFs,
-  'openSync' | 'writeSync' | 'fsyncSync' | 'closeSync' | 'renameSync' | 'unlinkSync'
+  'openSync' | 'readSync' | 'writeSync' | 'fsyncSync' | 'closeSync' | 'renameSync' | 'unlinkSync'
 > & { readonly temporaryName: () => string }
 
 type Applier = (worktree: string, event: StepEvent) => ValidationResult
@@ -74,7 +73,20 @@ const openRefusal = (error: unknown): ValidationResult => {
   return refuse('cannot be read')
 }
 
-const readPlan = (io: PlanWriterIo, planPath: string): string | ValidationResult => {
+const readBounded = (io: PlanWriterIo, fd: number): string | ValidationResult => {
+  const buffer = Buffer.allocUnsafe(readLimit + 1)
+  let total = 0
+  for (;;) {
+    const count = io.readSync(fd, buffer, total, buffer.length - total, null)
+    if (count === 0) break
+    total += count
+  }
+  return total > readLimit ? refuse('is too large') : buffer.toString('utf8', 0, total)
+}
+
+type PlanFile = { readonly text: string; readonly mode: number }
+
+const readPlan = (io: PlanWriterIo, planPath: string): PlanFile | ValidationResult => {
   let fd: number
   try {
     fd = io.openSync(planPath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
@@ -84,8 +96,8 @@ const readPlan = (io: PlanWriterIo, planPath: string): string | ValidationResult
   try {
     const stats = fstatSync(fd)
     if (!stats.isFile()) return refuse(notRegularFile)
-    if (stats.size > readLimit) return refuse('is too large')
-    return readFileSync(fd, 'utf8')
+    const text = readBounded(io, fd)
+    return typeof text === 'string' ? { text, mode: stats.mode & 0o777 } : text
   } catch {
     return refuse('cannot be read')
   } finally {
@@ -98,6 +110,7 @@ const writeAtomically = (
   directory: string,
   planPath: string,
   text: string,
+  mode: number,
 ): ValidationResult => {
   const temporary = join(directory, `.plan.json.${io.temporaryName()}.tmp`)
   let fd: number | undefined
@@ -108,7 +121,7 @@ const writeAtomically = (
     return refuse('cannot be written')
   }
   try {
-    fd = io.openSync(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL)
+    fd = io.openSync(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, mode)
     created = true
     const bytes = Buffer.from(text)
     let offset = 0
@@ -127,7 +140,7 @@ const writeAtomically = (
 
 export function createPlanWriter(io: PlanWriterIo): Applier {
   return function applyStepEvent(worktree, event) {
-    if (event.kind !== 'start' && event.kind !== 'finish') {
+    if (event?.kind !== 'start' && event?.kind !== 'finish') {
       return refuse('must be start or finish', 'kind')
     }
     if (!isConfinableWorktree(worktree)) {
@@ -139,11 +152,11 @@ export function createPlanWriter(io: PlanWriterIo): Applier {
     const directoryRefusal = inspectDirectory(directory)
     if (directoryRefusal !== undefined) return directoryRefusal
     const planPath = join(directory, 'plan.json')
-    const text = readPlan(io, planPath)
-    if (typeof text !== 'string') return text
+    const current = readPlan(io, planPath)
+    if ('accepted' in current) return current
     const transition = event.kind === 'start' ? startStep : finishStep
-    const result = transition(text, event.stepId, event.at)
+    const result = transition(current.text, event.stepId, event.at)
     if (!result.accepted) return result
-    return writeAtomically(io, directory, planPath, result.plan)
+    return writeAtomically(io, directory, planPath, result.plan, current.mode)
   }
 }
