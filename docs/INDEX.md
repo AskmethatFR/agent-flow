@@ -10,6 +10,7 @@
 - `features/phase-0/plan-contract.feature` — #23 Frozen contract: plan.json accepts a valid sample, rejects an unknown step status (S1, S2)
 - `features/phase-0/decisions-contract.feature` — #32 Frozen contract: decisions.jsonl accepts a valid sample, reports a malformed line by number (S1, S2)
 - `features/phase-0/request-contracts.feature` — #24 Frozen contracts: requests.jsonl, responses.jsonl, scope.json accept a valid sample, reject a malformed line or field (S1, S2, S3)
+- `features/phase-1/plan-writer.feature` — #34 Plan writer confined to .agent-flow: writes the updated plan, refuses outside targets, invalid plans and a missing plan.json (S1-S5)
 
 ## T2
 
