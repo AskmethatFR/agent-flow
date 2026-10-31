@@ -11,10 +11,12 @@ answers:
   - "What do request, request type, blocking, answer, scope and path entry mean?"
   - "What do the kinds and confidence levels of a decision mean?"
   - "What do snapshot, time spent and current step mean?"
+  - "What do step event and plan writer mean?"
 decided_in:
   - "#32"
   - "#38"
   - "#24"
+  - "#34"
 ---
 
 # Glossary — ubiquitous language
@@ -38,6 +40,8 @@ decided_in:
 | **snapshot** | The view of a run's plan computed once by core: every plan step with its time spent, and the current step. Consumers display it and never recompute it. |
 | **time spent** | How long a plan step has taken: in progress, up to now; done, from start to end; to do, none. Also none whenever a timestamp cannot be trusted. Rounded down to the minute. |
 | **current step** | The in-progress plan step that started last (first in plan order on a tie); none when nothing is in progress. |
+| **step event** | The start or the finish of a plan step at a given time, as seen by capture. Not the `step_event` kind of a decision record, which is a log entry. |
+| **plan writer** | The part of capture that applies a step event to a worktree's plan and stores the result in that worktree's `.agent-flow/plan.json`, and nowhere else. It never creates a first plan and never keeps a plan that fails its contract. |
 | **request** | One record, in `requests.jsonl`, of something a role needs from outside the plan: a question, an added step, or work found out of scope or out of spec. Has an id, a request type and a blocking flag. |
 | **request type** | What a request asks: `question` (something to answer), `added_step` (a step the plan lacks), `out_of_scope` (work beyond the scope), `out_of_spec` (work the spec does not cover). |
 | **blocking** | Flag on a request: the work cannot go on until it is settled. |
