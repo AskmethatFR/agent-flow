@@ -46,6 +46,16 @@ const pathRules: readonly PathRule[] = [
     message: 'must use ** only as a whole segment',
   },
   {
+    violatedBy: (entry) =>
+      entry.startsWith('!') ||
+      entry.startsWith(':') ||
+      [...entry].some((character) => {
+        const code = character.charCodeAt(0)
+        return code < 0x20 || code === 0x7f
+      }),
+    message: 'must not start with ! or : or contain a control character',
+  },
+  {
     violatedBy: (entry) => [...entry].every((character) => character === '*' || character === '/'),
     message: 'must name at least one literal character',
   },

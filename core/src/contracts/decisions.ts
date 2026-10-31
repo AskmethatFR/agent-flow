@@ -48,8 +48,8 @@ const notSerializable = (): SerializeDecisionResult => ({
 export const serializeDecision = (value: unknown): SerializeDecisionResult => {
   try {
     const line = JSON.stringify(value)
-      .replaceAll(' ', '\\u2028')
-      .replaceAll(' ', '\\u2029')
+      .replaceAll('\u2028', '\\u2028')
+      .replaceAll('\u2029', '\\u2029')
       .replaceAll('\u0085', '\\u0085')
     if (line.length > MAX_TEXT_LENGTH - 1) {
       return { accepted: false, error: lineError(file, null, `exceeds ${MAX_TEXT_LENGTH} characters`) }

@@ -36,6 +36,7 @@ const relative = 'must be relative to the repository root'
 const segment = 'must not contain an empty, . or .. segment'
 const wholeSegment = 'must use ** only as a whole segment'
 const literal = 'must name at least one literal character'
+const magic = 'must not start with ! or : or contain a control character'
 const tooMany = error(null, null, 'too many errors, only the first 100 are shown')
 
 describe('scope.schema.json', () => {
@@ -67,6 +68,16 @@ describe('validateScope', () => {
     '1:x',
     'a/c:x',
     'a b',
+    'a!b',
+    'ab:c',
+    'docs/x:y.md',
+    'a/!b',
+    'a/:b',
+    'x!',
+    'xy:',
+    '~x',
+    'a~b',
+    'a\u0080b',
   ])('accepts the path entry %j', (entry) => {
     expect(validateScope(pathsText(entry))).toEqual({ accepted: true })
   })
@@ -78,6 +89,7 @@ describe('validateScope', () => {
     ['an absolute entry', '/etc/passwd', relative],
     ['a drive-letter entry with a slash', 'C:/repo/x', relative],
     ['a lowercase drive-relative entry', 'c:x', relative],
+    ['a single-letter colon entry, where drive-letter wins', 'a:b', relative],
     ['an absolute catch-all, where absolute wins', '/**', relative],
     ['a parent entry', '..', segment],
     ['a leading parent entry', '../x', segment],
@@ -93,6 +105,24 @@ describe('validateScope', () => {
     ['a leading double star glued to a name', '**b/c', wholeSegment],
     ['a triple star', '***', wholeSegment],
     ['a double star glued to a name in the last segment', 'a/b**', wholeSegment],
+    ['a negation entry', '!x', magic],
+    ['a lone bang', '!', magic],
+    ['a negated nested entry', '!a/b', magic],
+    ['a pathspec root entry', ':/*', magic],
+    ['a pathspec exclude entry', ':!x', magic],
+    ['a lone colon', ':', magic],
+    ['an entry with a NUL', 'a\u0000b', magic],
+    ['an entry with a tab', 'a\tb', magic],
+    ['an entry with a line feed', 'a\nb', magic],
+    ['an entry with a DEL', 'a\u007fb', magic],
+    ['an entry with the last C0 control', 'a\u001fb', magic],
+    ['an entry starting with a control', '\u0001x', magic],
+    ['an entry ending with a control', 'x\u0001', magic],
+    ['an absolute negation, where absolute wins', '/!x', relative],
+    ['a negation with a parent segment, where segment wins', '!/../x', segment],
+    ['a negated double star, where whole-segment wins', '!**', wholeSegment],
+    ['a control with a backslash, where separator wins', 'a\t\\b', separator],
+    ['a control with a glued double star, where whole-segment wins', 'a\t**b', wholeSegment],
     ['the bare double star', '**', literal],
     ['the bare single star', '*', literal],
     ['a star on every segment', '**/*', literal],
