@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict'
 import { Given, Then, When } from '@cucumber/cucumber'
-import { readDecisions, validateDecisions, validatePlan } from '@agent-flow/core/contracts'
+import {
+  readDecisions,
+  validateDecisions,
+  validatePlan,
+  validateRequests,
+  validateResponses,
+  validateScope,
+} from '@agent-flow/core/contracts'
 import type { ReadDecisionsResult, ValidationResult } from '@agent-flow/core/contracts'
 
 type ContractWorld = {
@@ -29,14 +36,28 @@ const validPlanSample = `{
 const validDecisionSample =
   '{"at":"2026-10-22T11:20:00Z","step":"s4","role":"dev-a","model":"sonnet","kind":"decision","title":"Inject TimeProvider to test expiration","why":"Tests token lifetime without real waiting","rejected":["real waits in tests"],"confidence":"high"}'
 
+const validRequestSample =
+  '{"id":"r-0007","at":"2026-10-22T11:48:00Z","step":"s4","role":"dev-b","type":"question","text":"Is the link valid on two devices?","options":["Single use","Valid 15 min everywhere"],"blocking":true}'
+
+const validResponseSample = '{"id":"r-0007","at":"2026-10-22T12:35:00Z","answer":"Single use"}'
+
+const validScopeSample =
+  '{"issue":"#24","paths":["schemas/**","core/src/contracts/**","features/phase-0/request-contracts.feature","features/steps/data-contracts.steps.ts"]}'
+
 const validSamples: Record<string, string> = {
   'plan.json': validPlanSample,
   'decisions.jsonl': validDecisionSample,
+  'requests.jsonl': validRequestSample,
+  'responses.jsonl': validResponseSample,
+  'scope.json': validScopeSample,
 }
 
 const validators: Record<string, (text: string) => ValidationResult> = {
   'plan.json': validatePlan,
   'decisions.jsonl': validateDecisions,
+  'requests.jsonl': validateRequests,
+  'responses.jsonl': validateResponses,
+  'scope.json': validateScope,
 }
 
 const known = <T>(registry: Record<string, T>, file: string): T => {
@@ -72,6 +93,31 @@ Given('a decisions.jsonl with 3 valid lines and 1 malformed line', function (thi
   ].join('\n')
 })
 
+Given(
+  'a {string} with 1 valid line followed by a line that has the unknown request type {string}',
+  function (this: ContractWorld, file: string, type: string): void {
+    const sample = known(validSamples, file)
+    this.file = file
+    this.text = [sample, JSON.stringify({ ...JSON.parse(sample), type })].join('\n')
+  },
+)
+
+Given(
+  'a {string} with 1 valid line followed by a line that is not valid JSON',
+  function (this: ContractWorld, file: string): void {
+    this.file = file
+    this.text = [known(validSamples, file), '{not json'].join('\n')
+  },
+)
+
+Given(
+  'a scope.json whose path entry {string} is absolute',
+  function (this: ContractWorld, entry: string): void {
+    this.file = 'scope.json'
+    this.text = JSON.stringify({ ...JSON.parse(validScopeSample), paths: [entry] })
+  },
+)
+
 When('core validates it', function (this: ContractWorld): void {
   this.result = known(validators, this.file)(this.text)
 })
@@ -101,6 +147,25 @@ Then('1 error names the malformed line number', function (this: ContractWorld): 
     { file: 'decisions.jsonl', location: 3, field: null, message: 'is not valid JSON' },
   ])
 })
+
+Then('it is rejected with an error naming line {int}', function (this: ContractWorld, line: number): void {
+  assert.ok(!this.result.accepted)
+  assert.equal(this.result.errors.length, 1)
+  const [error] = this.result.errors
+  assert.deepEqual({ file: error.file, location: error.location }, { file: this.file, location: line })
+  assert.equal(typeof error.message, 'string')
+})
+
+Then(
+  'it is rejected with an error naming field {string}',
+  function (this: ContractWorld, field: string): void {
+    assert.ok(!this.result.accepted)
+    assert.equal(this.result.errors.length, 1)
+    const [error] = this.result.errors
+    assert.deepEqual({ file: error.file, field: error.field }, { file: this.file, field })
+    assert.equal(typeof error.message, 'string')
+  },
+)
 
 Then(
   'it is rejected with an error naming step {string} and field {string}',

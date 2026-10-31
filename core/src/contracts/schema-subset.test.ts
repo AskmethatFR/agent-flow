@@ -4,7 +4,7 @@ import type { JsonSchema } from './schema-subset'
 
 describe('findViolations', () => {
   it.each([
-    ['pattern', { pattern: '^a$' }],
+    ['maxLength', { maxLength: 3 }],
     ['format', { type: 'string', format: 'date-time' }],
     ['$ref', { $ref: '#/$defs/step' }],
     ['minItems', { type: 'array', minItems: 1 }],
@@ -16,12 +16,47 @@ describe('findViolations', () => {
   })
 
   it.each([
-    ['properties', { properties: { a: { pattern: 'x' } } }],
-    ['items', { items: { pattern: 'x' } }],
+    ['properties', { properties: { a: { maxLength: 3 } } }],
+    ['items', { items: { maxLength: 3 } }],
   ])('refuses an unsupported keyword nested under %s even when no value reaches it', (_, schema) => {
     expect(() => findViolations(schema as JsonSchema, {})).toThrow(
-      'unsupported schema keyword: pattern',
+      'unsupported schema keyword: maxLength',
     )
+  })
+
+  it.each([true, false])('accepts the boolean %s against type boolean', (value) => {
+    expect([...findViolations({ type: 'boolean' }, value)]).toEqual([])
+  })
+
+  it.each([['"true"', 'true'], ['1', 1], ['0', 0], ['null', null], ['an array', [true]]])(
+    'rejects %s against type boolean',
+    (_, value) => {
+      expect([...findViolations({ type: 'boolean' }, value)]).toEqual([
+        { path: [], message: 'must be boolean' },
+      ])
+    },
+  )
+
+  it.each([
+    ['a full match', '^a$', 'a', []],
+    ['a partial match, since pattern is a search', 'b', 'abc', []],
+    ['a non-match', '^a$', 'b', [{ path: [], message: 'must match ^a$' }]],
+    ['a value with trailing text past an anchored end', '^a$', 'a\n', [{ path: [], message: 'must match ^a$' }]],
+    ['a number, which pattern ignores', '^a$', 7, []],
+    ['an astral character matched as one character', '^.$', '\u{1F600}', []],
+    ['an empty string against a pattern that needs a character', '^.+$', '', [{ path: [], message: 'must match ^.+$' }]],
+  ])('checks pattern on %s', (_, pattern, value, expected) => {
+    expect([...findViolations({ pattern }, value)]).toEqual(expected)
+  })
+
+  it('reports minLength before pattern when both fail', () => {
+    expect([...findViolations({ minLength: 3, pattern: '^b' }, 'a')]).toEqual([
+      { path: [], message: 'length must be at least 3' },
+    ])
+  })
+
+  it('does not constrain a string when no pattern is declared', () => {
+    expect([...findViolations({ type: 'string' }, 'anything')]).toEqual([])
   })
 
   it.each(['integer', 'constructor', '__proto__'])('refuses the unsupported type %s', (type) => {
