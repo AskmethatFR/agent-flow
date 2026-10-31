@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agent-flow:schema:request:1",
+  "title": "requests.jsonl",
+  "description": "request ids are unique within the file",
+  "type": "object",
+  "required": ["id", "at", "step", "role", "type", "text", "blocking"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,64}$" },
+    "at": { "type": "string", "minLength": 1 },
+    "step": { "type": "string", "minLength": 1 },
+    "role": { "type": "string", "minLength": 1 },
+    "type": { "type": "string", "enum": ["question", "added_step", "out_of_scope", "out_of_spec"] },
+    "text": { "type": "string", "minLength": 1 },
+    "options": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "blocking": { "type": "boolean" }
+  }
+}

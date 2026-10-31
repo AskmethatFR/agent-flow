@@ -6,6 +6,7 @@ export type JsonSchema = {
   readonly type?: string | readonly string[]
   readonly enum?: readonly string[]
   readonly minLength?: number
+  readonly pattern?: string
   readonly required?: readonly string[]
   readonly properties?: Readonly<Record<string, JsonSchema>>
   readonly additionalProperties?: boolean
@@ -26,6 +27,7 @@ const typeMatchers: Readonly<Record<string, (value: unknown) => boolean>> = {
   object: isObject,
   array: Array.isArray,
   string: (value) => typeof value === 'string',
+  boolean: (value) => typeof value === 'boolean',
   null: (value) => value === null,
 }
 
@@ -40,6 +42,7 @@ const supportedKeywords = new Set([
   'type',
   'enum',
   'minLength',
+  'pattern',
   'required',
   'properties',
   'additionalProperties',
@@ -79,6 +82,9 @@ function* walk(schema: JsonSchema, value: unknown, path: Path): Generator<Schema
   if (typeof value === 'string' && [...value].length < (schema.minLength ?? 0)) {
     yield violation(path, `length must be at least ${schema.minLength}`)
     return
+  }
+  if (typeof value === 'string' && !new RegExp(schema.pattern ?? '', 'u').test(value)) {
+    yield violation(path, `must match ${schema.pattern}`)
   }
   if (isObject(value)) {
     yield* walkObject(schema, value, path)

@@ -1,8 +1,8 @@
 import decisionsSchema from '../../../schemas/decisions.schema.json' with { type: 'json' }
 import type { ContractError, ValidationResult } from './contract-error'
-import { MAX_ERRORS, MAX_TEXT_LENGTH, capErrors, safeLabel } from './contract-error'
-import { findViolations } from './schema-subset'
-import type { SchemaViolation } from './schema-subset'
+import { MAX_TEXT_LENGTH } from './contract-error'
+import { firstViolation, lineError, readJsonl, validateJsonl, violationError } from './jsonl'
+import type { JsonlContract } from './jsonl'
 
 const file = 'decisions.jsonl'
 
@@ -27,75 +27,22 @@ export type SerializeDecisionResult =
   | { readonly accepted: true; readonly line: string }
   | { readonly accepted: false; readonly error: ContractError }
 
-const rejectedWith = (message: string): ReadDecisionsResult => ({
-  decisions: [],
-  errors: [{ file, location: null, field: null, message }],
-})
-
-const firstViolation = (document: unknown): SchemaViolation | undefined => {
-  const [violation] = findViolations(decisionsSchema, document)
-  return violation
+const contract: JsonlContract = {
+  file,
+  schema: decisionsSchema,
+  minimumRecordLength: 91,
 }
-
-const violationError = (violation: SchemaViolation, location: number | null): ContractError => ({
-  file,
-  location,
-  field: safeLabel(violation.path[0]),
-  message: violation.message,
-})
-
-const lineError = (location: number | null, message: string): ContractError => ({
-  file,
-  location,
-  field: null,
-  message,
-})
-
-const invalidJsonError = (location: number): ContractError => lineError(location, 'is not valid JSON')
-
-const MINIMUM_RECORD_LENGTH = 91
 
 export const readDecisions = (text: string): ReadDecisionsResult => {
-  if (text.length > MAX_TEXT_LENGTH) return rejectedWith(`exceeds ${MAX_TEXT_LENGTH} characters`)
-  const lines = text.split('\n')
-  if (lines.at(-1) === '') lines.pop()
-  const decisions: Decision[] = []
-  const errors: ContractError[] = []
-  for (const [index, line] of lines.entries()) {
-    const location = index + 1
-    if (errors.length >= MAX_ERRORS && line.length < MINIMUM_RECORD_LENGTH) {
-      if (errors.length === MAX_ERRORS) {
-        errors.push(invalidJsonError(location))
-      }
-      continue
-    }
-    let document: unknown
-    try {
-      document = JSON.parse(line)
-    } catch {
-      errors.push(invalidJsonError(location))
-      continue
-    }
-    const violation = firstViolation(document)
-    if (violation !== undefined) {
-      errors.push(violationError(violation, location))
-      continue
-    }
-    decisions.push(document as Decision)
-  }
-  return { decisions, errors: capErrors(file, errors) }
+  const { records, errors } = readJsonl(contract, text)
+  return { decisions: records as Decision[], errors }
 }
 
-export const validateDecisions = (text: string): ValidationResult => {
-  const { errors } = readDecisions(text)
-  const [first, ...rest] = errors
-  if (first === undefined) return { accepted: true }
-  return { accepted: false, errors: [first, ...rest] }
-}
+export const validateDecisions = (text: string): ValidationResult => validateJsonl(contract, text)
 
 const notSerializable = (): SerializeDecisionResult => ({
   accepted: false,
-  error: { file, location: null, field: null, message: 'is not serializable' },
+  error: lineError(file, null, 'is not serializable'),
 })
 
 export const serializeDecision = (value: unknown): SerializeDecisionResult => {
@@ -105,12 +52,12 @@ export const serializeDecision = (value: unknown): SerializeDecisionResult => {
       .replaceAll('\u2029', '\\u2029')
       .replaceAll('\u0085', '\\u0085')
     if (line.length > MAX_TEXT_LENGTH - 1) {
-      return { accepted: false, error: lineError(null, `exceeds ${MAX_TEXT_LENGTH} characters`) }
+      return { accepted: false, error: lineError(file, null, `exceeds ${MAX_TEXT_LENGTH} characters`) }
     }
     const document: unknown = JSON.parse(line)
-    const violation = firstViolation(document)
+    const violation = firstViolation(decisionsSchema, document)
     if (violation !== undefined) {
-      return { accepted: false, error: violationError(violation, null) }
+      return { accepted: false, error: violationError(file, violation, null) }
     }
     return { accepted: true, line }
   } catch {

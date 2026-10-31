@@ -3,11 +3,14 @@ id: "feature-catalog"
 type: "functional"
 owner: "pm"
 status: "current"
-updated: "2026-10-28"
+updated: "2026-10-31"
 links:
   - "glossary"
 answers:
   - "Which data contracts under .agent-flow/ are frozen and validated?"
+  - "What request types exist, and what makes a request or its id invalid?"
+  - "May a request id be answered more than once?"
+  - "Which scope.json path entries are refused?"
   - "What does core do with a decisions.jsonl file?"
   - "Which feature file pins the decisions.jsonl contract?"
   - "How is the time spent on a plan step computed and rounded?"
@@ -16,6 +19,7 @@ answers:
 decided_in:
   - "#32"
   - "#38"
+  - "#24"
 ---
 
 # Feature catalog
@@ -41,6 +45,21 @@ Every file under `.agent-flow/` is validated against a versioned schema.
 |---|---|---|---|
 | `plan.json` | Validated against its versioned schema; a valid sample is accepted. | `plan-contract` S1, S2 | `features/phase-0/plan-contract.feature` |
 | `decisions.jsonl` | One JSON record per line. Each record is validated; a valid file is accepted; a malformed line never hides the valid lines around it. | `decisions-contract` S1, S2 | `features/phase-0/decisions-contract.feature` |
+| `requests.jsonl` | One request per line. Each request is validated; a valid file is accepted; a malformed line is reported by its line number and never hides the valid lines around it. | `request-contracts` S1, S2 | `features/phase-0/request-contracts.feature` |
+| `responses.jsonl` | One answer per line, keyed by request id. A valid file is accepted; a malformed line is reported by its line number. | `request-contracts` S1, S2 | `features/phase-0/request-contracts.feature` |
+| `scope.json` | The issue the work derives from plus the repo-relative paths it is expected to touch. A valid file is accepted; an unsafe path entry is rejected by the field `paths`. | `request-contracts` S1, S3 | `features/phase-0/request-contracts.feature` |
+
+### Capability: requests, answers and scope
+
+| Contract | Rule | Outcome |
+|---|---|---|
+| `requests.jsonl` | Each [[glossary]] request has a type: `question`, `added_step`, `out_of_scope` or `out_of_spec`; any other type is refused. It carries a `blocking` flag. Its id is bounded in length and unique within the file. | A request that breaks a rule is refused with an error naming its line. |
+| `responses.jsonl` | Each answer names the request id it answers. The same id may be answered more than once: the log only grows, and a later answer never replaces an earlier one. | Several answers for one id are all valid. |
+| `scope.json` | A scope path is repo-relative. Refused: an absolute path, one containing `..`, one containing a backslash, a bare catch-all such as `**`, one starting with `!` or `:`, one containing a control character. | The refusal names the field `paths`. |
+
+A bad line costs only itself in both logs: the valid lines around it stay readable.
+Nothing here checks that an answer's request id exists in `requests.jsonl` (see
+Out of scope).
 
 ### Capability: reading a decisions log
 
@@ -93,8 +112,13 @@ Acceptance: `snapshot-steps` S1-S5 (`features/phase-2/snapshot-steps.feature`).
 - **MUST**: a bad line is reported with its line number, and does not stop the
   reading of the lines after it.
 - **MUST NOT**: a reader returns a partial record as if it were valid.
-- **Out of scope**: appending to existing files (#35); requests, responses and
-  scope (#24); referential integrity between records (#39).
+- **MUST**: a request type outside the four listed is refused, never coerced.
+- **MUST**: a scope path that could point outside the repository, or that
+  matches everything, is refused; an accepted scope lists only repo-relative paths.
+- **MUST NOT**: a later answer erase or replace an earlier answer for the same
+  request id.
+- **Out of scope**: appending to existing files (#35); referential integrity
+  between records, including an answer whose request id has no request (#39).
 
 ## Open questions / Gaps
 
@@ -102,3 +126,8 @@ Acceptance: `snapshot-steps` S1-S5 (`features/phase-2/snapshot-steps.feature`).
   has no Gherkin scenario; it is covered by unit tests only.
 - [ ] Schema refusals are not pinned at scenario level: a missing required
   field, a value outside its enum, and an unknown field.
+- [ ] `request-contracts` S3 pins only the absolute-path refusal. No scenario
+  covers the other unsafe scope entries: a leading `!` or `:`, a control
+  character, `..`, a backslash, a bare catch-all.
+- [ ] No scenario pins the request id bounds (length, uniqueness within the
+  file) or the repeated answer for one id.

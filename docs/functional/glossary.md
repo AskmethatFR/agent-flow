@@ -3,16 +3,18 @@ id: "glossary"
 type: "functional"
 owner: "pm"
 status: "current"
-updated: "2026-10-28"
+updated: "2026-10-31"
 links:
   - "feature-catalog"
 answers:
   - "What does a decision record mean in the business?"
+  - "What do request, request type, blocking, answer, scope and path entry mean?"
   - "What do the kinds and confidence levels of a decision mean?"
   - "What do snapshot, time spent and current step mean?"
 decided_in:
   - "#32"
   - "#38"
+  - "#24"
 ---
 
 # Glossary — ubiquitous language
@@ -36,6 +38,13 @@ decided_in:
 | **snapshot** | The view of a run's plan computed once by core: every plan step with its time spent, and the current step. Consumers display it and never recompute it. |
 | **time spent** | How long a plan step has taken: in progress, up to now; done, from start to end; to do, none. Also none whenever a timestamp cannot be trusted. Rounded down to the minute. |
 | **current step** | The in-progress plan step that started last (first in plan order on a tie); none when nothing is in progress. |
+| **request** | One record, in `requests.jsonl`, of something a role needs from outside the plan: a question, an added step, or work found out of scope or out of spec. Has an id, a request type and a blocking flag. |
+| **request type** | What a request asks: `question` (something to answer), `added_step` (a step the plan lacks), `out_of_scope` (work beyond the scope), `out_of_spec` (work the spec does not cover). |
+| **blocking** | Flag on a request: the work cannot go on until it is settled. |
+| **request id** | The identifier of a request: bounded in length and unique within its file. Answers refer to it. |
+| **answer** | One record, in `responses.jsonl`, replying to a request by its request id. A request id may collect several answers; none replaces another. |
+| **scope** | What a run is expected to touch: the issue it derives from and a list of repo-relative paths, kept in `scope.json`. |
+| **path entry** | One element of a scope's paths. Safe means repo-relative and specific; an entry that is absolute, climbs out of the repository, matches everything or looks like a command is unsafe and refused. |
 
 ## Consequences / Constraints
 
