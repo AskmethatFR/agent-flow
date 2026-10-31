@@ -26,6 +26,9 @@ describe('stryker config', () => {
     ['core/test/stryker-config.test.ts', false],
     ['spikes/capture/probe.ts', false],
     ['daemon/src/index.ts', false],
+    ['capture/shared/src/plan-writer/plan-writer.ts', true],
+    ['capture/shared/src/plan-writer/plan-writer.test.ts', false],
+    ['capture/claude-code/src/index.ts', false],
   ])('mutates %s: %s', (path, mutated) => {
     expect(isMutated(path)).toBe(mutated)
   })

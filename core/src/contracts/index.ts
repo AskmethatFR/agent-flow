@@ -1,4 +1,5 @@
 export type { ContractError, ValidationResult } from './contract-error'
+export { MAX_TEXT_LENGTH } from './contract-error'
 export { validatePlan } from './plan'
 export { validateRequests } from './requests'
 export { validateResponses } from './responses'
