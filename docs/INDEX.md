@@ -4,6 +4,7 @@
 
 | ID | Title | Status | Updated | Links | Path |
 |---|---|---|---|---|---|
+| `request-scope-contracts` | Frozen requests/responses/scope contracts: id bound, glob dialect, path rules | current | 2026-10-31 | [[decisions-jsonl-schema]], [[scope-origin]], [[paseo-messaging]], [[host-adapter-boundary]], [[workspace-layout-core-boundary]] | `docs/technical/decisions/request-scope-contracts.md` |
 | `snapshot-contract` | Core snapshot contract: shape, failure codes, instant rule | current | 2026-10-28 | [[host-adapter-boundary]], [[workspace-layout-core-boundary]], [[decisions-jsonl-schema]], [[feature-catalog]] | `docs/technical/decisions/snapshot-contract.md` |
 
 - `features/phase-0/plan-contract.feature` — #23 Frozen contract: plan.json accepts a valid sample, rejects an unknown step status (S1, S2)
