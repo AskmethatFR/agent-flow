@@ -4,12 +4,14 @@
 
 | ID | Title | Status | Updated | Links | Path |
 |---|---|---|---|---|---|
+| `plan-writer-confinement` | Plan writer: confinement chain, atomic replace, reader contract | current | 2026-10-31 | [[host-adapter-boundary]], [[workspace-layout-core-boundary]], [[capture-events]], [[snapshot-contract]] | `docs/technical/decisions/plan-writer-confinement.md` |
 | `request-scope-contracts` | Frozen requests/responses/scope contracts: id bound, glob dialect, path rules | current | 2026-10-31 | [[decisions-jsonl-schema]], [[scope-origin]], [[paseo-messaging]], [[host-adapter-boundary]], [[workspace-layout-core-boundary]] | `docs/technical/decisions/request-scope-contracts.md` |
 | `snapshot-contract` | Core snapshot contract: shape, failure codes, instant rule | current | 2026-10-28 | [[host-adapter-boundary]], [[workspace-layout-core-boundary]], [[decisions-jsonl-schema]], [[feature-catalog]] | `docs/technical/decisions/snapshot-contract.md` |
 
 - `features/phase-0/plan-contract.feature` — #23 Frozen contract: plan.json accepts a valid sample, rejects an unknown step status (S1, S2)
 - `features/phase-0/decisions-contract.feature` — #32 Frozen contract: decisions.jsonl accepts a valid sample, reports a malformed line by number (S1, S2)
 - `features/phase-0/request-contracts.feature` — #24 Frozen contracts: requests.jsonl, responses.jsonl, scope.json accept a valid sample, reject a malformed line or field (S1, S2, S3)
+- `features/phase-1/plan-writer.feature` — #34 Plan writer confined to .agent-flow: writes the updated plan, refuses outside targets, invalid plans and a missing plan.json (S1-S5)
 
 ## T2
 
@@ -52,9 +54,10 @@
 
 | ID | Title | Status | Updated | Links | Path |
 |---|---|---|---|---|---|
-| `feature-catalog` | Capabilities, frozen data contracts, plan snapshot | current | 2026-10-28 | `glossary` | `docs/functional/features.md` |
-| `glossary` | Ubiquitous language: decision, snapshot, time spent | current | 2026-10-28 | `feature-catalog` | `docs/functional/glossary.md` |
+| `feature-catalog` | Capabilities, frozen data contracts, plan snapshot, plan writer | current | 2026-10-31 | `glossary` | `docs/functional/features.md` |
+| `glossary` | Ubiquitous language: decision, snapshot, time spent, plan writer | current | 2026-10-31 | `feature-catalog` | `docs/functional/glossary.md` |
 
 - `features/phase-0/plan-contract.feature` — #23 Frozen data contracts: plan.json schema (S1, S2)
 - `features/phase-0/decisions-contract.feature` — #32 Frozen data contracts: decisions.jsonl schema and reader (S1, S2)
+- `features/phase-1/plan-writer.feature` — #34 Plan writer: step start/finish written to .agent-flow/plan.json, outside targets refused (S1-S5)
 - `features/phase-2/snapshot-steps.feature` — #38 Core snapshot: steps with time spent and current step (S1-S5)

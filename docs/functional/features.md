@@ -16,10 +16,12 @@ answers:
   - "How is the time spent on a plan step computed and rounded?"
   - "Which step is the current step, and when is there none?"
   - "What does the snapshot give for an invalid or missing plan?"
+  - "When capture records a step start or finish, what is written, where, and what is refused?"
 decided_in:
   - "#32"
   - "#38"
   - "#24"
+  - "#34"
 ---
 
 # Feature catalog
@@ -103,6 +105,28 @@ daemon only display it; neither recomputes it.
 
 Acceptance: `snapshot-steps` S1-S5 (`features/phase-2/snapshot-steps.feature`).
 
+### Capability: recording a step start or finish in the plan
+
+Capture applies a [[glossary]] step event (the start or the finish of a plan
+step, at a given time) to a worktree's plan, and the [[glossary]] plan writer
+stores the result in `<worktree>/.agent-flow/plan.json`. It serves both runtimes.
+
+| Situation | Behaviour | Outcome |
+|---|---|---|
+| Start of a to-do step | The step becomes in progress since the event time. | The updated plan is written. |
+| Finish of an in-progress step | The step becomes done with the event time as its end. | The updated plan is written. |
+| The write itself fails | Nothing is replaced. | The previous plan stays intact. |
+| The event does not fit the plan or the plan breaks its contract (unknown step, unknown status) | Refused. | Nothing is written; the error names the step at fault. |
+| The target would land outside `.agent-flow` (a `..` path, `.agent-flow` or `plan.json` linked elsewhere) | Refused. | Nothing is written, inside or outside. |
+| No `.agent-flow` directory | The directory is created, the plan is not. | Refused with an error saying the plan is missing; creating a first plan is not this capability (#12). |
+| No `plan.json` in an existing `.agent-flow` | Refused. | Error saying the plan is missing. |
+| A plan file that is oversized | Refused. | Error saying the plan is too large. |
+
+A replaced plan keeps the access rights of the file it replaces.
+
+Acceptance: `plan-writer` S1-S5 (`features/phase-1/plan-writer.feature`). The
+failed-write, access-rights and oversized-plan rows are pinned by unit tests only.
+
 ## Consequences / Constraints
 
 - **MUST**: a step whose time cannot be trusted shows no time, never a guessed one.
@@ -117,8 +141,13 @@ Acceptance: `snapshot-steps` S1-S5 (`features/phase-2/snapshot-steps.feature`).
   matches everything, is refused; an accepted scope lists only repo-relative paths.
 - **MUST NOT**: a later answer erase or replace an earlier answer for the same
   request id.
+- **MUST**: a plan that fails its contract is never written, and the previous
+  plan survives any failed write.
+- **MUST NOT**: the plan writer touch any file outside the worktree's `.agent-flow`.
 - **Out of scope**: appending to existing files (#35); referential integrity
-  between records, including an answer whose request id has no request (#39).
+  between records, including an answer whose request id has no request (#39);
+  creating the first plan (#12); the hooks that raise step events (#14, #15);
+  decisions.
 
 ## Open questions / Gaps
 
