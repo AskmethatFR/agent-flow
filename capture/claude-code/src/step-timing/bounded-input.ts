@@ -6,7 +6,7 @@ const readLimit = 4 * MAX_TEXT_LENGTH
 export function readBoundedInput(fd: number): string {
   const buffer = Buffer.allocUnsafe(readLimit + 1)
   let total = 0
-  while (total < buffer.length) {
+  for (;;) {
     const count = readSync(fd, buffer, total, buffer.length - total, null)
     if (count === 0) break
     total += count
