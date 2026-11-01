@@ -88,7 +88,7 @@ describe('readAgentFlowFile', () => {
 
   it('reports a directory whose real path differs as unreadable', () => {
     withPlan('real')
-    const moved: ReadIo = { ...realIo, realpathSync: (() => join(root, 'elsewhere')) as ReadIo['realpathSync'] }
+    const moved: ReadIo = { ...realIo, realpathSync: (() => join(root, 'elsewhere')) as unknown as ReadIo['realpathSync'] }
     expect(read(moved)).toEqual({ unavailable: 'unreadable' })
   })
 
