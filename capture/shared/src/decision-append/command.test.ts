@@ -108,7 +108,7 @@ describe('agent-flow-decision launcher', () => {
   )
 
   it('appends a decision from a shell and exits 0', () => {
-    execFileSync(launcher, [worktree, JSON.stringify(decision)], { cwd: root })
+    execFileSync(process.execPath, [launcher, worktree, JSON.stringify(decision)], { cwd: root })
 
     expect(readFileSync(decisionsPath, 'utf8')).toBe(`${JSON.stringify(decision)}\n`)
   })
@@ -116,7 +116,7 @@ describe('agent-flow-decision launcher', () => {
   it('exits non-zero with the error on stderr when it refuses', () => {
     const { step: _step, ...withoutStep } = decision
 
-    const result = spawnSync(launcher, [worktree, JSON.stringify(withoutStep)], {
+    const result = spawnSync(process.execPath, [launcher, worktree, JSON.stringify(withoutStep)], {
       cwd: root,
       encoding: 'utf8',
     })
