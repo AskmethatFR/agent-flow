@@ -2,5 +2,15 @@
   "name": "@agent-flow/panel",
   "private": true,
   "version": "0.0.0",
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@agent-flow/core": "*",
+    "@agent-flow/daemon": "*"
+  },
+  "devDependencies": {
+    "@getpaseo/client": "0.11.4",
+    "@getpaseo/plugin": "0.11.4",
+    "@getpaseo/protocol": "0.11.4",
+    "zod": "^4.4.3"
+  }
 }
