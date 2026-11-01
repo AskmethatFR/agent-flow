@@ -1,15 +1,16 @@
-import {
-  constants,
-  fstatSync,
-  lstatSync,
-  mkdirSync,
-  realpathSync,
-} from 'node:fs'
+import { constants, lstatSync, mkdirSync, realpathSync } from 'node:fs'
 import type * as NodeFs from 'node:fs'
-import { isAbsolute, join } from 'node:path'
-import { MAX_TEXT_LENGTH } from '@agent-flow/core/contracts'
+import { join } from 'node:path'
 import type { ValidationResult } from '@agent-flow/core/contracts'
 import { finishStep, startStep } from '@agent-flow/core/lifecycle'
+import {
+  attempt,
+  codeOf,
+  isConfinableWorktree,
+  readPlan,
+  refusalFor,
+  resolveWorktree,
+} from '../shared/confinement'
 
 export type StepEvent = {
   readonly kind: 'start' | 'finish'
@@ -24,35 +25,7 @@ export type PlanWriterIo = Pick<
 
 type Applier = (worktree: string, event: StepEvent) => ValidationResult
 
-const notRegularFile = 'must be a regular file, not a link'
-const readLimit = 4 * MAX_TEXT_LENGTH
-
-const refuse = (message: string, field: string | null = null): ValidationResult => ({
-  accepted: false,
-  errors: [{ file: 'plan.json', location: null, field, message }],
-})
-
-const attempt = (action: () => void): void => {
-  try {
-    action()
-  } catch {}
-}
-
-const codeOf = (error: unknown): unknown => (error as NodeJS.ErrnoException).code
-
-const hasDotSegment = (path: string): boolean =>
-  path.split('/').some((segment) => segment === '.' || segment === '..')
-
-const isConfinableWorktree = (worktree: unknown): worktree is string =>
-  typeof worktree === 'string' && isAbsolute(worktree) && !hasDotSegment(worktree)
-
-const resolveWorktree = (worktree: string): string | ValidationResult => {
-  try {
-    return realpathSync(worktree)
-  } catch {
-    return refuse('worktree cannot be resolved')
-  }
-}
+const refuse = refusalFor('plan.json')
 
 const inspectDirectory = (directory: string): ValidationResult | undefined => {
   let isDirectory: boolean
@@ -64,45 +37,6 @@ const inspectDirectory = (directory: string): ValidationResult | undefined => {
     return refuse('is missing')
   }
   return isDirectory ? undefined : refuse('.agent-flow must be a real directory')
-}
-
-const openRefusal = (error: unknown): ValidationResult => {
-  const code = codeOf(error)
-  if (code === 'ENOENT') return refuse('is missing')
-  if (code === 'ELOOP') return refuse(notRegularFile)
-  return refuse('cannot be read')
-}
-
-const readBounded = (io: PlanWriterIo, fd: number): string | ValidationResult => {
-  const buffer = Buffer.allocUnsafe(readLimit + 1)
-  let total = 0
-  for (;;) {
-    const count = io.readSync(fd, buffer, total, buffer.length - total, null)
-    if (count === 0) break
-    total += count
-  }
-  return total > readLimit ? refuse('is too large') : buffer.toString('utf8', 0, total)
-}
-
-type PlanFile = { readonly text: string; readonly mode: number }
-
-const readPlan = (io: PlanWriterIo, planPath: string): PlanFile | ValidationResult => {
-  let fd: number
-  try {
-    fd = io.openSync(planPath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
-  } catch (error) {
-    return openRefusal(error)
-  }
-  try {
-    const stats = fstatSync(fd)
-    if (!stats.isFile()) return refuse(notRegularFile)
-    const text = readBounded(io, fd)
-    return typeof text === 'string' ? { text, mode: stats.mode & 0o777 } : text
-  } catch {
-    return refuse('cannot be read')
-  } finally {
-    attempt(() => io.closeSync(fd))
-  }
 }
 
 const writeAtomically = (
@@ -146,7 +80,7 @@ export function createPlanWriter(io: PlanWriterIo): Applier {
     if (!isConfinableWorktree(worktree)) {
       return refuse('worktree must be an absolute path without . or .. segments')
     }
-    const realWorktree = resolveWorktree(worktree)
+    const realWorktree = resolveWorktree(worktree, refuse)
     if (typeof realWorktree !== 'string') return realWorktree
     const directory = join(realWorktree, '.agent-flow')
     const directoryRefusal = inspectDirectory(directory)
