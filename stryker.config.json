@@ -8,7 +8,10 @@
     "!capture/shared/src/**/*.test.ts",
     "capture/claude-code/src/**/*.ts",
     "!capture/claude-code/src/**/*.test.ts",
-    "!capture/claude-code/src/**/hook.ts"
+    "!capture/claude-code/src/**/hook.ts",
+    "daemon/src/**/*.ts",
+    "!daemon/src/**/*.test.ts",
+    "!daemon/src/**/index.ts"
   ],
   "thresholds": { "high": 100, "low": 100, "break": 100 }
 }
