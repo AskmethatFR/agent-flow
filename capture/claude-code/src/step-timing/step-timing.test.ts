@@ -106,6 +106,9 @@ describe('captureStepTiming', () => {
       payload({ tool_response: { statusChange: null } }),
       withStatus('pending'),
       withStatus('deleted'),
+      withStatus('constructor'),
+      withStatus('toString'),
+      withStatus('__proto__'),
       withStatus(undefined),
       withStatus(7),
       '[]',
@@ -139,20 +142,6 @@ describe('captureStepTiming', () => {
     expect(captureStepTiming(payload(), undefined, () => earlier)).toBeUndefined()
     expect(captureStepTiming(payload(), '', () => earlier)).toBeUndefined()
     expect(stepsNow()[1]).toMatchObject({ status: 'todo' })
-  })
-
-  it('writes only inside the project directory, not the working directory', () => {
-    const elsewhere = join(root, 'elsewhere')
-    mkdirSync(elsewhere)
-    const previous = process.cwd()
-    process.chdir(elsewhere)
-    try {
-      captureStepTiming(payload(), worktree, () => earlier)
-    } finally {
-      process.chdir(previous)
-    }
-    expect(readdirSync(elsewhere)).toEqual([])
-    expect(stepsNow()[1]).toMatchObject({ status: 'in_progress' })
   })
 
   it('never throws when the writer cannot find the plan', () => {

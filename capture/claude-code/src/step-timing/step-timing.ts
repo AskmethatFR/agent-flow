@@ -2,21 +2,20 @@ import { MAX_TEXT_LENGTH } from '@agent-flow/core/contracts'
 import type { ValidationResult } from '@agent-flow/core/contracts'
 import { applyStepEvent } from '@agent-flow/capture-shared/plan-writer'
 
-const kindOf: Readonly<Record<string, 'start' | 'finish'>> = {
-  in_progress: 'start',
-  completed: 'finish',
-}
+const kindOf: ReadonlyMap<unknown, 'start' | 'finish'> = new Map([
+  ['in_progress', 'start'],
+  ['completed', 'finish'],
+])
 
-const objectIn = (value: unknown, key: string): Record<string, unknown> | undefined => {
-  const child = (value as Record<string, unknown> | null | undefined)?.[key]
-  return typeof child === 'object' && child !== null ? (child as Record<string, unknown>) : undefined
-}
+const asObject = (value: unknown): object => (typeof value === 'object' && value !== null ? value : {})
 
-const parse = (input: string): unknown => {
+const field = (source: object, key: string): unknown => Reflect.get(source, key)
+
+const parse = (input: string): object => {
   try {
-    return JSON.parse(input)
+    return asObject(JSON.parse(input))
   } catch {
-    return undefined
+    return {}
   }
 }
 
@@ -26,12 +25,14 @@ export function captureStepTiming(
   now: () => Date,
 ): ValidationResult | undefined {
   if (projectDir === undefined || projectDir === '' || input.length > MAX_TEXT_LENGTH) return undefined
-  const payload = parse(input) as Record<string, unknown> | null
-  if (payload?.hook_event_name !== 'PostToolUse' || payload.tool_name !== 'TaskUpdate') return undefined
-  const taskId = objectIn(payload, 'tool_input')?.taskId
-  const to = objectIn(objectIn(payload, 'tool_response'), 'statusChange')?.to
-  if (typeof taskId !== 'string' || taskId === '' || typeof to !== 'string') return undefined
-  const kind = Object.hasOwn(kindOf, to) ? kindOf[to] : undefined
+  const payload = parse(input)
+  if (field(payload, 'hook_event_name') !== 'PostToolUse' || field(payload, 'tool_name') !== 'TaskUpdate') {
+    return undefined
+  }
+  const taskId = field(asObject(field(payload, 'tool_input')), 'taskId')
+  const to = field(asObject(field(asObject(field(payload, 'tool_response')), 'statusChange')), 'to')
+  if (typeof taskId !== 'string' || taskId === '') return undefined
+  const kind = kindOf.get(to)
   if (kind === undefined) return undefined
   return applyStepEvent(projectDir, { kind, stepId: taskId, at: now().toISOString() })
 }

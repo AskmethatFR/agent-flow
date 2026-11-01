@@ -34,9 +34,13 @@ let root: string
 let worktree: string
 let planPath: string
 
-const run = (input: string, env: Record<string, string | undefined> = { CLAUDE_PROJECT_DIR: worktree }) =>
+const run = (
+  input: string,
+  env: Record<string, string | undefined> = { CLAUDE_PROJECT_DIR: worktree },
+  cwd: string = worktree,
+) =>
   spawnSync(tsx, [hook], {
-    cwd: worktree,
+    cwd,
     input,
     encoding: 'utf8',
     env: { ...process.env, CLAUDE_PROJECT_DIR: undefined, ...env },
@@ -73,6 +77,16 @@ describe('step timing hook process', () => {
     const steps = JSON.parse(readFileSync(planPath, 'utf8')).steps
     expect(steps[1]).toMatchObject({ status: 'in_progress' })
     expect(steps[1].startedAt).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/)
+  })
+
+  it('writes only inside the project directory when the working directory is elsewhere', () => {
+    const elsewhere = join(root, 'elsewhere')
+    mkdirSync(elsewhere)
+    const result = run(taskUpdate('2', 'in_progress'), { CLAUDE_PROJECT_DIR: worktree }, elsewhere)
+    expect(result.status).toBe(0)
+    expect(readdirSync(elsewhere)).toEqual([])
+    expect(readdirSync(join(worktree, '.agent-flow'))).toEqual(['plan.json'])
+    expect(JSON.parse(readFileSync(planPath, 'utf8')).steps[1].status).toBe('in_progress')
   })
 
   it.each(['garbage', '', '{"hook_event_name":"PostToolUse"}', taskUpdate('99', 'completed')])(
