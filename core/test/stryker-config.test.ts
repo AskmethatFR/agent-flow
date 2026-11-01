@@ -28,7 +28,10 @@ describe('stryker config', () => {
     ['daemon/src/index.ts', false],
     ['capture/shared/src/plan-writer/plan-writer.ts', true],
     ['capture/shared/src/plan-writer/plan-writer.test.ts', false],
-    ['capture/claude-code/src/index.ts', false],
+    ['capture/claude-code/src/step-timing/step-timing.ts', true],
+    ['capture/claude-code/src/step-timing/step-timing.test.ts', false],
+    ['capture/claude-code/src/step-timing/hook.ts', false],
+    ['capture/opencode/src/index.ts', false],
   ])('mutates %s: %s', (path, mutated) => {
     expect(isMutated(path)).toBe(mutated)
   })
