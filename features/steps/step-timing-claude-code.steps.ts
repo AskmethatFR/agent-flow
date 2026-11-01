@@ -58,6 +58,7 @@ const useRuntime = (world: TimingWorld, name: string): void => {
 Given(/^a (.+) agent starts the step "([^"]+)"$/, function (this: TimingWorld, name: string, title: string): void {
   useRuntime(this, name)
   this.runtime.start(this, title)
+  this.started = title
 })
 
 Given(
@@ -65,6 +66,7 @@ Given(
   function (this: TimingWorld, name: string, title: string): void {
     useRuntime(this, name)
     this.runtime.start(this, title)
+    this.started = title
   },
 )
 
@@ -76,17 +78,18 @@ When('the agent marks the step as done', function (this: TimingWorld): void {
 
 When('the agent starts the step {string}', function (this: TimingWorld, title: string): void {
   this.runtime.start(this, title)
+  this.started = title
 })
 
 Then('plan.json contains startedAt and endedAt for that step', function (this: TimingWorld): void {
-  const step = stepTitled(this, 'Implementation')
+  const step = stepTitled(this, this.started)
   assert.equal(step.status, 'done')
   assert.equal(typeof step.startedAt, 'string')
   assert.equal(typeof step.endedAt, 'string')
 })
 
 Then('endedAt is not earlier than startedAt', function (this: TimingWorld): void {
-  const step = stepTitled(this, 'Implementation')
+  const step = stepTitled(this, this.started)
   assert.ok(Date.parse(step.endedAt as string) >= Date.parse(step.startedAt as string))
 })
 

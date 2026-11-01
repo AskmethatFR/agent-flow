@@ -118,3 +118,4 @@ Provenance of the samples: both were produced by the delivery commit `f04e8a3` c
 - [ ] Is `experimental.todo` stable across OpenCode 2.x releases? Observed on 2.1.4 only.
 - [ ] Claude Code behavior without `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` is doc-sourced, not run.
 - [ ] `docs/plan.md` Q3 should link `[[capture-events]]` once merged (T4's file, not changed here).
+- [ ] Claude Code step timing (#14) needs an installation follow-up: the registered hook command fails loudly unless `AGENT_FLOW_HOME` is set to the Agent Flow checkout, and nothing seeds a real `.agent-flow/plan.json` yet (only the BDD driver does), so a live run records nothing. In a project with no plan the shared plan writer also leaves an empty `.agent-flow/` directory behind.
