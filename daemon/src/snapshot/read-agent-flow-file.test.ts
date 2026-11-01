@@ -86,6 +86,12 @@ describe('readAgentFlowFile', () => {
     expect(read()).toEqual({ unavailable: 'unreadable' })
   })
 
+  it('reports a directory whose real path differs as unreadable', () => {
+    withPlan('real')
+    const moved: ReadIo = { ...realIo, realpathSync: (() => join(root, 'elsewhere')) as ReadIo['realpathSync'] }
+    expect(read(moved)).toEqual({ unavailable: 'unreadable' })
+  })
+
   it('reports a symlinked plan.json as unreadable', () => {
     mkdirSync(directoryOf())
     writeFileSync(join(root, 'elsewhere.json'), 'secret')

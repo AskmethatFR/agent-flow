@@ -25,17 +25,21 @@ const input = z.strictObject({ workspaceId: z.string().min(1).max(256) })
 
 const refused: SnapshotReply = { kind: 'refused', reason: 'unknown-worktree' }
 
-const worktreeRootOf = async (
+const readingOf = async (
   workspaces: WorkspaceSource,
   workspaceId: string,
-): Promise<string | null> => {
+): Promise<WorkspaceReading | null> => {
   try {
-    const reading = await workspaces.ref(workspaceId).refresh()
-    const root = reading?.project?.checkout.worktreeRoot
-    return typeof root === 'string' && isAbsolute(root) ? root : null
+    return await workspaces.ref(workspaceId).refresh()
   } catch {
     return null
   }
+}
+
+const worktreeRootOf = (reading: WorkspaceReading | null): string | null => {
+  if (reading === null) return null
+  const root = reading.project?.checkout.worktreeRoot
+  return typeof root === 'string' && isAbsolute(root) ? root : null
 }
 
 const realPathOf = (io: ReadIo, path: string): string | null => {
@@ -51,7 +55,7 @@ export const createGetSnapshot =
   async (request: unknown, workspaces: WorkspaceSource): Promise<SnapshotReply> => {
     const parsed = input.safeParse(request)
     if (!parsed.success) return refused
-    const worktreeRoot = await worktreeRootOf(workspaces, parsed.data.workspaceId)
+    const worktreeRoot = worktreeRootOf(await readingOf(workspaces, parsed.data.workspaceId))
     if (worktreeRoot === null) return refused
     const realWorktree = realPathOf(io, worktreeRoot)
     if (realWorktree === null) return refused

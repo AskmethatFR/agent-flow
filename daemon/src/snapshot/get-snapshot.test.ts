@@ -11,9 +11,14 @@ const now = new Date('2026-11-01T10:00:00.000Z')
 
 let root: string
 let opened: string[]
+let resolved: string[]
 
 const io: ReadIo = {
   ...fs,
+  realpathSync: ((path: fs.PathLike) => {
+    resolved.push(String(path))
+    return fs.realpathSync(path)
+  }) as ReadIo['realpathSync'],
   openSync: ((path: fs.PathLike, ...rest: unknown[]) => {
     opened.push(String(path))
     return (fs.openSync as (p: fs.PathLike, ...r: unknown[]) => number)(path, ...rest)
@@ -25,6 +30,7 @@ const getSnapshot = createGetSnapshot({ io, now: () => now })
 beforeEach(() => {
   root = realpathSync(mkdtempSync(join(tmpdir(), 'get-snapshot-')))
   opened = []
+  resolved = []
 })
 
 afterEach(() => {
@@ -156,6 +162,7 @@ describe('getSnapshot', () => {
       const reply = await getSnapshot({ workspaceId: 'w1' }, sourceOf(readings))
       expect(reply).toEqual(refused)
       expect(opened).toEqual([])
+      expect(resolved.filter((path) => !path.includes('af18-worktree'))).toEqual([])
     })
 
     it('refuses when ref itself throws', async () => {
