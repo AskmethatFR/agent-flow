@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "TaskUpdate",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$AGENT_FLOW_HOME/node_modules/.bin/tsx\" \"$AGENT_FLOW_HOME/capture/claude-code/src/step-timing/hook.ts\""
+          }
+        ]
+      }
+    ]
+  }
+}
