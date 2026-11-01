@@ -20,11 +20,11 @@ export const runDecisionCommand = (
   args: readonly string[],
   writeError: (text: string) => void,
 ): number => {
-  const [worktree, text] = args
-  if (args.length !== 2 || worktree === undefined || text === undefined) {
+  if (args.length !== 2) {
     writeError(usage)
     return 2
   }
+  const [worktree, text] = args as readonly [string, string]
   const parsed = parse(text)
   const result = 'value' in parsed ? appendDecision(worktree, parsed.value) : parsed
   if (result.accepted) return 0

@@ -84,7 +84,7 @@ const appendLine = (
     if (!stats.isFile()) return refuse(notRegularFile)
     if (realpathSync(directory) !== directory) return refuse('.agent-flow must be a real directory')
     const linked = lstatSync(path)
-    if (linked.dev !== stats.dev || linked.ino !== stats.ino) return refuse(notRegularFile)
+    if (linked.ino !== stats.ino) return refuse(notRegularFile)
     const prefix = separatorNeeded(io, fd, stats.size) ? '\n' : ''
     const bytes = Buffer.from(`${prefix}${line}\n`)
     if (stats.size + bytes.length > MAX_TEXT_LENGTH) {
