@@ -2,6 +2,9 @@ import {
   chmodSync,
   closeSync,
   constants,
+  fstatSync,
+  linkSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   openSync,
@@ -17,6 +20,7 @@ import {
   writeSync,
 } from 'node:fs'
 import { execFileSync } from 'node:child_process'
+import type { Stats } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -89,7 +93,14 @@ const givenDecisions = (text: string): void => writeFileSync(decisionsPath, text
 const decisionsOnDisk = (): string => readFileSync(decisionsPath, 'utf8')
 const lineOf = (value: unknown): string => `${JSON.stringify(value)}\n`
 
-const realIo: DecisionAppenderIo = { openSync, readSync, writeSync, closeSync }
+const realIo: DecisionAppenderIo = {
+  openSync,
+  readSync,
+  writeSync,
+  closeSync,
+  fstatSync,
+  lstatSync,
+}
 
 const appenderWith = (overrides: Partial<DecisionAppenderIo>) =>
   createDecisionAppender({ ...realIo, ...overrides })
@@ -411,6 +422,34 @@ describe('appendDecision', () => {
     })
   })
 
+  describe('identity of the opened file', () => {
+    it('refuses a decisions.jsonl hard linked to a file outside .agent-flow', () => {
+      const outside = join(root, 'outside.jsonl')
+      writeFileSync(outside, 'secret\n')
+      linkSync(outside, decisionsPath)
+
+      const result = appendDecision(worktree, decisionOf())
+
+      expect(result).toEqual(refused(notRegular))
+      expect(readFileSync(outside, 'utf8')).toBe('secret\n')
+    })
+
+    it('refuses when the path now answers with another device but the same inode', () => {
+      givenDecisions('old\n')
+      const otherDevice = ((path: string) => {
+        const stats = lstatSync(path) as Stats
+        return String(path).endsWith('decisions.jsonl')
+          ? Object.assign(Object.create(stats), { dev: stats.dev + 1 })
+          : stats
+      }) as unknown as typeof lstatSync
+
+      const result = appenderWith({ lstatSync: otherDevice })(worktree, decisionOf())
+
+      expect(result).toEqual(refused(notRegular))
+      expect(decisionsOnDisk()).toBe('old\n')
+    })
+  })
+
   describe('size ceiling', () => {
     const lineBytes = Buffer.byteLength(lineOf(decisionOf()))
     const fileOfSize = (size: number): void => givenDecisions(`${'x'.repeat(size - 1)}\n`)
@@ -473,10 +512,16 @@ describe('appendDecision', () => {
       expect(decisionsOnDisk()).toBe('x\n')
     })
 
-    it('answers cannot be written when the file vanishes between the checks', () => {
+    it('refuses a file unlinked after it was opened', () => {
       const vanish = afterOpening(() => rmSync(decisionsPath))
 
-      expect(appenderWith({ openSync: vanish })(worktree, decisionOf())).toEqual(
+      expect(appenderWith({ openSync: vanish })(worktree, decisionOf())).toEqual(refused(notRegular))
+    })
+
+    it('answers cannot be written when the path cannot be inspected after the open', () => {
+      const unreadable = (() => failure()) as unknown as typeof lstatSync
+
+      expect(appenderWith({ lstatSync: unreadable })(worktree, decisionOf())).toEqual(
         refused('cannot be written'),
       )
     })

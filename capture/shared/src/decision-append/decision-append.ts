@@ -1,4 +1,4 @@
-import { constants, fstatSync, lstatSync, realpathSync } from 'node:fs'
+import { constants, lstatSync, realpathSync } from 'node:fs'
 import type * as NodeFs from 'node:fs'
 import { join } from 'node:path'
 import { MAX_TEXT_LENGTH, serializeDecision } from '@agent-flow/core/contracts'
@@ -16,7 +16,7 @@ import {
 
 export type DecisionAppenderIo = Pick<
   typeof NodeFs,
-  'openSync' | 'readSync' | 'writeSync' | 'closeSync'
+  'openSync' | 'readSync' | 'writeSync' | 'closeSync' | 'fstatSync' | 'lstatSync'
 >
 
 type Appender = (worktree: string, decision: unknown) => ValidationResult
@@ -80,11 +80,11 @@ const appendLine = (
     return codeOf(error) === 'ELOOP' ? refuse(notRegularFile) : refuse('cannot be written')
   }
   try {
-    const stats = fstatSync(fd)
-    if (!stats.isFile()) return refuse(notRegularFile)
+    const stats = io.fstatSync(fd)
+    if (!stats.isFile() || stats.nlink !== 1) return refuse(notRegularFile)
     if (realpathSync(directory) !== directory) return refuse('.agent-flow must be a real directory')
-    const linked = lstatSync(path)
-    if (linked.ino !== stats.ino) return refuse(notRegularFile)
+    const linked = io.lstatSync(path)
+    if (linked.dev !== stats.dev || linked.ino !== stats.ino) return refuse(notRegularFile)
     const prefix = separatorNeeded(io, fd, stats.size) ? '\n' : ''
     const bytes = Buffer.from(`${prefix}${line}\n`)
     if (stats.size + bytes.length > MAX_TEXT_LENGTH) {
