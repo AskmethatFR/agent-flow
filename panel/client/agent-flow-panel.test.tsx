@@ -140,3 +140,101 @@ describe('AgentFlowPanel polling', () => {
     await panel.unmount()
   })
 })
+
+describe('AgentFlowPanel states', () => {
+  it('lists each snapshot error with its file, location, field and message', async () => {
+    const errors = [
+      { file: 'plan.json', location: 's4', field: 'status', message: 'unknown status' },
+      { file: 'plan.json', location: 3, field: null, message: 'bad step' },
+      { file: 'plan.json', location: null, field: null, message: 'malformed' },
+    ]
+    const panel = await renderPanel(async () => snapshotReply({ errors }))
+
+    const texts = panel.texts()
+    expect(texts).toContain('Snapshot errors')
+    expect(texts).toContain('plan.json · s4 · status · unknown status')
+    expect(texts).toContain('plan.json · 3 · bad step')
+    expect(texts).toContain('plan.json · malformed')
+    await panel.unmount()
+  })
+
+  it('does not show the errors heading when the snapshot has no error', async () => {
+    const panel = await renderPanel(async () => snapshotReply())
+    expect(panel.texts()).not.toContain('Snapshot errors')
+    await panel.unmount()
+  })
+
+  it('shows the empty-plan copy and the errors when a rejected plan has no steps', async () => {
+    const errors = [{ file: 'plan.json', location: null, field: null, message: 'malformed' }]
+    const panel = await renderPanel(async () =>
+      snapshotReply({ issue: null, title: null, steps: [], errors }),
+    )
+
+    const texts = panel.texts()
+    expect(texts).toContain('No steps yet.')
+    expect(texts).toContain('plan.json · malformed')
+    expect(texts).not.toContain('#42')
+    await panel.unmount()
+  })
+
+  it('shows the loading copy until the first reply', async () => {
+    const panel = await renderPanel(() => new Promise(() => {}))
+    expect(panel.texts()).toEqual(['Loading the plan…'])
+    await panel.unmount()
+  })
+
+  it('shows the refusal copy for a workspace the host does not know', async () => {
+    const panel = await renderPanel(async () => ({ kind: 'refused', reason: 'unknown-worktree' }))
+    expect(panel.texts()).toEqual(['Agent Flow cannot read this workspace.'])
+    await panel.unmount()
+  })
+
+  describe('with a failing transport', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('shows fixed copy, not the error text, when the call rejects, then recovers on the next poll', async () => {
+      let failing = true
+      const invoke = vi.fn(async () => {
+        if (failing) throw new Error('secret transport detail')
+        return snapshotReply()
+      })
+      const panel = await renderPanel(invoke)
+      expect(panel.texts()).toEqual(['The Agent Flow server did not answer. Retrying.'])
+
+      failing = false
+      await settle(2_000)
+      expect(panel.texts()).toContain('Add login')
+      await panel.unmount()
+    })
+
+    it('treats a reply that fails the contract as unreachable and keeps polling', async () => {
+      const invoke = vi.fn(async () => ({ kind: 'bogus' }))
+      const panel = await renderPanel(invoke)
+      expect(panel.texts()).toEqual(['The Agent Flow server did not answer. Retrying.'])
+
+      await settle(2_000)
+      expect(invoke).toHaveBeenCalledTimes(2)
+      await panel.unmount()
+    })
+
+    it('keeps the last good plan on screen no longer than the next reply: a later failure shows unreachable', async () => {
+      let failing = false
+      const invoke = vi.fn(async () => {
+        if (failing) throw new Error('down')
+        return snapshotReply()
+      })
+      const panel = await renderPanel(invoke)
+      expect(panel.texts()).toContain('Add login')
+
+      failing = true
+      await settle(2_000)
+      expect(panel.texts()).toEqual(['The Agent Flow server did not answer. Retrying.'])
+      await panel.unmount()
+    })
+  })
+})

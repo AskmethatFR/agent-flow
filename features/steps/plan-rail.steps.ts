@@ -14,6 +14,8 @@ type PlanRailWorld = {
   root: string
   panel: RenderedPanel
   texts: string[]
+  expectedStep: string
+  expectedField: string
 }
 
 const workspaceId = 'w1'
@@ -59,6 +61,19 @@ Given(
   },
 )
 
+Given(
+  'the snapshot of the current worktree carries one error naming step {string} and field {string}',
+  function (this: PlanRailWorld, stepId: string, field: string) {
+    writePlan(this, {
+      issue: '#42',
+      title: 'Add login',
+      steps: [stepOf(stepId, 'Open PR', 'not-a-status')],
+    })
+    this.expectedField = field
+    this.expectedStep = stepId
+  },
+)
+
 When('the user opens the {string} tab', async function (this: PlanRailWorld, _tab: string) {
   this.panel = await renderPanel(hostInvoke(this), { workspaceId })
   this.texts = this.panel.texts()
@@ -76,6 +91,19 @@ Then(
     assert.deepEqual([...positions].sort((a, b) => a - b), positions)
   },
 )
+
+Then('the panel lists that error', function (this: PlanRailWorld) {
+  assert.ok(this.texts.includes('Snapshot errors'), `no errors heading in ${JSON.stringify(this.texts)}`)
+  const row = this.texts.find((text) => text.includes(this.expectedStep) && text.includes(this.expectedField))
+  assert.ok(row, `no error row naming ${this.expectedStep} and ${this.expectedField} in ${JSON.stringify(this.texts)}`)
+})
+
+Then('the panel stays usable', async function (this: PlanRailWorld) {
+  const fallbacks = ['Agent Flow cannot read this workspace.', 'The Agent Flow server did not answer. Retrying.']
+  assert.ok(!this.texts.some((text) => fallbacks.includes(text)))
+  await this.panel.update(workspaceId)
+  assert.ok(this.panel.texts().includes('Snapshot errors'))
+})
 
 After(async function (this: PlanRailWorld) {
   await this.panel?.unmount()

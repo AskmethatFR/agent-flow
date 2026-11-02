@@ -19,11 +19,15 @@ export const useSnapshotPolling = (
     let timer: ReturnType<typeof setTimeout> | undefined
     const poll = () => {
       void getSnapshot({ workspaceId })
-        .then((reply) => {
-          if (active) setState({ kind: 'reply', reply })
-        })
-        .finally(() => {
-          if (active) timer = setTimeout(poll, SNAPSHOT_POLL_INTERVAL_MS)
+        .then(
+          (reply): PanelState => ({ kind: 'reply', reply }),
+          (): PanelState => ({ kind: 'unreachable' }),
+        )
+        .then((next) => {
+          if (active) {
+            setState(next)
+            timer = setTimeout(poll, SNAPSHOT_POLL_INTERVAL_MS)
+          }
         })
     }
     poll()
