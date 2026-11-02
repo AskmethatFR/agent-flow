@@ -94,20 +94,20 @@ const readPlanFile = (planFile: AgentFlowFile): ReadPlanResult =>
 const decisionsFile = 'decisions.jsonl'
 
 type GroupedDecisions = {
-  readonly byStep: ReadonlyMap<string, readonly SnapshotDecision[]>
+  readonly perStep: readonly { readonly step: PlanStep; readonly decisions: SnapshotDecision[] }[]
   readonly errors: readonly ContractError[]
 }
 
 const groupDecisions = (
-  stepIds: readonly string[],
+  steps: readonly PlanStep[],
   file: AgentFlowFile | undefined,
 ): GroupedDecisions => {
-  const grouped = new Map<string, SnapshotDecision[]>(stepIds.map((id) => [id, []]))
-  if (file === undefined || (typeof file !== 'string' && file.unavailable === 'missing')) {
-    return { byStep: grouped, errors: [] }
-  }
+  const buckets = steps.map((step) => ({ step, decisions: [] as SnapshotDecision[] }))
+  const grouped = new Map(buckets.map(({ step, decisions }) => [step.id, decisions] as const))
+  if (file === undefined) return { perStep: buckets, errors: [] }
   if (typeof file !== 'string') {
-    return { byStep: grouped, errors: [unavailableError(decisionsFile, file.unavailable)] }
+    const errors = file.unavailable === 'missing' ? [] : [unavailableError(decisionsFile, file.unavailable)]
+    return { perStep: buckets, errors }
   }
   const { entries, errors } = readLocatedDecisions(file)
   const orphans: ContractError[] = []
@@ -125,7 +125,7 @@ const groupDecisions = (
       confidence: decision.confidence,
     })
   }
-  return { byStep: grouped, errors: [...errors, ...capErrors(decisionsFile, orphans)] }
+  return { perStep: buckets, errors: [...errors, ...capErrors(decisionsFile, orphans)] }
 }
 
 export const buildSnapshot = (files: SnapshotFiles, now: Date): Snapshot => {
@@ -134,14 +134,11 @@ export const buildSnapshot = (files: SnapshotFiles, now: Date): Snapshot => {
     return { issue: null, title: null, steps: [], currentStepId: null, errors: result.errors }
   }
   const { plan } = result
-  const { byStep, errors } = groupDecisions(
-    plan.steps.map((step) => step.id),
-    files.decisions,
-  )
+  const { perStep, errors } = groupDecisions(plan.steps, files.decisions)
   return {
     issue: plan.issue,
     title: plan.title,
-    steps: plan.steps.map((step) => toSnapshotStep(step, now, byStep.get(step.id) ?? [])),
+    steps: perStep.map(({ step, decisions }) => toSnapshotStep(step, now, decisions)),
     currentStepId: currentStepIdOf(plan.steps),
     errors,
   }
