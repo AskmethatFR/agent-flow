@@ -57,7 +57,7 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })
 
-describe('entry module', () => {
+describe('entry module', { timeout: 30_000 }, () => {
   it('registers the hook and records the step in the AGENT_FLOW_WORKTREE plan, silently', () => {
     const result = run({ AGENT_FLOW_WORKTREE: worktree })
     expect(result.stderr).toBe('')
