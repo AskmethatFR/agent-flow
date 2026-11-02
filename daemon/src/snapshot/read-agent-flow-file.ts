@@ -15,8 +15,8 @@ const procIsAbsent = (io: ReadIo): boolean => {
   try {
     io.lstatSync(procDescriptors)
     return false
-  } catch {
-    return true
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ENOENT'
   }
 }
 

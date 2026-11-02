@@ -32,6 +32,21 @@ const withPlan = (text: string | Buffer): void => {
 
 const read = (io: ReadIo = realIo) => readAgentFlowFile(io, root, 'plan.json')
 
+const failingWith = (code: string) => (): never => {
+  throw Object.assign(new Error(code), { code })
+}
+
+const probingProcWith = (probe: () => void): ReadIo['lstatSync'] =>
+  ((path: fs.PathLike, ...rest: unknown[]) => {
+    if (String(path) === '/proc/self/fd') {
+      probe()
+      return fs.lstatSync(root)
+    }
+    return (fs.lstatSync as (p: fs.PathLike, ...r: unknown[]) => fs.Stats)(path, ...rest)
+  }) as ReadIo['lstatSync']
+
+const procPresent = probingProcWith(() => {})
+
 describe('readAgentFlowFile', () => {
   it('returns the text of a regular file', () => {
     withPlan('{"issue":"#1"}')
@@ -138,6 +153,7 @@ describe('readAgentFlowFile', () => {
     withPlan('real')
     const swapped: ReadIo = {
       ...realIo,
+      lstatSync: procPresent,
       readlinkSync: (() => join(root, 'elsewhere.json')) as unknown as ReadIo['readlinkSync'],
     }
     expect(read(swapped)).toEqual({ unavailable: 'unreadable' })
@@ -145,13 +161,22 @@ describe('readAgentFlowFile', () => {
 
   it('refuses the read when the descriptor path cannot be resolved', () => {
     withPlan('real')
-    const noProc: ReadIo = {
+    const unresolvable: ReadIo = {
       ...realIo,
-      readlinkSync: (() => {
-        throw Object.assign(new Error('no /proc'), { code: 'ENOENT' })
-      }) as unknown as ReadIo['readlinkSync'],
+      lstatSync: procPresent,
+      readlinkSync: failingWith('ENOENT') as unknown as ReadIo['readlinkSync'],
     }
-    expect(read(noProc)).toEqual({ unavailable: 'unreadable' })
+    expect(read(unresolvable)).toEqual({ unavailable: 'unreadable' })
+  })
+
+  it('fails closed when probing /proc is denied rather than treating /proc as absent', () => {
+    withPlan('real')
+    const masked: ReadIo = {
+      ...realIo,
+      lstatSync: probingProcWith(failingWith('EACCES')),
+      readlinkSync: failingWith('EACCES') as unknown as ReadIo['readlinkSync'],
+    }
+    expect(read(masked)).toEqual({ unavailable: 'unreadable' })
   })
 
   it.skipIf(!fs.existsSync('/proc/self/fd'))(
@@ -179,13 +204,8 @@ describe('readAgentFlowFile', () => {
     withPlan('real')
     const noProc: ReadIo = {
       ...realIo,
-      lstatSync: ((path: fs.PathLike, ...rest: unknown[]) => {
-        if (String(path) === '/proc/self/fd') throw Object.assign(new Error('no /proc'), { code: 'ENOENT' })
-        return (fs.lstatSync as (p: fs.PathLike, ...r: unknown[]) => fs.Stats)(path, ...rest)
-      }) as ReadIo['lstatSync'],
-      readlinkSync: (() => {
-        throw Object.assign(new Error('no /proc'), { code: 'ENOENT' })
-      }) as unknown as ReadIo['readlinkSync'],
+      lstatSync: probingProcWith(failingWith('ENOENT')),
+      readlinkSync: failingWith('ENOENT') as unknown as ReadIo['readlinkSync'],
     }
     expect(read(noProc)).toBe('real')
   })
@@ -196,6 +216,7 @@ describe('readAgentFlowFile', () => {
     const asked: string[] = []
     const spying: ReadIo = {
       ...realIo,
+      lstatSync: procPresent,
       openSync: ((path: fs.PathLike, flag: number) => {
         const fd = fs.openSync(path, flag)
         opened.push(fd)
@@ -203,8 +224,8 @@ describe('readAgentFlowFile', () => {
       }) as ReadIo['openSync'],
       readlinkSync: ((path: fs.PathLike) => {
         asked.push(String(path))
-        return fs.readlinkSync(path)
-      }) as ReadIo['readlinkSync'],
+        return planPath
+      }) as unknown as ReadIo['readlinkSync'],
     }
     expect(read(spying)).toBe('real')
     expect(asked).toEqual([`/proc/self/fd/${opened[0]}`])
