@@ -1,11 +1,13 @@
 {
   "extends": "./tsconfig.base.json",
+  "compilerOptions": { "jsx": "react-jsx" },
   "include": [
     "core/src",
     "core/test",
     "daemon/src",
     "panel/index.client.tsx",
     "panel/index.server.ts",
+    "panel/client",
     "panel/server",
     "panel/shared",
     "panel/**/*.test.ts",

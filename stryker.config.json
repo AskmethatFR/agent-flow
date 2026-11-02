@@ -11,7 +11,8 @@
     "!capture/claude-code/src/**/hook.ts",
     "daemon/src/**/*.ts",
     "!daemon/src/**/*.test.ts",
-    "!daemon/src/**/index.ts"
+    "!daemon/src/**/index.ts",
+    "panel/client/display-text.ts"
   ],
   "thresholds": { "high": 100, "low": 100, "break": 100 }
 }
