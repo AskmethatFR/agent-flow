@@ -134,6 +134,46 @@ describe('readAgentFlowFile', () => {
     expect(read(swapped)).toEqual({ unavailable: 'unreadable' })
   })
 
+  it('reports a descriptor whose real path is not the requested file as unreadable', () => {
+    withPlan('real')
+    const swapped: ReadIo = {
+      ...realIo,
+      readlinkSync: (() => join(root, 'elsewhere.json')) as unknown as ReadIo['readlinkSync'],
+    }
+    expect(read(swapped)).toEqual({ unavailable: 'unreadable' })
+  })
+
+  it('refuses the read when the descriptor path cannot be resolved', () => {
+    withPlan('real')
+    const noProc: ReadIo = {
+      ...realIo,
+      readlinkSync: (() => {
+        throw Object.assign(new Error('no /proc'), { code: 'ENOENT' })
+      }) as unknown as ReadIo['readlinkSync'],
+    }
+    expect(read(noProc)).toEqual({ unavailable: 'unreadable' })
+  })
+
+  it('asks for the real path of the descriptor it opened', () => {
+    withPlan('real')
+    const opened: number[] = []
+    const asked: string[] = []
+    const spying: ReadIo = {
+      ...realIo,
+      openSync: ((path: fs.PathLike, flag: number) => {
+        const fd = fs.openSync(path, flag)
+        opened.push(fd)
+        return fd
+      }) as ReadIo['openSync'],
+      readlinkSync: ((path: fs.PathLike) => {
+        asked.push(String(path))
+        return fs.readlinkSync(path)
+      }) as ReadIo['readlinkSync'],
+    }
+    expect(read(spying)).toBe('real')
+    expect(asked).toEqual([`/proc/self/fd/${opened[0]}`])
+  })
+
   it('reports a read error as unreadable and still closes the descriptor', () => {
     withPlan('real')
     const closed: number[] = []

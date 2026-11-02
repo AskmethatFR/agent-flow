@@ -6,8 +6,16 @@ import type { AgentFlowFile } from '@agent-flow/core/snapshot'
 
 export type ReadIo = Pick<
   typeof NodeFs,
-  'lstatSync' | 'realpathSync' | 'openSync' | 'fstatSync' | 'readSync' | 'closeSync'
+  'lstatSync' | 'realpathSync' | 'readlinkSync' | 'openSync' | 'fstatSync' | 'readSync' | 'closeSync'
 >
+
+const descriptorIsAt = (io: ReadIo, fd: number, path: string): boolean => {
+  try {
+    return io.readlinkSync(`/proc/self/fd/${fd}`) === path
+  } catch {
+    return false
+  }
+}
 
 const readLimit = 4 * MAX_TEXT_LENGTH
 const openFlags = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK
@@ -38,7 +46,12 @@ export const readAgentFlowFile = (
     fd = io.openSync(path, openFlags)
     const opened = io.fstatSync(fd)
     const linked = io.lstatSync(path)
-    if (!opened.isFile() || opened.dev !== linked.dev || opened.ino !== linked.ino) {
+    if (
+      !opened.isFile() ||
+      opened.dev !== linked.dev ||
+      opened.ino !== linked.ino ||
+      !descriptorIsAt(io, fd, path)
+    ) {
       return { unavailable: 'unreadable' }
     }
     return readBounded(io, fd)
