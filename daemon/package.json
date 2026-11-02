@@ -7,7 +7,7 @@
     "./*": "./src/*/index.ts"
   },
   "dependencies": {
-    "@agent-flow/core": "*",
+    "@agent-flow/core": "file:../core",
     "zod": "^4.4.3"
   }
 }

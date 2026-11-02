@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "dependencies": {
-    "@agent-flow/core": "*",
-    "@agent-flow/daemon": "*"
+    "@agent-flow/core": "file:../core",
+    "@agent-flow/daemon": "file:../daemon"
   },
   "devDependencies": {
     "@getpaseo/client": "0.11.4",
