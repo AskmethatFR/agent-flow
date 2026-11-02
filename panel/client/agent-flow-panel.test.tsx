@@ -2,13 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act } from 'react-test-renderer'
 import { renderPanel } from './testing/render-panel.tsx'
 
-const step = (id: string, title: string, status = 'todo') => ({
+const step = (id: string, title: string, status = 'todo', timeSpent: { milliseconds: number; label: string } | null = null) => ({
   id,
   title,
   role: 'dev-a',
   status,
   origin: 'planned',
-  timeSpent: null,
+  timeSpent,
   decisions: [],
 })
 
@@ -320,6 +320,76 @@ describe('AgentFlowPanel theme and layout', () => {
   it('keeps a long step title from hiding the real status', async () => {
     const panel = await renderPanel(async () => snapshotReply({ steps: [step('s1', 'z'.repeat(300), 'done')] }))
     expect(panel.texts()).toContain(`${'z'.repeat(199)}… (done)`)
+    await panel.unmount()
+  })
+})
+
+describe('AgentFlowPanel time spent', () => {
+  const inProgress = step('s1', 'Implement', 'in_progress', { milliseconds: 38 * 60_000, label: '38 min' })
+
+  it('shows the time label of the step in progress and marks it as current in the accent colour', async () => {
+    const panel = await renderPanel(async () => snapshotReply({ steps: [inProgress], currentStepId: 's1' }))
+
+    expect(panel.texts()).toEqual(['#42', 'Add login', 'Implement (in_progress)', '38 min', 'Current'])
+    expect(panel.styleOf('Current')?.color).toBe('#08f')
+    expect(panel.styleOf('38 min')?.color).toBe('#fff')
+    await panel.unmount()
+  })
+
+  it('marks no step as current when the snapshot names none', async () => {
+    const panel = await renderPanel(async () => snapshotReply({ steps: [inProgress], currentStepId: null }))
+
+    expect(panel.texts()).not.toContain('Current')
+    await panel.unmount()
+  })
+
+  it('marks only the step the snapshot names as current', async () => {
+    const steps = [step('s1', 'First', 'in_progress', { milliseconds: 0, label: '< 1 min' }), step('s2', 'Second', 'in_progress', { milliseconds: 0, label: '< 1 min' })]
+    const panel = await renderPanel(async () => snapshotReply({ steps, currentStepId: 's2' }))
+
+    const texts = panel.texts()
+    expect(texts.filter((text) => text === 'Current')).toHaveLength(1)
+    expect(texts.indexOf('Current')).toBeGreaterThan(texts.indexOf('Second (in_progress)'))
+    await panel.unmount()
+  })
+
+  it('shows the total duration of a done step and no current marker', async () => {
+    const done = step('s1', 'Implement', 'done', { milliseconds: 75 * 60_000, label: '1 h 15 min' })
+    const panel = await renderPanel(async () => snapshotReply({ steps: [done], currentStepId: null }))
+
+    expect(panel.texts()).toEqual(['#42', 'Add login', 'Implement (done)', '1 h 15 min'])
+    await panel.unmount()
+  })
+
+  it('shows no time for a step that is not started', async () => {
+    const panel = await renderPanel(async () => snapshotReply({ steps: [step('s1', 'Implement')] }))
+
+    expect(panel.texts()).toEqual(['#42', 'Add login', 'Implement (todo)'])
+    await panel.unmount()
+  })
+
+  it.each([
+    [{ milliseconds: 60_000, label: '38 min' }, '38 min'],
+    [{ milliseconds: 0, label: 'about 2 weeks' }, 'about 2 weeks'],
+  ])('renders the label %j verbatim, whatever the milliseconds say', async (timeSpent, shown) => {
+    const panel = await renderPanel(async () => snapshotReply({ steps: [step('s1', 'Implement', 'done', timeSpent)] }))
+
+    expect(panel.texts()).toContain(shown)
+    await panel.unmount()
+  })
+
+  it('shows no estimate, budget or percentage', async () => {
+    const panel = await renderPanel(async () => snapshotReply({ steps: [inProgress], currentStepId: 's1' }))
+
+    expect(panel.texts().filter((text) => /estimate|budget|%/i.test(text))).toEqual([])
+    await panel.unmount()
+  })
+
+  it('strips control characters from the label and bounds its length', async () => {
+    const hostile = step('s1', 'Implement', 'done', { milliseconds: 0, label: `\u{202E}${'9'.repeat(300)}` })
+    const panel = await renderPanel(async () => snapshotReply({ steps: [hostile] }))
+
+    expect(panel.texts()).toContain(`${'9'.repeat(199)}…`)
     await panel.unmount()
   })
 })

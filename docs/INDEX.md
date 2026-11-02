@@ -64,3 +64,4 @@
 - `features/phase-1/plan-writer.feature` — #34 Plan writer: step start/finish written to .agent-flow/plan.json, outside targets refused (S1-S5)
 - `features/phase-2/snapshot-steps.feature` — #38 Core snapshot: steps with time spent and current step (S1-S5)
 - `features/phase-2/snapshot-decisions.feature` — #39 Core snapshot: decisions grouped by step, malformed line reported (S1-S3)
+- `features/phase-2/time-spent.feature` — #19 Plan rail: time spent per step and the current step marked (S1-S3)
