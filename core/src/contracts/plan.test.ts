@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import planSchema from '../../../schemas/plan.schema.json' with { type: 'json' }
+import planSchema from '../../schemas/plan.schema.json' with { type: 'json' }
 import { validatePlan } from './index'
 
 const validStep = {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import scopeSchema from '../../../schemas/scope.schema.json' with { type: 'json' }
+import scopeSchema from '../../schemas/scope.schema.json' with { type: 'json' }
 import { validateScope } from './index'
 
 const validScope = {

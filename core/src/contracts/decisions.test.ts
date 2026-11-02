@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import decisionsSchema from '../../../schemas/decisions.schema.json' with { type: 'json' }
+import decisionsSchema from '../../schemas/decisions.schema.json' with { type: 'json' }
 import { readDecisions, serializeDecision, validateDecisions } from './index'
 
 const validDecision = {
