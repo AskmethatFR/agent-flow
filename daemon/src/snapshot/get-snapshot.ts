@@ -38,18 +38,28 @@ const realPathOf = (io: ReadIo, path: string): string | null => {
   }
 }
 
+type Lookup = { readonly reading: WorkspaceReading | null | undefined }
+
+const lookupOf = async (
+  workspaces: WorkspaceSource,
+  workspaceId: string,
+): Promise<Lookup | null> => {
+  try {
+    return { reading: await workspaces.ref(workspaceId).refresh() }
+  } catch {
+    return null
+  }
+}
+
 export const createGetSnapshot =
   ({ io, now }: GetSnapshotDeps) =>
   async (request: unknown, workspaces: WorkspaceSource): Promise<SnapshotReply> => {
     const parsed = input.safeParse(request)
     if (!parsed.success) return refused
-    let reading: WorkspaceReading | null
-    try {
-      reading = await workspaces.ref(parsed.data.workspaceId).refresh()
-    } catch {
-      return refused
-    }
-    const worktreeRoot = worktreeRootOf(reading)
+    const { workspaceId } = parsed.data
+    const found = await lookupOf(workspaces, workspaceId)
+    if (found === null) return refused
+    const worktreeRoot = worktreeRootOf(found.reading)
     if (worktreeRoot === null) return refused
     const realWorktree = realPathOf(io, worktreeRoot)
     if (realWorktree === null) return refused
