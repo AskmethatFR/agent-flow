@@ -19,6 +19,7 @@ const Body = ({ state, theme }: { state: PanelState; theme: PluginWorkspacePanel
         snapshot={state.reply.snapshot}
         textColor={theme.colors.foreground}
         errorColor={theme.colors.statusDanger}
+        accentColor={theme.colors.accent}
       />
     )
   }
