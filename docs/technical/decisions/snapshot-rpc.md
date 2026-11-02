@@ -40,7 +40,7 @@ Corrected here, not edited there (closed records):
 | Concern | Decision | Rationale |
 |---|---|---|
 | Handle | the panel names a worktree by its Paseo `workspaceId`; no path crosses the RPC | the panel already holds `workspaceId`; `host-adapter-boundary.md:129`, `agent-state.md:168` |
-| Resolution | `workspaces.ref(id).refresh()` → `project.checkout.worktreeRoot`. The root must be an absolute string, then `realpath` (`daemon/src/snapshot/get-snapshot.ts:28-51`) | the host's own registry is the known set, so admission needs no client-side comparison |
+| Resolution | `workspaces.ref(id).refresh()` → `project.checkout.worktreeRoot`. The root must be an absolute string, then `realpath` (`daemon/src/snapshot/get-snapshot.ts:28-65`) | the host's own registry is the known set, so admission needs no client-side comparison |
 | Port | structural `WorkspaceSource` (`get-snapshot.ts:14-16`); `panel/server/snapshot.ts:6` passes `context.paseo.workspaces`, and the typecheck proves it is assignable | `daemon` has no Paseo import (`daemon/src/snapshot/boundary.test.ts:13` allows only relative, `node:*`, `@agent-flow/core/{snapshot,contracts}`, `zod`); the Paseo coupling is one line; pattern from `agent-state.md:63` |
 | Leakage | only `worktreeRoot` is read from the descriptor; no path, descriptor field or error text reaches the reply | `host-adapter-boundary.md:127`, `:129` |
 
@@ -51,27 +51,27 @@ Corrected here, not edited there (closed records):
 | Name | `get-snapshot` (`:29`) | the SDK requires `/^[a-z][a-z0-9._-]*$/` (`@getpaseo/plugin` 0.11.4 `dist/rpc.js:1`), which the issue's `getSnapshot` fails; the human ruled to keep `get-snapshot` |
 | Input | `z.strictObject({ workspaceId })`, 1-256 chars (`:30`) | Paseo parses it before the handler runs (`api-version.md:109-110`); unknown keys are refused |
 | Reply | `{kind:'snapshot', snapshot} \| {kind:'refused', reason:'unknown-worktree'}` (`:31-34`), returned and never thrown | a throw is an opaque rejection on the client and risks raw error text (`host-adapter-boundary.md:127`) |
-| One refusal reason | a bad input, a null reading, no project, a null or relative root, an unresolvable root and a rejected `refresh()` all give `unknown-worktree` (`get-snapshot.ts:55-61`) | the panel shows the same thing for each; a distinct `host-error` is #41's |
+| One refusal reason | a bad input, a null reading, no project, a null or relative root, an unresolvable root and a rejected `refresh()` all give `unknown-worktree` (`get-snapshot.ts:58-65`) | the panel shows the same thing for each; a distinct `host-error` is #41's |
 | Snapshot schema | `SnapshotSchema` mirrors core's `Snapshot` field for field (`:4-26`); `panel/shared/snapshot-rpc.test.ts:36-39` pins type equality | a later additive field (#39, #40) fails the typecheck until the wire follows it (`snapshot-contract.md:38`) |
-| Freshness | no push, no watcher, no cache: the panel polls, and every call re-reads the file (`get-snapshot.ts:62`) | the writer replaces by rename (`plan-writer-confinement.md:58`); push stays with #21 |
+| Freshness | no push, no watcher, no cache: the panel polls, and every call re-reads the file (`get-snapshot.ts:66`) | the writer replaces by rename (`plan-writer-confinement.md:58`); push stays with #21 |
 | Clock | `now` injected, bound to `new Date()` (`daemon/src/snapshot/index.ts:8`) | host clock (`host-adapter-boundary.md:85`) |
 
 ### Reader confinement chain (`daemon/src/snapshot/read-agent-flow-file.ts`)
 
 | # | Step | Refuses | Anchor |
 |---|---|---|---|
-| 1 | `<realWorktree>/.agent-flow` must `lstat` as a directory, and its `realpath` must equal that path | a symlinked or non-directory `.agent-flow`, a linked ancestor | `:55` |
-| 2 | open `O_RDONLY \| O_NOFOLLOW \| O_NONBLOCK` | a linked `plan.json` (ELOOP); a FIFO without hanging | `:33`, `:58` |
-| 3 | `fstat` must be a regular file, and its dev/ino must equal `lstat(path)` dev/ino | a FIFO or directory; an entry swapped between open and lstat | `:59-64` |
-| 4 | `readlink('/proc/self/fd/<fd>')` must equal the path. It is skipped **only** when `lstat('/proc/self/fd')` fails with ENOENT; any other probe error runs the re-check, which then fails closed | a descriptor reached through an `.agent-flow` swapped after step 1 | `:14-30`, `:65` |
-| 5 | read at most `4 × MAX_TEXT_LENGTH + 1` bytes from the descriptor | oversize, including a file that grew after open | `:32`, `:35-44` |
-| 6 | the descriptor is closed in `finally` | a leaked descriptor | `:72-77` |
+| 1 | `<realWorktree>/.agent-flow` must `lstat` as a directory, and its `realpath` must equal that path | a symlinked or non-directory `.agent-flow`, a linked ancestor | `:60` |
+| 2 | open `O_RDONLY \| O_NOFOLLOW \| O_NONBLOCK` | a linked `plan.json` (ELOOP); a FIFO without hanging | `:33`, `:63` |
+| 3 | `fstat` must be a regular file with `nlink` 1, and its dev/ino must equal `lstat(path)` dev/ino | a FIFO or directory; an entry swapped between open and lstat; a hard-linked `plan.json`. The `nlink` refusal is permanent: a plan created by `cp -al` or `rsync --link-dest` always reads `unreadable`, while git checkout and the writer's rename keep `nlink` at 1 | `:64-74` |
+| 4 | `readlink('/proc/self/fd/<fd>')` must equal the path. It is skipped **only** when `lstat('/proc/self/fd')` fails with ENOENT; any other probe error runs the re-check, which then fails closed | a descriptor reached through an `.agent-flow` swapped after step 1 | `:14-30`, `:71` |
+| 5 | read in 64 KiB chunks from the descriptor and refuse once the total passes `4 × MAX_TEXT_LENGTH`; memory stays under the cap plus one chunk | oversize, including a file that grew after open | `:32`, `:35`, `:37-49` |
+| 6 | the descriptor is closed in `finally` | a leaked descriptor | `:78-84` |
 
 | Outcome | Code |
 |---|---|
-| ENOENT on the directory or the file | `missing` (`:71`) |
-| more than the cap | `too-large` (`:43`) |
-| any other refusal or error | `unreadable` (`:56`, `:67`, `:71`) |
+| ENOENT on the directory or the file | `missing` (`:77`) |
+| more than the cap | `too-large` (`:45`) |
+| any other refusal or error | `unreadable` (`:61`, `:73`, `:77`) |
 
 ### Packaging (verified live on Paseo 0.11.4, 2026-11-02)
 

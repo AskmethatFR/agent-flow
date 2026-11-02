@@ -167,7 +167,7 @@ describe('getSnapshot', () => {
 
     it('refuses when the host resolves undefined', async () => {
       const source: WorkspaceSource = {
-        ref: () => ({ refresh: async () => undefined as unknown as null }),
+        ref: () => ({ refresh: async () => undefined }),
       }
       expect(await getSnapshot({ workspaceId: 'w1' }, source)).toEqual(refused)
     })

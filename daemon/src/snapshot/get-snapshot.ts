@@ -12,7 +12,7 @@ export type WorkspaceReading = {
 }
 
 export type WorkspaceSource = {
-  ref(workspaceId: string): { refresh(): Promise<WorkspaceReading | null> }
+  ref(workspaceId: string): { refresh(): Promise<WorkspaceReading | null | undefined> }
 }
 
 export type SnapshotReply =
