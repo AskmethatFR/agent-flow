@@ -3,7 +3,7 @@ id: "host-adapter-boundary"
 type: "technical"
 owner: "architect"
 status: "current"
-updated: "2026-10-27"
+updated: "2026-11-02"
 relations:
   depends-on: ["workspace-layout-core-boundary", "paseo-api-version", "paseo-agent-state", "paseo-messaging"]
   related: ["capture-events", "scope-origin"]
@@ -138,6 +138,6 @@ Outcome rule: either answer fills the Paseo cell; the floor and `core` stay unch
 ## Open questions / Gaps
 
 - [x] #27: message delivery, the five points above — closed by [[paseo-messaging]] (belief holds): points 1-4 as recorded; point 5 narrower on content (no answer text in the message), not on origin: its one worktree value, the request id, comes from agent-writable `requests.jsonl` and is inserted only after the #24 schema validation (`docs/technical/paseo/messaging.md:77`).
-- [ ] #18: worktree addressing of the snapshot RPC versus `docs/technical/paseo/agent-state.md:168`.
-- [ ] #18: whether Paseo's server bundle resolves TypeScript-source `core` (`docs/technical/paseo/api-version.md:159`).
+- [x] #18: worktree addressing of the snapshot RPC versus `docs/technical/paseo/agent-state.md:168` — closed by [[snapshot-rpc]]: the panel sends a Paseo `workspaceId`; no path crosses the RPC.
+- [x] #18: whether Paseo's server bundle resolves TypeScript-source `core` (`docs/technical/paseo/api-version.md:159`) — closed by [[snapshot-rpc]]: yes, as a linked root, provided every file it reaches by relative path stays inside that root.
 - [ ] Epic #8 story 1: TypeScript capability interfaces derived from the AC2 table.

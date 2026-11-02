@@ -5,8 +5,9 @@
 | ID | Title | Status | Updated | Links | Path |
 |---|---|---|---|---|---|
 | `plan-writer-confinement` | Plan writer: confinement chain, atomic replace, reader contract | current | 2026-10-31 | [[host-adapter-boundary]], [[workspace-layout-core-boundary]], [[capture-events]], [[snapshot-contract]] | `docs/technical/decisions/plan-writer-confinement.md` |
-| `request-scope-contracts` | Frozen requests/responses/scope contracts: id bound, glob dialect, path rules | current | 2026-10-31 | [[decisions-jsonl-schema]], [[scope-origin]], [[paseo-messaging]], [[host-adapter-boundary]], [[workspace-layout-core-boundary]] | `docs/technical/decisions/request-scope-contracts.md` |
-| `snapshot-contract` | Core snapshot contract: shape, failure codes, instant rule | current | 2026-10-28 | [[host-adapter-boundary]], [[workspace-layout-core-boundary]], [[decisions-jsonl-schema]], [[feature-catalog]] | `docs/technical/decisions/snapshot-contract.md` |
+| `request-scope-contracts` | Frozen requests/responses/scope contracts: id bound, glob dialect, path rules | current | 2026-11-02 | [[decisions-jsonl-schema]], [[scope-origin]], [[paseo-messaging]], [[host-adapter-boundary]], [[workspace-layout-core-boundary]] | `docs/technical/decisions/request-scope-contracts.md` |
+| `snapshot-contract` | Core snapshot contract: shape, failure codes, instant rule | current | 2026-11-02 | [[host-adapter-boundary]], [[workspace-layout-core-boundary]], [[decisions-jsonl-schema]], [[feature-catalog]] | `docs/technical/decisions/snapshot-contract.md` |
+| `snapshot-rpc` | Snapshot RPC: workspaceId addressing, wire, reader chain, packaging | current | 2026-11-02 | [[host-adapter-boundary]], [[snapshot-contract]], [[paseo-api-version]], [[plan-writer-confinement]], [[workspace-layout-core-boundary]], [[paseo-agent-state]] | `docs/technical/decisions/snapshot-rpc.md` |
 
 - `features/phase-0/plan-contract.feature` — #23 Frozen contract: plan.json accepts a valid sample, rejects an unknown step status (S1, S2)
 - `features/phase-0/decisions-contract.feature` — #32 Frozen contract: decisions.jsonl accepts a valid sample, reports a malformed line by number (S1, S2)
@@ -25,7 +26,7 @@
 
 | ID | Title | Status | Updated | Links | Path |
 |---|---|---|---|---|---|
-| `paseo-api-version` | Paseo version, plugin API, permission model, plugin root/entries (#18, #42) | current | 2026-10-26 | — | `docs/technical/paseo/api-version.md` |
+| `paseo-api-version` | Paseo version, plugin API, permission model, plugin root/entries (#18, #42) | current | 2026-11-02 | — | `docs/technical/paseo/api-version.md` |
 | `paseo-agent-state` | Reading agent state through the Paseo SDK: calls, statuses, permissions, agent identification (#26) | current | 2026-10-27 | `paseo-api-version`, `capture-events` | `docs/technical/paseo/agent-state.md` |
 | `paseo-messaging` | Messaging an agent via the Paseo SDK, how a blocked agent waits (#27) | current | 2026-10-27 | `paseo-api-version`, `paseo-agent-state`, `host-adapter-boundary` | `docs/technical/paseo/messaging.md` |
 | `paseo-mobile` | Paseo mobile render: desktop/mobile differences, kill-criterion verdict (#31) | current | 2026-10-26 | `paseo-api-version`, `paseo-agent-state` | `docs/technical/paseo/mobile.md` |
@@ -40,8 +41,8 @@
 | ID | Title | Status | Updated | Links | Path |
 |---|---|---|---|---|---|
 | `ci-pull-request-posture` | CI posture on pull requests (`ci`, `bdd`) | current | 2026-10-26 | [[workspace-layout-core-boundary]] | `docs/technical/decisions/ci-pull-request-posture.md` |
-| `host-adapter-boundary` | Host-adapter boundary between core and each host (plan.md Q7) | current | 2026-10-27 | [[workspace-layout-core-boundary]], [[paseo-api-version]], [[paseo-agent-state]], [[paseo-messaging]], [[capture-events]], [[scope-origin]] | `docs/technical/decisions/host-adapter-boundary.md` |
-| `workspace-layout-core-boundary` | Workspace layout and the core import boundary | current | 2026-10-26 | [[capture-events]] | `docs/technical/decisions/workspace-layout-core-boundary.md` |
+| `host-adapter-boundary` | Host-adapter boundary between core and each host (plan.md Q7) | current | 2026-11-02 | [[workspace-layout-core-boundary]], [[paseo-api-version]], [[paseo-agent-state]], [[paseo-messaging]], [[capture-events]], [[scope-origin]] | `docs/technical/decisions/host-adapter-boundary.md` |
+| `workspace-layout-core-boundary` | Workspace layout and the core import boundary | current | 2026-11-02 | [[capture-events]] | `docs/technical/decisions/workspace-layout-core-boundary.md` |
 
 ## T5
 

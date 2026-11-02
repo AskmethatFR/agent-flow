@@ -3,7 +3,7 @@ id: "request-scope-contracts"
 type: "technical"
 owner: "architect"
 status: "current"
-updated: "2026-10-31"
+updated: "2026-11-02"
 relations:
   depends-on: ["decisions-jsonl-schema", "scope-origin"]
   related: ["paseo-messaging", "host-adapter-boundary", "workspace-layout-core-boundary"]
@@ -36,7 +36,7 @@ Settled here and not re-edited there (closed records): the glob dialect left ope
 | Concern | Decision | Rationale |
 |---|---|---|
 | Versioning | version in `$id` only, `…:1`; a change is a new `$id` | [[decisions-jsonl-schema]] precedent |
-| Field sets | the `docs/plan.md:110` and `:114` drafts, verbatim; strings `minLength: 1`; `additionalProperties: false`; field sets live in `schemas/*.schema.json`, not restated here | writers and readers key on the draft names |
+| Field sets | the `docs/plan.md:110` and `:114` drafts, verbatim; strings `minLength: 1`; `additionalProperties: false`; field sets live in `core/schemas/*.schema.json`, not restated here | writers and readers key on the draft names |
 | Request `type` | closed enum of the four deviation/question types (`docs/plan.md:117`) | a new type is a `request:2` |
 | `blocking` | required boolean | Phase 4 stops on it (`plan.md:127`); optional would mean silently non-blocking |
 | Id bound | request and response `id` match `^[A-Za-z0-9._:-]{1,64}$`, expressed as a schema `pattern` | the id becomes the wake `messageId` ([[paseo-messaging]]); a bound only in code would leave the frozen schema silent |
