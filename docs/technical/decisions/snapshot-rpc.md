@@ -90,8 +90,8 @@ Corrected here, not edited there (closed records):
 | (b) A writer's rename that lands between the reader's lstat and its readlink yields a one-off `unreadable` for a valid write; the next poll succeeds. This qualifies `plan-writer-confinement.md:58`: a reader sees the old or the new whole file, **or** one transient `unreadable` | polling absorbs it; a retry would widen the race analysis | none |
 | (c) `decisions.jsonl` is not read | core ignores it until #39 (`snapshot-contract.md:41`) | #39 |
 | (d) No distinct `host-error` refusal reason | no hypothesis here tells "host down" from "unknown"; additive enum member later | #41 |
-| (e) The reader uses synchronous `node:fs` calls inside the long-lived Paseo daemon; a hung FUSE or NFS worktree can block the event loop. `O_NONBLOCK` does not cover regular-file reads | the same-uid actor able to mount one can already kill the daemon; an `fs/promises` port keeps the descriptor checks but rewrites the reader and its io double. Proposed by the Developer, awaiting human acknowledgement | none |
-| (f) The input schema (`workspaceId`, 1..256) is written twice: in `daemon/src/snapshot/get-snapshot.ts` and in `panel/shared/snapshot-rpc.ts` | `panel/shared` is bundled for the client and must not import the daemon (`node:fs`); each side tests the same bounds | none |
+| (e) The reader uses synchronous `node:fs` calls inside the long-lived Paseo daemon; a hung FUSE or NFS worktree can block the event loop. `O_NONBLOCK` does not cover regular-file reads | the same-uid actor able to mount one can already kill the daemon; an `fs/promises` port keeps the descriptor checks but rewrites the reader and its io double. accepted by the human on 2026-11-02 | none |
+| (f) The input schema (`workspaceId`, 1..256) is written twice: in `daemon/src/snapshot/get-snapshot.ts` and in `panel/shared/snapshot-rpc.ts` | `panel/shared` is bundled for the client and must not import the daemon (`node:fs`); each side tests the same bounds; accepted by the human on 2026-11-02 | none |
 
 ### Considered and rejected
 
