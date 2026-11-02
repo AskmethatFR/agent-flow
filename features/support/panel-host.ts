@@ -16,6 +16,7 @@ export type PanelWorld = {
   texts: string[]
   expectedStep: string
   expectedField: string
+  now?: Date
 }
 
 const workspaceId = 'w1'
@@ -57,7 +58,8 @@ const hostInvoke = (world: PanelWorld) => {
 }
 
 export const openPanel = async (world: PanelWorld): Promise<void> => {
-  mock.timers.enable({ apis: ['setTimeout'] })
+  if (world.now === undefined) mock.timers.enable({ apis: ['setTimeout'] })
+  else mock.timers.enable({ apis: ['setTimeout', 'Date'], now: world.now })
   world.panel = await renderPanel(hostInvoke(world), { workspaceId })
   world.texts = world.panel.texts()
 }

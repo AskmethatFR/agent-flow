@@ -385,7 +385,7 @@ describe('AgentFlowPanel time spent', () => {
   })
 
   it('strips control characters from the label and bounds its length', async () => {
-    const hostile = step('s1', 'Implement', 'done', { milliseconds: 0, label: `‮${'9'.repeat(300)}` })
+    const hostile = step('s1', 'Implement', 'done', { milliseconds: 0, label: `\u{202E}${'9'.repeat(300)}` })
     const panel = await renderPanel(async () => snapshotReply({ steps: [hostile] }))
 
     expect(panel.texts()).toContain(`${'9'.repeat(199)}…`)

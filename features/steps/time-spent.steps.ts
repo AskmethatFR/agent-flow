@@ -17,7 +17,8 @@ const rowOf = (world: PanelWorld): string => {
 }
 
 Given('a step started 38 minutes ago and is still in progress', function (this: PanelWorld) {
-  const startedAt = new Date(Date.now() - 38 * minute - minute / 2).toISOString()
+  this.now = new Date('2026-11-02T12:00:00Z')
+  const startedAt = new Date(this.now.getTime() - 38 * minute).toISOString()
   planWith(this, stepOf('s1', stepTitle, 'in_progress', startedAt))
 })
 
