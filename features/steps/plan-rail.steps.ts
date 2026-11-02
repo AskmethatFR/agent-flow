@@ -1,56 +1,19 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { mock } from 'node:test'
 import { act } from 'react-test-renderer'
-import { After, Given, Then, When } from '@cucumber/cucumber'
-import type { PluginServerContext } from '@getpaseo/plugin/server'
-import contribute from '../../panel/index.server.ts'
+import { Given, Then, When } from '@cucumber/cucumber'
 import { renderPanel } from '../../panel/client/testing/render-panel.tsx'
-import type { RenderedPanel } from '../../panel/client/testing/render-panel.tsx'
+import { hostInvoke, stepOf, writePlan } from '../support/panel-host.ts'
+import type { PanelWorld } from '../support/panel-host.ts'
 
-type Handler = (input: unknown, context: { paseo: { workspaces: unknown } }) => Promise<unknown>
-
-type PlanRailWorld = {
-  root: string
-  panel: RenderedPanel
-  texts: string[]
+type PlanRailWorld = PanelWorld & {
   expectedStep: string
   expectedField: string
 }
 
 const workspaceId = 'w1'
-
-const stepOf = (id: string, title: string, status = 'todo'): Record<string, unknown> => ({
-  id,
-  title,
-  role: 'dev-a',
-  status,
-  origin: 'planned',
-  startedAt: null,
-  endedAt: null,
-})
-
-const writePlan = (world: PlanRailWorld, plan: Record<string, unknown>): void => {
-  world.root = realpathSync(mkdtempSync(join(tmpdir(), 'plan-rail-')))
-  mkdirSync(join(world.root, '.agent-flow'))
-  writeFileSync(join(world.root, '.agent-flow', 'plan.json'), JSON.stringify(plan))
-}
-
-const hostInvoke = (world: PlanRailWorld) => {
-  let handler: Handler | undefined
-  const server = {
-    handle: (_contract: unknown, registered: Handler) => {
-      handler = registered
-    },
-  } as unknown as PluginServerContext
-  contribute(server)
-  const workspaces = {
-    ref: () => ({ refresh: async () => ({ project: { checkout: { worktreeRoot: world.root } } }) }),
-  }
-  return async (_method: string, input: unknown) => handler!(input, { paseo: { workspaces } })
-}
 
 Given(
   'the current worktree works on the issue {string} with the steps {string}, {string} and {string} in that order',
@@ -114,10 +77,4 @@ Then('the panel stays usable', async function (this: PlanRailWorld) {
   const texts = this.panel.texts()
   assert.ok(texts.some((text) => text.startsWith('Open PR')), `plan not shown after the next poll: ${JSON.stringify(texts)}`)
   assert.ok(!texts.includes('Snapshot errors'))
-})
-
-After(async function (this: PlanRailWorld) {
-  mock.timers.reset()
-  await this.panel?.unmount()
-  if (this.root) rmSync(this.root, { recursive: true, force: true })
 })

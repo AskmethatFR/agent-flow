@@ -2,13 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act } from 'react-test-renderer'
 import { renderPanel } from './testing/render-panel.tsx'
 
-const step = (id: string, title: string, status = 'todo') => ({
+const step = (
+  id: string,
+  title: string,
+  status = 'todo',
+  timeSpent: { milliseconds: number; label: string } | null = null,
+) => ({
   id,
   title,
   role: 'dev-a',
   status,
   origin: 'planned',
-  timeSpent: null,
+  timeSpent,
 })
 
 const snapshotReply = (overrides: Record<string, unknown> = {}) => ({
@@ -319,6 +324,88 @@ describe('AgentFlowPanel theme and layout', () => {
   it('keeps a long step title from hiding the real status', async () => {
     const panel = await renderPanel(async () => snapshotReply({ steps: [step('s1', 'z'.repeat(300), 'done')] }))
     expect(panel.texts()).toContain(`${'z'.repeat(199)}… (done)`)
+    await panel.unmount()
+  })
+})
+
+describe('AgentFlowPanel time spent', () => {
+  it('shows the time label and marks the in-progress current step', async () => {
+    const steps = [step('s1', 'Implement', 'in_progress', { milliseconds: 2_280_000, label: '38 min' })]
+    const panel = await renderPanel(async () => snapshotReply({ steps, currentStepId: 's1' }))
+
+    expect(panel.texts()).toEqual(['#42', 'Add login', 'Implement (in_progress)', '38 min', 'Current'])
+    expect(panel.styleOf('38 min')).toEqual({ color: '#fff' })
+    expect(panel.styleOf('Current')).toEqual({ color: '#08f' })
+    await panel.unmount()
+  })
+
+  it('marks no step current when currentStepId is null', async () => {
+    const steps = [step('s1', 'Implement', 'in_progress', { milliseconds: 60_000, label: '1 min' })]
+    const panel = await renderPanel(async () => snapshotReply({ steps, currentStepId: null }))
+
+    expect(panel.texts()).not.toContain('Current')
+    await panel.unmount()
+  })
+
+  it('marks only the row of the step that currentStepId names', async () => {
+    const steps = [
+      step('s1', 'Write tests', 'done', { milliseconds: 0, label: '5 min' }),
+      step('s2', 'Implement', 'in_progress', { milliseconds: 0, label: '7 min' }),
+    ]
+    const panel = await renderPanel(async () => snapshotReply({ steps, currentStepId: 's2' }))
+
+    expect(panel.texts().slice(2)).toEqual(['Write tests (done)', '5 min', 'Implement (in_progress)', '7 min', 'Current'])
+    await panel.unmount()
+  })
+
+  it('shows the total duration of a done step without marking it current', async () => {
+    const steps = [step('s1', 'Implement', 'done', { milliseconds: 4_500_000, label: '1 h 15 min' })]
+    const panel = await renderPanel(async () => snapshotReply({ steps, currentStepId: null }))
+
+    expect(panel.texts().slice(2)).toEqual(['Implement (done)', '1 h 15 min'])
+    await panel.unmount()
+  })
+
+  it('shows no time for a todo step', async () => {
+    const steps = [step('s1', 'Implement', 'todo', null)]
+    const panel = await renderPanel(async () => snapshotReply({ steps }))
+
+    expect(panel.texts().slice(2)).toEqual(['Implement (todo)'])
+    await panel.unmount()
+  })
+
+  it('renders the label verbatim, whatever the milliseconds say', async () => {
+    const steps = [
+      step('s1', 'A', 'done', { milliseconds: 60_000, label: '38 min' }),
+      step('s2', 'B', 'done', { milliseconds: 1, label: 'about 2 weeks' }),
+    ]
+    const panel = await renderPanel(async () => snapshotReply({ steps }))
+
+    const texts = panel.texts()
+    expect(texts).toContain('38 min')
+    expect(texts).toContain('about 2 weeks')
+    expect(texts).not.toContain('1 min')
+    await panel.unmount()
+  })
+
+  it('shows no estimate, budget or percentage', async () => {
+    const steps = [step('s1', 'Implement', 'in_progress', { milliseconds: 2_280_000, label: '38 min' })]
+    const panel = await renderPanel(async () => snapshotReply({ steps, currentStepId: 's1' }))
+
+    expect(panel.texts().filter((text) => /estimate|budget|%/i.test(text))).toEqual([])
+    await panel.unmount()
+  })
+
+  it('strips and bounds a hostile label like any agent text', async () => {
+    const steps = [
+      step('s1', 'A', 'done', { milliseconds: 0, label: '\u202e38\u0007 min' }),
+      step('s2', 'B', 'done', { milliseconds: 0, label: 'y'.repeat(300) }),
+    ]
+    const panel = await renderPanel(async () => snapshotReply({ steps }))
+
+    const texts = panel.texts()
+    expect(texts).toContain('38 min')
+    expect(texts).toContain(`${'y'.repeat(199)}\u2026`)
     await panel.unmount()
   })
 })
