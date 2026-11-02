@@ -32,15 +32,20 @@ const descriptorMoved = (io: ReadIo, fd: number, path: string): boolean => {
 const readLimit = 4 * MAX_TEXT_LENGTH
 const openFlags = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK
 
+const chunkSize = 64 * 1024
+
 const readBounded = (io: ReadIo, fd: number): AgentFlowFile => {
-  const buffer = Buffer.allocUnsafe(readLimit + 1)
+  const chunks: Buffer[] = []
   let total = 0
   for (;;) {
-    const count = io.readSync(fd, buffer, total, buffer.length - total, null)
+    const chunk = Buffer.allocUnsafe(chunkSize)
+    const count = io.readSync(fd, chunk, 0, chunkSize, null)
     if (count === 0) break
     total += count
+    if (total > readLimit) return { unavailable: 'too-large' }
+    chunks.push(chunk.subarray(0, count))
   }
-  return total > readLimit ? { unavailable: 'too-large' } : buffer.toString('utf8', 0, total)
+  return Buffer.concat(chunks).toString('utf8')
 }
 
 export const readAgentFlowFile = (
@@ -60,6 +65,7 @@ export const readAgentFlowFile = (
     const linked = io.lstatSync(path)
     if (
       !opened.isFile() ||
+      opened.nlink !== 1 ||
       opened.dev !== linked.dev ||
       opened.ino !== linked.ino ||
       descriptorMoved(io, fd, path)

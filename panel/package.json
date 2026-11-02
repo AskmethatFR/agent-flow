@@ -5,12 +5,12 @@
   "type": "module",
   "dependencies": {
     "@agent-flow/core": "file:../core",
-    "@agent-flow/daemon": "file:../daemon"
+    "@agent-flow/daemon": "file:../daemon",
+    "@getpaseo/plugin": "0.11.4",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@getpaseo/client": "0.11.4",
-    "@getpaseo/plugin": "0.11.4",
-    "@getpaseo/protocol": "0.11.4",
-    "zod": "^4.4.3"
+    "@getpaseo/protocol": "0.11.4"
   }
 }

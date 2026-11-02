@@ -1,5 +1,5 @@
 import * as fs from 'node:fs'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { linkSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
@@ -112,6 +112,26 @@ describe('readAgentFlowFile', () => {
     writeFileSync(join(root, 'elsewhere.json'), 'secret')
     symlinkSync(join(root, 'elsewhere.json'), planPath)
     expect(read()).toEqual({ unavailable: 'unreadable' })
+  })
+
+  it('reports a hard-linked plan.json as unreadable', () => {
+    withPlan('real')
+    linkSync(planPath, join(root, 'second-name'))
+    expect(read()).toEqual({ unavailable: 'unreadable' })
+  })
+
+  it('does not allocate the whole cap for a small file', () => {
+    withPlan('tiny')
+    const sizes: number[] = []
+    const spying: ReadIo = {
+      ...realIo,
+      readSync: ((fd, buffer, offset, length, position) => {
+        sizes.push(length)
+        return fs.readSync(fd, buffer, offset, length, position)
+      }) as ReadIo['readSync'],
+    }
+    expect(read(spying)).toBe('tiny')
+    expect(Math.max(...sizes)).toBeLessThan(cap)
   })
 
   it('reports a directory named plan.json as unreadable', () => {

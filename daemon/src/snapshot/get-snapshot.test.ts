@@ -165,6 +165,13 @@ describe('getSnapshot', () => {
       expect(resolved.filter((path) => !path.includes('af18-worktree'))).toEqual([])
     })
 
+    it('refuses when the host resolves undefined', async () => {
+      const source: WorkspaceSource = {
+        ref: () => ({ refresh: async () => undefined as unknown as null }),
+      }
+      expect(await getSnapshot({ workspaceId: 'w1' }, source)).toEqual(refused)
+    })
+
     it('refuses when ref itself throws', async () => {
       const exploding: WorkspaceSource = {
         ref: () => {

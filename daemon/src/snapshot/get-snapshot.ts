@@ -37,7 +37,7 @@ const readingOf = async (
 }
 
 const worktreeRootOf = (reading: WorkspaceReading | null): string | null => {
-  if (reading === null) return null
+  if (!reading) return null
   const root = reading.project?.checkout.worktreeRoot
   return typeof root === 'string' && isAbsolute(root) ? root : null
 }
