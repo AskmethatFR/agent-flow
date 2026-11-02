@@ -25,8 +25,8 @@ describe('buildSnapshot', () => {
       issue: '#38',
       title: 'Core snapshot',
       steps: [
-        { id: 's1', title: 'Design', role: 'architect', status: 'todo', origin: 'planned', timeSpent: null },
-        { id: 's2', title: 'Build', role: 'dev-a', status: 'todo', origin: 'proposed', timeSpent: null },
+        { id: 's1', title: 'Design', role: 'architect', status: 'todo', origin: 'planned', timeSpent: null, decisions: [] },
+        { id: 's2', title: 'Build', role: 'dev-a', status: 'todo', origin: 'proposed', timeSpent: null, decisions: [] },
       ],
       currentStepId: null,
       errors: [],
@@ -234,15 +234,174 @@ describe('buildSnapshot', () => {
       'issue' | 'title' | 'steps' | 'currentStepId' | 'errors'
     >()
     expectTypeOf<keyof SnapshotStep>().toEqualTypeOf<
-      'id' | 'title' | 'role' | 'status' | 'origin' | 'timeSpent'
+      'id' | 'title' | 'role' | 'status' | 'origin' | 'timeSpent' | 'decisions'
     >()
   })
 
+  const line = (overlay: Record<string, unknown> = {}): string =>
+    JSON.stringify({
+      at: '2026-10-22T10:00:00Z',
+      step: 's1',
+      role: 'dev-a',
+      model: 'm',
+      kind: 'decision',
+      title: 'Use a Map',
+      why: 'safe keys',
+      rejected: ['object'],
+      confidence: 'high',
+      ...overlay,
+    })
+
+  const decisionsOf = (text: string, ...steps: Record<string, unknown>[]) =>
+    buildSnapshot({ plan: planText(...(steps.length === 0 ? [step()] : steps)), decisions: text }, now)
+
+  const mapDecision = {
+    title: 'Use a Map',
+    why: 'safe keys',
+    rejected: ['object'],
+    role: 'dev-a',
+    confidence: 'high',
+  }
+
+  it('gives each step its own decisions with exactly the five fields', () => {
+    const text = [line(), line({ step: 's2', title: 'Other', why: 'w', rejected: [], role: 'dev-b', confidence: 'low' })].join('\n')
+    const snapshot = decisionsOf(text, step(), step({ id: 's2' }))
+    expect(snapshot.errors).toEqual([])
+    expect(snapshot.steps[0]?.decisions).toEqual([mapDecision])
+    expect(snapshot.steps[1]?.decisions).toEqual([
+      { title: 'Other', why: 'w', rejected: [], role: 'dev-b', confidence: 'low' },
+    ])
+  })
+
+  it('keeps file order and only the decisions of the step, whatever interleaving', () => {
+    const text = [
+      line({ title: 'a' }),
+      line({ step: 's2', title: 'x' }),
+      line({ title: 'b' }),
+      line({ step: 's2', title: 'y' }),
+    ].join('\n')
+    const snapshot = decisionsOf(text, step(), step({ id: 's2' }))
+    expect(snapshot.steps[0]?.decisions.map(({ title }) => title)).toEqual(['a', 'b'])
+    expect(snapshot.steps[1]?.decisions.map(({ title }) => title)).toEqual(['x', 'y'])
+  })
+
+  it('gives a step without any decision an empty list', () => {
+    const snapshot = decisionsOf(line(), step(), step({ id: 's2' }))
+    expect(snapshot.steps[1]?.decisions).toEqual([])
+  })
+
+  it('groups the valid lines and reports the malformed one with its line number', () => {
+    const text = [line({ title: 'a' }), line({ title: 'b' }), '{oops', line({ title: 'c' })].join('\n')
+    const snapshot = decisionsOf(text)
+    expect(snapshot.steps[0]?.decisions.map(({ title }) => title)).toEqual(['a', 'b', 'c'])
+    expect(snapshot.errors).toEqual([
+      { file: 'decisions.jsonl', location: 3, field: null, message: 'is not valid JSON' },
+    ])
+  })
+
+  it('names the field of a schema-invalid line and still builds', () => {
+    const snapshot = decisionsOf([line(), line({ confidence: 'certain' })].join('\n'))
+    expect(snapshot.steps[0]?.decisions).toHaveLength(1)
+    expect(snapshot.errors).toEqual([
+      { file: 'decisions.jsonl', location: 2, field: 'confidence', message: 'must be one of high, medium, low' },
+    ])
+  })
+
+  it('copies rejected, defaults an absent one to empty and hides at, kind, model and step', () => {
+    const { rejected: _, ...withoutRejected } = JSON.parse(line()) as Record<string, unknown>
+    const snapshot = decisionsOf([JSON.stringify(withoutRejected), line()].join('\n'))
+    const [first, second] = snapshot.steps[0]?.decisions ?? []
+    expect(first).toEqual({ ...mapDecision, rejected: [] })
+    expect(second).toEqual(mapDecision)
+    expect(Object.keys(second ?? {}).sort()).toEqual(['confidence', 'rejected', 'role', 'title', 'why'])
+  })
+
+  it.each(['decision', 'step_event', 'question', 'deviation'])('counts a %s line as a decision', (kind) => {
+    expect(decisionsOf(line({ kind })).steps[0]?.decisions).toHaveLength(1)
+  })
+
+  it('excludes an orphan decision from every step and reports its line', () => {
+    const snapshot = decisionsOf([line(), line({ step: 'ghost' })].join('\n'))
+    expect(snapshot.steps[0]?.decisions).toHaveLength(1)
+    expect(snapshot.errors).toEqual([
+      { file: 'decisions.jsonl', location: 2, field: 'step', message: 'is not a step of plan.json' },
+    ])
+  })
+
+  it('caps the orphan errors on their own with a marker', () => {
+    const text = Array.from({ length: 101 }, () => line({ step: 'ghost' })).join('\n')
+    const { errors } = decisionsOf(text)
+    expect(errors).toHaveLength(101)
+    expect(errors[99]).toEqual({ file: 'decisions.jsonl', location: 100, field: 'step', message: 'is not a step of plan.json' })
+    expect(errors[100]).toEqual({
+      file: 'decisions.jsonl',
+      location: null,
+      field: null,
+      message: 'too many errors, only the first 100 are shown',
+    })
+  })
+
+  it('caps the orphan errors apart from the read errors', () => {
+    const orphans = Array.from({ length: 101 }, () => line({ step: 'ghost' }))
+    const { errors } = decisionsOf(['{oops', ...orphans].join('\n'))
+    expect(errors).toHaveLength(102)
+    expect(errors[0]).toEqual({ file: 'decisions.jsonl', location: 1, field: null, message: 'is not valid JSON' })
+    expect(errors[100]).toEqual({ file: 'decisions.jsonl', location: 101, field: 'step', message: 'is not a step of plan.json' })
+    expect(errors[101]).toEqual({
+      file: 'decisions.jsonl',
+      location: null,
+      field: null,
+      message: 'too many errors, only the first 100 are shown',
+    })
+  })
+
+  it('lists read errors before orphan errors', () => {
+    const { errors } = decisionsOf([line({ step: 'ghost' }), '{'].join('\n'))
+    expect(errors.map(({ location }) => location)).toEqual([2, 1])
+  })
+
   it.each([
-    ['text that is not JSONL', 'not json'],
-    ['an unavailable file', { unavailable: 'unreadable' }],
-  ] as const)('ignores a decisions file that is %s', (_, decisions) => {
-    const plan = planText(step())
-    expect(buildSnapshot({ plan, decisions }, now)).toEqual(buildSnapshot({ plan }, now))
+    ['absent', undefined],
+    ['missing', { unavailable: 'missing' }],
+  ] as const)('reports nothing when the decisions file is %s', (_, decisions) => {
+    const snapshot = buildSnapshot({ plan: planText(step()), decisions }, now)
+    expect(snapshot.errors).toEqual([])
+    expect(snapshot.steps[0]?.decisions).toEqual([])
+  })
+
+  it.each([
+    ['unreadable', 'cannot be read'],
+    ['too-large', 'exceeds 1048576 characters'],
+  ] as const)('keeps the steps and reports one error when the decisions file is %s', (unavailable, message) => {
+    const snapshot = buildSnapshot({ plan: planText(step()), decisions: { unavailable } }, now)
+    expect(snapshot.steps).toHaveLength(1)
+    expect(snapshot.steps[0]?.decisions).toEqual([])
+    expect(snapshot.errors).toEqual([{ file: 'decisions.jsonl', location: null, field: null, message }])
+  })
+
+  it('reads no decisions when the plan is unusable', () => {
+    const snapshot = buildSnapshot({ plan: '{', decisions: '{' }, now)
+    expect(snapshot.steps).toEqual([])
+    expect(snapshot.errors).toEqual([
+      { file: 'plan.json', location: null, field: null, message: 'is not valid JSON' },
+    ])
+  })
+
+  it('groups under step ids that are Object.prototype names', () => {
+    const text = [line({ step: '__proto__', title: 'p' }), line({ step: 'constructor', title: 'c' })].join('\n')
+    const snapshot = decisionsOf(text, step({ id: '__proto__' }), step({ id: 'constructor' }))
+    expect(snapshot.errors).toEqual([])
+    expect(snapshot.steps[0]?.decisions.map(({ title }) => title)).toEqual(['p'])
+    expect(snapshot.steps[1]?.decisions.map(({ title }) => title)).toEqual(['c'])
+  })
+
+  it('reports an orphan line whose step is an Object.prototype name instead of throwing', () => {
+    const text = [line(), line({ step: 'toString' }), line({ step: '__proto__' })].join('\n')
+    const snapshot = decisionsOf(text)
+    expect(snapshot.steps[0]?.decisions).toEqual([mapDecision])
+    expect(snapshot.errors).toEqual([
+      { file: 'decisions.jsonl', location: 2, field: 'step', message: 'is not a step of plan.json' },
+      { file: 'decisions.jsonl', location: 3, field: 'step', message: 'is not a step of plan.json' },
+    ])
   })
 })

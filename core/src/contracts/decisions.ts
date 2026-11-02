@@ -33,9 +33,22 @@ const contract: JsonlContract = {
   minimumRecordLength: 91,
 }
 
-export const readDecisions = (text: string): ReadDecisionsResult => {
+export type LocatedDecision = { readonly decision: Decision; readonly location: number }
+
+export type ReadLocatedDecisionsResult = {
+  readonly entries: readonly LocatedDecision[]
+  readonly errors: readonly ContractError[]
+}
+
+export const readLocatedDecisions = (text: string): ReadLocatedDecisionsResult => {
   const { records, errors } = readJsonl(contract, text)
-  return { decisions: records as Decision[], errors }
+  const entries = records.map(({ record, location }) => ({ decision: record as Decision, location }))
+  return { entries, errors }
+}
+
+export const readDecisions = (text: string): ReadDecisionsResult => {
+  const { entries, errors } = readLocatedDecisions(text)
+  return { decisions: entries.map(({ decision }) => decision), errors }
 }
 
 export const validateDecisions = (text: string): ValidationResult => validateJsonl(contract, text)

@@ -96,6 +96,7 @@ describe('getSnapshot', () => {
             status: 'in_progress',
             origin: 'planned',
             timeSpent: { label: '1 h', milliseconds: 3_600_000 },
+            decisions: [],
           },
         ],
         currentStepId: 's1',
@@ -144,6 +145,53 @@ describe('getSnapshot', () => {
     const reply = await later({ workspaceId: 'w1' }, sourceOf({ w1: at(worktree) }))
     expect(reply).toMatchObject({
       snapshot: { steps: [{ timeSpent: { label: '2 h', milliseconds: 7_200_000 } }] },
+    })
+  })
+
+  describe('decisions', () => {
+    const decisionLine = (step: string): string =>
+      JSON.stringify({
+        at: '2026-11-01T09:10:00Z',
+        step,
+        role: 'dev-a',
+        kind: 'decision',
+        title: 'Use a Map',
+        why: 'safe keys',
+        confidence: 'high',
+      })
+
+    const snapshotOf = async (worktree: string) => {
+      const reply = await getSnapshot({ workspaceId: 'w1' }, sourceOf({ w1: at(worktree) }))
+      if (reply.kind !== 'snapshot') throw new Error('expected a snapshot')
+      return reply.snapshot
+    }
+
+    it('groups the decisions of decisions.jsonl under their step', async () => {
+      const worktree = worktreeWith('a', planWith('#1', 'todo'))
+      writeFileSync(join(worktree, '.agent-flow', 'decisions.jsonl'), `${decisionLine('s1')}\n`)
+      const snapshot = await snapshotOf(worktree)
+      expect(snapshot.errors).toEqual([])
+      expect(snapshot.steps[0]?.decisions).toEqual([
+        { title: 'Use a Map', why: 'safe keys', rejected: [], role: 'dev-a', confidence: 'high' },
+      ])
+    })
+
+    it('gives no decision and no error when decisions.jsonl is missing', async () => {
+      const snapshot = await snapshotOf(worktreeWith('a', planWith('#1', 'todo')))
+      expect(snapshot.errors).toEqual([])
+      expect(snapshot.steps[0]?.decisions).toEqual([])
+    })
+
+    it('reports a symlinked decisions.jsonl as unreadable and keeps the steps', async () => {
+      const worktree = worktreeWith('a', planWith('#1', 'todo'))
+      const target = join(root, 'elsewhere.jsonl')
+      writeFileSync(target, `${decisionLine('s1')}\n`)
+      symlinkSync(target, join(worktree, '.agent-flow', 'decisions.jsonl'))
+      const snapshot = await snapshotOf(worktree)
+      expect(snapshot.steps[0]?.decisions).toEqual([])
+      expect(snapshot.errors).toEqual([
+        { file: 'decisions.jsonl', location: null, field: null, message: 'cannot be read' },
+      ])
     })
   })
 

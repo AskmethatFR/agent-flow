@@ -9,6 +9,7 @@ const step = (id: string, title: string, status = 'todo', timeSpent: { milliseco
   status,
   origin: 'planned',
   timeSpent,
+  decisions: [],
 })
 
 const snapshotReply = (overrides: Record<string, unknown> = {}) => ({
