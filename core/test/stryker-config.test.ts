@@ -38,7 +38,12 @@ describe('stryker config', () => {
     ['panel/client/display-text.ts', true],
     ['panel/client/display-text.test.ts', false],
     ['panel/client/plan-rail.tsx', false],
-    ['capture/opencode/src/index.ts', false],
+    ['capture/opencode/src/step-timing/step-timing.ts', true],
+    ['capture/opencode/src/step-timing/plugin.ts', true],
+    ['capture/opencode/src/step-timing/index.ts', true],
+    ['capture/opencode/src/step-timing/step-timing.test.ts', false],
+    ['capture/opencode/src/step-timing/plugin.test.ts', false],
+    ['capture/opencode/src/step-timing/entry.ts', false],
   ])('mutates %s: %s', (path, mutated) => {
     expect(isMutated(path)).toBe(mutated)
   })
