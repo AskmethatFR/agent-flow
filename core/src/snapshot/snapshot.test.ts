@@ -341,6 +341,20 @@ describe('buildSnapshot', () => {
     })
   })
 
+  it('caps the orphan errors apart from the read errors', () => {
+    const orphans = Array.from({ length: 101 }, () => line({ step: 'ghost' }))
+    const { errors } = decisionsOf(['{oops', ...orphans].join('\n'))
+    expect(errors).toHaveLength(102)
+    expect(errors[0]).toEqual({ file: 'decisions.jsonl', location: 1, field: null, message: 'is not valid JSON' })
+    expect(errors[100]).toEqual({ file: 'decisions.jsonl', location: 101, field: 'step', message: 'is not a step of plan.json' })
+    expect(errors[101]).toEqual({
+      file: 'decisions.jsonl',
+      location: null,
+      field: null,
+      message: 'too many errors, only the first 100 are shown',
+    })
+  })
+
   it('lists read errors before orphan errors', () => {
     const { errors } = decisionsOf([line({ step: 'ghost' }), '{'].join('\n'))
     expect(errors.map(({ location }) => location)).toEqual([2, 1])
@@ -379,5 +393,15 @@ describe('buildSnapshot', () => {
     expect(snapshot.errors).toEqual([])
     expect(snapshot.steps[0]?.decisions.map(({ title }) => title)).toEqual(['p'])
     expect(snapshot.steps[1]?.decisions.map(({ title }) => title)).toEqual(['c'])
+  })
+
+  it('reports an orphan line whose step is an Object.prototype name instead of throwing', () => {
+    const text = [line(), line({ step: 'toString' }), line({ step: '__proto__' })].join('\n')
+    const snapshot = decisionsOf(text)
+    expect(snapshot.steps[0]?.decisions).toEqual([mapDecision])
+    expect(snapshot.errors).toEqual([
+      { file: 'decisions.jsonl', location: 2, field: 'step', message: 'is not a step of plan.json' },
+      { file: 'decisions.jsonl', location: 3, field: 'step', message: 'is not a step of plan.json' },
+    ])
   })
 })
