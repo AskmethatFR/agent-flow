@@ -35,6 +35,9 @@ describe('stryker config', () => {
     ['capture/claude-code/src/step-timing/step-timing.ts', true],
     ['capture/claude-code/src/step-timing/step-timing.test.ts', false],
     ['capture/claude-code/src/step-timing/hook.ts', false],
+    ['panel/client/display-text.ts', true],
+    ['panel/client/display-text.test.ts', false],
+    ['panel/client/plan-rail.tsx', false],
     ['capture/opencode/src/index.ts', false],
   ])('mutates %s: %s', (path, mutated) => {
     expect(isMutated(path)).toBe(mutated)

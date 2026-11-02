@@ -238,3 +238,35 @@ describe('AgentFlowPanel states', () => {
     })
   })
 })
+
+describe('AgentFlowPanel agent text', () => {
+  it('shows every agent-originated string as safe, bounded plain text', async () => {
+    const hostile = '\u202eevil\u0007'
+    const long = 'y'.repeat(300)
+    const panel = await renderPanel(async () =>
+      snapshotReply({
+        issue: `#${hostile}`,
+        title: `T${hostile}`,
+        steps: [step('s1', `S${hostile}`), step('s2', long)],
+        errors: [{ file: `f${hostile}`, location: `l${hostile}`, field: `d${hostile}`, message: `m${hostile}` }],
+      }),
+    )
+
+    const texts = panel.texts()
+    expect(texts).toContain('#evil')
+    expect(texts).toContain('Tevil')
+    expect(texts).toContain('Sevil (todo)')
+    expect(texts).toContain(`${'y'.repeat(199)}…`)
+    expect(texts).toContain('fevil · levil · devil · mevil')
+    await panel.unmount()
+  })
+
+  it('bounds the error row once, as a whole', async () => {
+    const errors = [{ file: 'f'.repeat(150), location: null, field: null, message: 'm'.repeat(150) }]
+    const panel = await renderPanel(async () => snapshotReply({ errors }))
+
+    const row = panel.texts().find((text) => text.startsWith('ffff'))
+    expect(Array.from(row ?? '')).toHaveLength(200)
+    await panel.unmount()
+  })
+})
