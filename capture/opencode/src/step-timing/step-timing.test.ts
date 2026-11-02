@@ -190,6 +190,7 @@ describe('captureStepTiming', () => {
       ['a non-object item', 'Implementation'],
       ['a null item', null],
       ['a non-string content', todo(7, 'in_progress')],
+      ['an array content', todo(['Implementation'], 'in_progress')],
       ['an empty content', todo('', 'in_progress')],
       ['an over-long content', todo('x'.repeat(MAX_TEXT_LENGTH + 1), 'in_progress')],
       ['an unknown status', todo('Implementation', 'cancelled')],
