@@ -154,6 +154,42 @@ describe('readAgentFlowFile', () => {
     expect(read(noProc)).toEqual({ unavailable: 'unreadable' })
   })
 
+  it.skipIf(!fs.existsSync('/proc/self/fd'))(
+    'refuses a .agent-flow replaced by a symlink before the open: real rename(2) + symlink(2) against the real /proc/self/fd link',
+    () => {
+      withPlan('real')
+      const outside = join(root, 'outside')
+      mkdirSync(outside)
+      writeFileSync(join(outside, 'plan.json'), 'outside secret')
+      const racing: ReadIo = {
+        ...realIo,
+        openSync: ((path: fs.PathLike, flag: number) => {
+          fs.renameSync(directoryOf(), join(root, 'moved'))
+          fs.symlinkSync(outside, directoryOf())
+          return fs.openSync(path, flag)
+        }) as ReadIo['openSync'],
+      }
+      const result = read(racing)
+      expect(result).toEqual({ unavailable: 'unreadable' })
+      expect(JSON.stringify(result)).not.toContain('outside secret')
+    },
+  )
+
+  it('reads normally on a host without /proc; it does not cover the swap race', () => {
+    withPlan('real')
+    const noProc: ReadIo = {
+      ...realIo,
+      lstatSync: ((path: fs.PathLike, ...rest: unknown[]) => {
+        if (String(path) === '/proc/self/fd') throw Object.assign(new Error('no /proc'), { code: 'ENOENT' })
+        return (fs.lstatSync as (p: fs.PathLike, ...r: unknown[]) => fs.Stats)(path, ...rest)
+      }) as ReadIo['lstatSync'],
+      readlinkSync: (() => {
+        throw Object.assign(new Error('no /proc'), { code: 'ENOENT' })
+      }) as unknown as ReadIo['readlinkSync'],
+    }
+    expect(read(noProc)).toBe('real')
+  })
+
   it('asks for the real path of the descriptor it opened', () => {
     withPlan('real')
     const opened: number[] = []

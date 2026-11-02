@@ -9,11 +9,23 @@ export type ReadIo = Pick<
   'lstatSync' | 'realpathSync' | 'readlinkSync' | 'openSync' | 'fstatSync' | 'readSync' | 'closeSync'
 >
 
-const descriptorIsAt = (io: ReadIo, fd: number, path: string): boolean => {
+const procDescriptors = '/proc/self/fd'
+
+const procIsAbsent = (io: ReadIo): boolean => {
   try {
-    return io.readlinkSync(`/proc/self/fd/${fd}`) === path
-  } catch {
+    io.lstatSync(procDescriptors)
     return false
+  } catch {
+    return true
+  }
+}
+
+const descriptorMoved = (io: ReadIo, fd: number, path: string): boolean => {
+  if (procIsAbsent(io)) return false
+  try {
+    return io.readlinkSync(`${procDescriptors}/${fd}`) !== path
+  } catch {
+    return true
   }
 }
 
@@ -50,7 +62,7 @@ export const readAgentFlowFile = (
       !opened.isFile() ||
       opened.dev !== linked.dev ||
       opened.ino !== linked.ino ||
-      !descriptorIsAt(io, fd, path)
+      descriptorMoved(io, fd, path)
     ) {
       return { unavailable: 'unreadable' }
     }
