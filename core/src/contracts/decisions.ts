@@ -1,4 +1,4 @@
-import decisionsSchema from '../../../schemas/decisions.schema.json' with { type: 'json' }
+import decisionsSchema from '../../schemas/decisions.schema.json' with { type: 'json' }
 import type { ContractError, ValidationResult } from './contract-error'
 import { MAX_TEXT_LENGTH } from './contract-error'
 import { firstViolation, lineError, readJsonl, validateJsonl, violationError } from './jsonl'

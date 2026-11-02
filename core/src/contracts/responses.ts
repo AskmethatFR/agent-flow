@@ -1,4 +1,4 @@
-import responsesSchema from '../../../schemas/responses.schema.json' with { type: 'json' }
+import responsesSchema from '../../schemas/responses.schema.json' with { type: 'json' }
 import type { ValidationResult } from './contract-error'
 import { validateJsonl } from './jsonl'
 import type { JsonlContract } from './jsonl'

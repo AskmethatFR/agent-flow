@@ -1,0 +1,35 @@
+import { defineRpc } from '@getpaseo/plugin'
+import { z } from 'zod'
+
+const ContractErrorSchema = z.object({
+  file: z.string(),
+  location: z.union([z.string(), z.number(), z.null()]),
+  field: z.string().nullable(),
+  message: z.string(),
+}).readonly()
+
+const SnapshotStepSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  role: z.string(),
+  status: z.enum(['todo', 'in_progress', 'done']),
+  origin: z.enum(['planned', 'proposed']),
+  timeSpent: z.object({ milliseconds: z.number(), label: z.string() }).readonly().nullable(),
+}).readonly()
+
+export const SnapshotSchema = z.object({
+  issue: z.string().nullable(),
+  title: z.string().nullable(),
+  steps: z.array(SnapshotStepSchema).readonly(),
+  currentStepId: z.string().nullable(),
+  errors: z.array(ContractErrorSchema).readonly(),
+}).readonly()
+
+export const getSnapshotRpc = defineRpc({
+  name: 'get-snapshot',
+  input: z.strictObject({ workspaceId: z.string().min(1).max(256) }),
+  output: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('snapshot'), snapshot: SnapshotSchema }).readonly(),
+    z.object({ kind: z.literal('refused'), reason: z.literal('unknown-worktree') }).readonly(),
+  ]),
+})

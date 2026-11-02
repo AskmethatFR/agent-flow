@@ -1,4 +1,4 @@
-import scopeSchema from '../../../schemas/scope.schema.json' with { type: 'json' }
+import scopeSchema from '../../schemas/scope.schema.json' with { type: 'json' }
 import { MAX_TEXT_LENGTH, capErrors, safeLabel } from './contract-error'
 import type { ContractError, ValidationResult } from './contract-error'
 import { findViolations } from './schema-subset'

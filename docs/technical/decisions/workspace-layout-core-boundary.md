@@ -3,7 +3,7 @@ id: "workspace-layout-core-boundary"
 type: "technical"
 owner: "architect"
 status: "current"
-updated: "2026-10-26"
+updated: "2026-11-02"
 relations:
   related: ["capture-events"]
 answers:
@@ -60,7 +60,7 @@ decided_in:
 - **MUST NOT**: add a `"."` export to `core`, or import `core` by relative path from another package.
 - **MUST NOT**: import from `core/src` anything the boundary rule flags. The rule also flags an npm package whose bare name equals a Node built-in (`events`, `buffer`).
 - **MUST NOT**: move the scanner into `core/src`, or upgrade TypeScript to a release without `preProcessFile`, without replacing the scanner in the same change.
-- **Review-enforced only**: Node globals (`process`, `Buffer`) and relative imports that leave `core` for somewhere other than a sibling package (for example a schemas folder). The test does not see them.
+- **Review-enforced only**: Node globals (`process`, `Buffer`); the test does not see them. A relative import that leaves `core` is test-enforced since #18 (rule `outside-package`, [[snapshot-rpc]]).
 - **Out of scope**: runtime dependencies of `daemon`, `panel` and `capture`; the plugin manifest and panel entry path (#10); cucumber and Stryker config (#29, #30).
 
 ## Open questions / Gaps

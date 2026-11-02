@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import requestsSchema from '../../../schemas/requests.schema.json' with { type: 'json' }
+import requestsSchema from '../../schemas/requests.schema.json' with { type: 'json' }
 import { validateRequests } from './index'
 import { requestsContract } from './requests'
 

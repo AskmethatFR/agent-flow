@@ -36,10 +36,17 @@ describe('core import boundary', () => {
     ])
 
     allowedImports('sibling-workspace near misses', [
-      "import { a } from '../../../panel-docs/x'",
-      "import { a } from '../../../capture-notes/y'",
       "import { a } from '@agent-flow/core'",
       "import { a } from '@scope/daemon'",
+    ])
+  })
+
+  describe('outside-package', () => {
+    forbiddenImports('outside-package', [
+      ["import x from '../../../schemas/x.json'", '../../../schemas/x.json'],
+      ["import { a } from '../../../panel-docs/x'", '../../../panel-docs/x'],
+      ["import { a } from '../../../capture-notes/y'", '../../../capture-notes/y'],
+      ["import { a } from '../../../core-extra/x'", '../../../core-extra/x'],
     ])
   })
 
@@ -79,11 +86,12 @@ describe('core import boundary', () => {
     ])
   })
 
-  it('allows relative imports inside core, schemas, test tooling and the word daemon in comments or strings', () => {
+  it('allows relative imports inside core (schemas included), test tooling and the word daemon in comments or strings', () => {
     const text = [
       "import { a } from './sibling'",
       "import { b } from '../other/index'",
-      "import schema from '../../../schemas/x.json'",
+      "import schema from '../../schemas/x.json'",
+      "import pkg from '../../package.json'",
       "import { it } from 'vitest'",
       '// import { c } from "@agent-flow/daemon"',
       "const note = \"import { d } from 'node:fs' and @agent-flow/panel\"",

@@ -3,7 +3,7 @@ id: "paseo-api-version"
 type: "technical"
 owner: "architect"
 status: "current"
-updated: "2026-10-26"
+updated: "2026-11-02"
 links: []
 answers:
   - "Which Paseo version does the Agent Flow plugin target?"
@@ -156,5 +156,5 @@ outlive the worktree (see Cleanup).
 
 ## Open questions / Gaps
 
-- [ ] #18: whether Paseo's server bundle resolves a TypeScript-source workspace package (`daemon`, `core`) is unverified.
+- [x] #18: whether Paseo's server bundle resolves a TypeScript-source workspace package (`daemon`, `core`) — closed by [[snapshot-rpc]] (verified live on 0.11.4, 2026-11-02).
 - [x] The desktop app version on the human's machine: `0.13.0`.

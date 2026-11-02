@@ -3,7 +3,7 @@ id: "snapshot-contract"
 type: "technical"
 owner: "architect"
 status: "current"
-updated: "2026-10-28"
+updated: "2026-11-02"
 relations:
   depends-on: ["host-adapter-boundary", "workspace-layout-core-boundary"]
   related: ["decisions-jsonl-schema", "feature-catalog"]
@@ -25,7 +25,7 @@ decided_in:
 
 ## Context
 
-[[host-adapter-boundary]] planned `buildSnapshot`/`Snapshot` for #38 and required #38 to name the host read-failure codes (`:127`, `:132`). `schemas/plan.schema.json:24-25` leaves `startedAt`/`endedAt` format-free, so core needs its own rule for which text is an instant. The snapshot is read by the daemon (#18) and the panel (#19, #42), so its shape freezes at the first reader.
+[[host-adapter-boundary]] planned `buildSnapshot`/`Snapshot` for #38 and required #38 to name the host read-failure codes (`:127`, `:132`). `core/schemas/plan.schema.json:24-25` leaves `startedAt`/`endedAt` format-free, so core needs its own rule for which text is an instant. The snapshot is read by the daemon (#18) and the panel (#19, #42), so its shape freezes at the first reader.
 
 Corrected here, not edited there (the ADR is closed to amendment): `host-adapter-boundary.md:29` ("core today is one module") predates #32 and #38; its `planned` rows for #38 (`:55`, `:67`) record #25's point in time. The current core surface is the code: one `core/src/<module>/index.ts` per module.
 

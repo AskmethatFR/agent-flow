@@ -5,7 +5,12 @@ import ts from 'typescript'
 
 export type SourceFile = { readonly path: string; readonly text: string }
 
-export type BoundaryRule = 'sibling-workspace' | 'host-package' | 'react-native' | 'node-builtin'
+export type BoundaryRule =
+  | 'sibling-workspace'
+  | 'outside-package'
+  | 'host-package'
+  | 'react-native'
+  | 'node-builtin'
 
 export type BoundaryViolation = {
   readonly file: string
@@ -26,18 +31,20 @@ const packageName = (specifier: string): string => {
 
 const isRelative = (specifier: string): boolean => specifier.startsWith('.')
 
-const resolvesIntoSiblingFolder = (file: SourceFile, specifier: string, repoRoot: string): boolean => {
+const isWithin = (target: string, folderPath: string): boolean =>
+  target === folderPath || target.startsWith(folderPath + sep)
+
+const resolvesIntoSiblingFolder = (target: string, repoRoot: string): boolean =>
+  SIBLING_FOLDERS.some((folder) => isWithin(target, resolve(repoRoot, folder)))
+
+const relativeRuleBroken = (file: SourceFile, specifier: string, repoRoot: string): BoundaryRule | undefined => {
   const target = resolve(dirname(file.path), specifier)
-  return SIBLING_FOLDERS.some((folder) => {
-    const folderPath = resolve(repoRoot, folder)
-    return target === folderPath || target.startsWith(folderPath + sep)
-  })
+  if (resolvesIntoSiblingFolder(target, repoRoot)) return 'sibling-workspace'
+  return isWithin(target, resolve(repoRoot, 'core')) ? undefined : 'outside-package'
 }
 
 const ruleBroken = (file: SourceFile, specifier: string, repoRoot: string): BoundaryRule | undefined => {
-  if (isRelative(specifier)) {
-    return resolvesIntoSiblingFolder(file, specifier, repoRoot) ? 'sibling-workspace' : undefined
-  }
+  if (isRelative(specifier)) return relativeRuleBroken(file, specifier, repoRoot)
   const name = packageName(specifier)
   if (SIBLING_PACKAGE.test(name)) return 'sibling-workspace'
   if (HOST_PACKAGE.test(name)) return 'host-package'
