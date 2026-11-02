@@ -39,8 +39,18 @@ const textsOf = (node: ReactTestRendererJSON | ReactTestRendererJSON[] | null): 
   return children.flatMap((child) => (typeof child === 'string' ? [] : textsOf(child)))
 }
 
+const findText = (node: ReactTestRendererJSON | ReactTestRendererJSON[] | null, content: string): ReactTestRendererJSON | undefined => {
+  if (node === null) return undefined
+  if (Array.isArray(node)) return node.map((child) => findText(child, content)).find((found) => found !== undefined)
+  const children = node.children ?? []
+  if (node.type === 'Text' && children.join('') === content) return node
+  return children.map((child) => (typeof child === 'string' ? undefined : findText(child, content))).find((found) => found !== undefined)
+}
+
 export type RenderedPanel = {
   texts(): string[]
+  styleOf(content: string): { color?: string } | undefined
+  surface(): unknown
   rootPadding(): unknown
   update(workspaceId: string): Promise<void>
   unmount(): Promise<void>
@@ -64,6 +74,11 @@ export const renderPanel = async (
   })
   return {
     texts: () => textsOf(renderer.toJSON() as ReactTestRendererJSON | ReactTestRendererJSON[] | null),
+    styleOf: (content) =>
+      findText(renderer.toJSON() as ReactTestRendererJSON | ReactTestRendererJSON[] | null, content)?.props.style as
+        | { color?: string }
+        | undefined,
+    surface: () => ((renderer.toJSON() as ReactTestRendererJSON).props.style as { backgroundColor?: unknown }).backgroundColor,
     rootPadding: () => {
       const root = renderer.toJSON() as ReactTestRendererJSON
       const style = root.props.contentContainerStyle as { padding?: unknown } | undefined

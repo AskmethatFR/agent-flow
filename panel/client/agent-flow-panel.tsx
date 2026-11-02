@@ -15,7 +15,11 @@ const NOTICE: Record<'loading' | 'refused' | 'unreachable', string> = {
 const Body = ({ state, theme }: { state: PanelState; theme: PluginWorkspacePanelProps['theme'] }) => {
   if (state.kind === 'reply' && state.reply.kind === 'snapshot') {
     return (
-      <PlanRail snapshot={state.reply.snapshot} errorColor={theme.colors.statusDanger} />
+      <PlanRail
+        snapshot={state.reply.snapshot}
+        textColor={theme.colors.foreground}
+        errorColor={theme.colors.statusDanger}
+      />
     )
   }
   const notice = state.kind === 'reply' ? 'refused' : state.kind

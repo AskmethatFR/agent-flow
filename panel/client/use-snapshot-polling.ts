@@ -15,6 +15,7 @@ export const useSnapshotPolling = (
   const [state, setState] = useState<PanelState>({ kind: 'loading' })
 
   useEffect(() => {
+    setState({ kind: 'loading' })
     let active = true
     let timer: ReturnType<typeof setTimeout> | undefined
     const poll = () => {

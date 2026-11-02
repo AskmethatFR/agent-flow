@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { mock } from 'node:test'
+import { act } from 'react-test-renderer'
 import { After, Given, Then, When } from '@cucumber/cucumber'
 import type { PluginServerContext } from '@getpaseo/plugin/server'
 import contribute from '../../panel/index.server.ts'
@@ -75,6 +77,7 @@ Given(
 )
 
 When('the user opens the {string} tab', async function (this: PlanRailWorld, _tab: string) {
+  mock.timers.enable({ apis: ['setTimeout'] })
   this.panel = await renderPanel(hostInvoke(this), { workspaceId })
   this.texts = this.panel.texts()
 })
@@ -101,11 +104,20 @@ Then('the panel lists that error', function (this: PlanRailWorld) {
 Then('the panel stays usable', async function (this: PlanRailWorld) {
   const fallbacks = ['Agent Flow cannot read this workspace.', 'The Agent Flow server did not answer. Retrying.']
   assert.ok(!this.texts.some((text) => fallbacks.includes(text)))
-  await this.panel.update(workspaceId)
-  assert.ok(this.panel.texts().includes('Snapshot errors'))
+  writeFileSync(
+    join(this.root, '.agent-flow', 'plan.json'),
+    JSON.stringify({ issue: '#42', title: 'Add login', steps: [stepOf(this.expectedStep, 'Open PR')] }),
+  )
+  await act(async () => {
+    mock.timers.tick(2_000)
+  })
+  const texts = this.panel.texts()
+  assert.ok(texts.some((text) => text.startsWith('Open PR')), `plan not shown after the next poll: ${JSON.stringify(texts)}`)
+  assert.ok(!texts.includes('Snapshot errors'))
 })
 
 After(async function (this: PlanRailWorld) {
+  mock.timers.reset()
   await this.panel?.unmount()
   if (this.root) rmSync(this.root, { recursive: true, force: true })
 })

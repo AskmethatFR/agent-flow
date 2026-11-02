@@ -256,7 +256,7 @@ describe('AgentFlowPanel agent text', () => {
     expect(texts).toContain('#evil')
     expect(texts).toContain('Tevil')
     expect(texts).toContain('Sevil (todo)')
-    expect(texts).toContain(`${'y'.repeat(199)}…`)
+    expect(texts).toContain(`${'y'.repeat(199)}… (todo)`)
     expect(texts).toContain('fevil · levil · devil · mevil')
     await panel.unmount()
   })
@@ -267,6 +267,58 @@ describe('AgentFlowPanel agent text', () => {
 
     const row = panel.texts().find((text) => text.startsWith('ffff'))
     expect(Array.from(row ?? '')).toHaveLength(200)
+    await panel.unmount()
+  })
+})
+
+describe('AgentFlowPanel theme and layout', () => {
+  it('colours every text from the theme and the surface from surface0', async () => {
+    const errors = [{ file: 'f', location: null, field: null, message: 'bad' }]
+    const panel = await renderPanel(async () => snapshotReply({ errors }))
+
+    for (const content of ['#42', 'Add login', 'Write tests (todo)']) {
+      expect(panel.styleOf(content)).toEqual({ color: '#fff' })
+    }
+    expect(panel.styleOf('Snapshot errors')).toEqual({ color: '#f00' })
+    expect(panel.styleOf('f · bad')).toEqual({ color: '#f00' })
+    expect(panel.surface()).toBe('#000')
+    await panel.unmount()
+  })
+
+  it('colours the empty-plan copy from the foreground and the notices from foregroundMuted', async () => {
+    const empty = await renderPanel(async () => snapshotReply({ steps: [] }))
+    expect(empty.styleOf('No steps yet.')).toEqual({ color: '#fff' })
+    await empty.unmount()
+
+    const loading = await renderPanel(() => new Promise(() => {}))
+    expect(loading.styleOf('Loading the plan…')).toEqual({ color: '#aaa' })
+    await loading.unmount()
+  })
+
+  it.each([
+    [true, 16],
+    [false, 24],
+  ])('pads the panel by the layout: compact %s gives %s', async (compact, padding) => {
+    const panel = await renderPanel(async () => snapshotReply(), { compact })
+    expect(panel.rootPadding()).toBe(padding)
+    await panel.unmount()
+  })
+
+  it('shows the loading copy again when the workspace changes while the new reply is pending', async () => {
+    const invoke = vi.fn(async (_method: string, input: unknown) =>
+      (input as { workspaceId: string }).workspaceId === 'w1' ? snapshotReply() : new Promise<never>(() => {}),
+    )
+    const panel = await renderPanel(invoke, { workspaceId: 'w1' })
+    expect(panel.texts()).toContain('Add login')
+
+    await panel.update('w2')
+    expect(panel.texts()).toEqual(['Loading the plan…'])
+    await panel.unmount()
+  })
+
+  it('keeps a long step title from hiding the real status', async () => {
+    const panel = await renderPanel(async () => snapshotReply({ steps: [step('s1', 'z'.repeat(300), 'done')] }))
+    expect(panel.texts()).toContain(`${'z'.repeat(199)}… (done)`)
     await panel.unmount()
   })
 })
