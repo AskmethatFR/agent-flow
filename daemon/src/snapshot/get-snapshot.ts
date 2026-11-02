@@ -64,5 +64,6 @@ export const createGetSnapshot =
     const realWorktree = realPathOf(io, worktreeRoot)
     if (realWorktree === null) return refused
     const plan = readAgentFlowFile(io, realWorktree, 'plan.json')
-    return { kind: 'snapshot', snapshot: buildSnapshot({ plan }, now()) }
+    const decisions = readAgentFlowFile(io, realWorktree, 'decisions.jsonl')
+    return { kind: 'snapshot', snapshot: buildSnapshot({ plan, decisions }, now()) }
   }

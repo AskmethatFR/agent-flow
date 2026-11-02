@@ -8,6 +8,14 @@ const ContractErrorSchema = z.object({
   message: z.string(),
 }).readonly()
 
+const SnapshotDecisionSchema = z.object({
+  title: z.string(),
+  why: z.string(),
+  rejected: z.array(z.string()).readonly(),
+  role: z.string(),
+  confidence: z.enum(['high', 'medium', 'low']),
+}).readonly()
+
 const SnapshotStepSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -15,6 +23,7 @@ const SnapshotStepSchema = z.object({
   status: z.enum(['todo', 'in_progress', 'done']),
   origin: z.enum(['planned', 'proposed']),
   timeSpent: z.object({ milliseconds: z.number(), label: z.string() }).readonly().nullable(),
+  decisions: z.array(SnapshotDecisionSchema).readonly(),
 }).readonly()
 
 export const SnapshotSchema = z.object({

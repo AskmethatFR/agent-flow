@@ -18,6 +18,9 @@ const snapshot: Snapshot = {
       status: 'in_progress',
       origin: 'proposed',
       timeSpent: { milliseconds: 60_000, label: '1 min' },
+      decisions: [
+        { title: 'Use a Map', why: 'safe keys', rejected: ['object'], role: 'dev-a', confidence: 'high' },
+      ],
     },
   ],
   currentStepId: 's1',
@@ -45,6 +48,13 @@ describe('getSnapshotRpc', () => {
     })
     const refused = { kind: 'refused', reason: 'unknown-worktree' }
     expect(getSnapshotRpc.output.parse(refused)).toEqual(refused)
+  })
+
+  it('keeps the decisions of a step intact and rejects a bad confidence', () => {
+    const parsed = getSnapshotRpc.output.parse({ kind: 'snapshot', snapshot })
+    expect(parsed).toMatchObject({ snapshot: { steps: [{ decisions: snapshot.steps[0]?.decisions }] } })
+    const bad = { ...snapshot, steps: [{ ...snapshot.steps[0], decisions: [{ title: 't', why: 'w', rejected: [], role: 'r', confidence: 'sure' }] }] }
+    expect(getSnapshotRpc.output.safeParse({ kind: 'snapshot', snapshot: bad }).success).toBe(false)
   })
 
   it('rejects an unknown refusal reason and an unknown kind', () => {

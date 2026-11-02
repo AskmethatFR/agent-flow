@@ -51,7 +51,7 @@ const readBounded = (io: ReadIo, fd: number): AgentFlowFile => {
 export const readAgentFlowFile = (
   io: ReadIo,
   realWorktree: string,
-  name: 'plan.json',
+  name: 'plan.json' | 'decisions.jsonl',
 ): AgentFlowFile => {
   const directory = join(realWorktree, '.agent-flow')
   const path = join(directory, name)

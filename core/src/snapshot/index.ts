@@ -3,6 +3,7 @@ export type {
   AgentFlowFile,
   FileUnavailable,
   Snapshot,
+  SnapshotDecision,
   SnapshotFiles,
   SnapshotStep,
 } from './snapshot'

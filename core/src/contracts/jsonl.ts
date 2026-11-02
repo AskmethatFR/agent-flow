@@ -10,8 +10,10 @@ export type JsonlContract = {
   readonly uniqueKey?: string
 }
 
+export type LocatedRecord = { readonly record: unknown; readonly location: number }
+
 export type JsonlRead = {
-  readonly records: readonly unknown[]
+  readonly records: readonly LocatedRecord[]
   readonly errors: readonly ContractError[]
 }
 
@@ -45,7 +47,7 @@ export const readJsonl = (contract: JsonlContract, text: string): JsonlRead => {
   }
   const lines = text.split('\n')
   if (lines.at(-1) === '') lines.pop()
-  const records: unknown[] = []
+  const records: LocatedRecord[] = []
   const errors: ContractError[] = []
   const seen = new Set<unknown>()
   for (const [index, line] of lines.entries()) {
@@ -71,7 +73,7 @@ export const readJsonl = (contract: JsonlContract, text: string): JsonlRead => {
       }
       seen.add(key)
     }
-    records.push(document)
+    records.push({ record: document, location })
   }
   return { records, errors: capErrors(file, errors) }
 }
