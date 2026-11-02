@@ -3,7 +3,7 @@ id: "feature-catalog"
 type: "functional"
 owner: "pm"
 status: "current"
-updated: "2026-10-31"
+updated: "2026-11-02"
 links:
   - "glossary"
 answers:
@@ -17,11 +17,13 @@ answers:
   - "Which step is the current step, and when is there none?"
   - "What does the snapshot give for an invalid or missing plan?"
   - "When capture records a step start or finish, what is written, where, and what is refused?"
+  - "How are decisions attached to plan steps in the snapshot, and what happens to a bad or orphan record?"
 decided_in:
   - "#32"
   - "#38"
   - "#24"
   - "#34"
+  - "#39"
 ---
 
 # Feature catalog
@@ -105,6 +107,27 @@ daemon only display it; neither recomputes it.
 
 Acceptance: `snapshot-steps` S1-S5 (`features/phase-2/snapshot-steps.feature`).
 
+### Capability: decisions grouped by step in the snapshot
+
+The same [[glossary]] snapshot attaches every logged decision to its plan step,
+so the panel only displays them. A decision carries its title, why, rejected
+options, role and confidence.
+
+| Situation | Behaviour | Outcome |
+|---|---|---|
+| Decisions logged for a plan step | Attached to that step, in log order. | The step lists only its own decisions. |
+| A plan step with no decision | Nothing attached. | An empty list, never an absent one. |
+| A malformed line in `decisions.jsonl` | Skipped on its own. | The valid decisions are present; one error names the line number. |
+| A decision naming a step absent from the plan | Left out. | Reported as not being a step of `plan.json`; it appears under no step. |
+| No `decisions.jsonl` | Normal, a run may have logged nothing yet. | No error; every step lists no decision. |
+
+Every record of the log counts as a decision here, whatever its kind: the
+snapshot does not filter by kind.
+
+Acceptance: `snapshot-decisions` S1-S3 (`features/phase-2/snapshot-decisions.feature`).
+Log order, the absent-step row, the missing-file row and the no-filter-by-kind
+rule are pinned by unit tests only. The display of these decisions is #20.
+
 ### Capability: recording a step start or finish in the plan
 
 Capture applies a [[glossary]] step event (the start or the finish of a plan
@@ -145,9 +168,12 @@ failed-write, access-rights and oversized-plan rows are pinned by unit tests onl
   plan survives any failed write.
 - **MUST NOT**: the plan writer touch any file outside the worktree's `.agent-flow`.
 - **Out of scope**: appending to existing files (#35); referential integrity
-  between records, including an answer whose request id has no request (#39);
+  between records, including an answer whose request id has no request (no
+  ticket owns it yet);
   creating the first plan (#12); the hooks that raise step events (#14, #15);
-  decisions.
+  the panel display of decisions (#20).
+- **MUST**: a decision that cannot be tied to a plan step is never attached to
+  another step; it is left out and reported.
 
 ## Open questions / Gaps
 
