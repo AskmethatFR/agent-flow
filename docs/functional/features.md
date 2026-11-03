@@ -3,10 +3,11 @@ id: "feature-catalog"
 type: "functional"
 owner: "pm"
 status: "current"
-updated: "2026-11-02"
+updated: "2026-11-03"
 links:
   - "glossary"
 answers:
+  - "Which roles log decisions, in which runtimes, and what does each logged line carry?"
   - "Which data contracts under .agent-flow/ are frozen and validated?"
   - "What request types exist, and what makes a request or its id invalid?"
   - "May a request id be answered more than once?"
@@ -24,6 +25,7 @@ decided_in:
   - "#24"
   - "#34"
   - "#39"
+  - "#16"
 ---
 
 # Feature catalog
@@ -149,6 +151,27 @@ A replaced plan keeps the access rights of the file it replaces.
 
 Acceptance: `plan-writer` S1-S5 (`features/phase-1/plan-writer.feature`). The
 failed-write, access-rights and oversized-plan rows are pinned by unit tests only.
+
+### Capability: every role logs its decisions
+
+Each [[glossary]] role (`pm`, `architect`, `dev-a`, `dev-b`, `qa`, `security`) is
+told by an agent rule to log each technical choice it makes as one line in
+`.agent-flow/decisions.jsonl`. It serves both runtimes, Claude Code and OpenCode.
+
+| Part of the line | Where it comes from |
+|---|---|
+| Step | The step in progress, attached automatically; the role does not state it. |
+| Role | The role's own id from the list above. |
+| Title, why | Written by the role: the choice and the reason for it. |
+| Rejected options | Written by the role: what was considered and set aside. |
+| Confidence | Written by the role: `high`, `medium` or `low`. |
+
+A logged line obeys the frozen `decisions.jsonl` contract, so the snapshot groups
+it by step with no further work. The role rule is `rules/decision-logging.md`.
+
+Acceptance: `decision-logging` S1-S3 (`features/phase-1/decision-logging.feature`).
+Out of scope: logging questions and deviations (Phase 4); wiring the rule into a
+real project (#17).
 
 ## Consequences / Constraints
 

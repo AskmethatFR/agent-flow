@@ -19,6 +19,7 @@
 
 | ID | Title | Status | Updated | Links | Path |
 |---|---|---|---|---|---|
+| `agent-rules` | Agent rules: runtime-neutral source, per-runtime shims, decision command | current | 2026-11-03 | [[decisions-jsonl-schema]], [[capture-events]], [[host-adapter-boundary]], [[snapshot-decisions]], [[workspace-layout-core-boundary]] | `docs/technical/capture/agent-rules.md` |
 | `capture-events` | Runtime events for step started/done (Claude Code, OpenCode v2) | current | 2026-10-26 | — | `docs/technical/capture/events.md` |
 | `loop-threshold` | Loop threshold (plan.md Q6) | current | 2026-10-26 | `capture-events` | `docs/technical/decisions/loop-threshold.md` |
 | `scope-origin` | Origin of scope.json (plan.md Q5) | current | 2026-10-26 | `capture-events` | `docs/technical/decisions/scope-origin.md` |
@@ -56,12 +57,17 @@
 
 | ID | Title | Status | Updated | Links | Path |
 |---|---|---|---|---|---|
-| `feature-catalog` | Capabilities, frozen data contracts, plan snapshot, step decisions, plan writer | current | 2026-11-02 | `glossary` | `docs/functional/features.md` |
-| `glossary` | Ubiquitous language: decision, snapshot, time spent, step decisions, plan writer | current | 2026-11-02 | `feature-catalog` | `docs/functional/glossary.md` |
+| `feature-catalog` | Capabilities, frozen data contracts, plan snapshot, step decisions, plan writer | current | 2026-11-03 | `glossary` | `docs/functional/features.md` |
+| `glossary` | Ubiquitous language: decision, snapshot, time spent, step decisions, plan writer | current | 2026-11-03 | `feature-catalog` | `docs/functional/glossary.md` |
 
 - `features/phase-0/plan-contract.feature` — #23 Frozen data contracts: plan.json schema (S1, S2)
 - `features/phase-0/decisions-contract.feature` — #32 Frozen data contracts: decisions.jsonl schema and reader (S1, S2)
 - `features/phase-1/plan-writer.feature` — #34 Plan writer: step start/finish written to .agent-flow/plan.json, outside targets refused (S1-S5)
+- `features/phase-1/step-lifecycle.feature` — #33 Step lifecycle: a step goes todo, in progress, done; at most one in progress; bad transitions refused (S1-S9)
+- `features/phase-1/decision-append.feature` — #35 Decision append: a decision is added to decisions.jsonl, invalid ones and outside targets refused (S1-S4)
+- `features/phase-1/step-timing-claude-code.feature` — #14 Step timing captured automatically in Claude Code, one step in progress at a time (S1, S2)
+- `features/phase-1/step-timing-opencode.feature` — #15 Step timing captured automatically in OpenCode, one step in progress at a time (S1, S2)
+- `features/phase-1/decision-logging.feature` — #16 Decision logging: every role logs its decisions with step, role, title, why and confidence (S1-S3)
 - `features/phase-2/snapshot-steps.feature` — #38 Core snapshot: steps with time spent and current step (S1-S5)
 - `features/phase-2/snapshot-decisions.feature` — #39 Core snapshot: decisions grouped by step, malformed line reported (S1-S3)
 - `features/phase-2/time-spent.feature` — #19 Plan rail: time spent per step and the current step marked (S1-S3)
