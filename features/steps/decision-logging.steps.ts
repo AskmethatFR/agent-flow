@@ -24,6 +24,7 @@ type Choice = {
   rejected: readonly string[]
   confidence: string
   shell: Shell
+  rawTitle?: string
 }
 
 type LoggingWorld = {
@@ -36,7 +37,17 @@ type LoggingWorld = {
 const repo = realpathSync(fileURLToPath(new URL('../../', import.meta.url)))
 const ruleFile = join(repo, 'rules', 'decision-logging.md')
 const runtimes: readonly Runtime[] = ['Claude Code', 'OpenCode v2']
-const roles: readonly string[] = ['pm', 'architect', 'dev-a', 'dev-b', 'qa', 'security']
+const roleIds: Readonly<Record<string, string>> = {
+  PM: 'pm',
+  Architect: 'architect',
+  'Dev A': 'dev-a',
+  'Dev B': 'dev-b',
+  QA: 'qa',
+  Security: 'security',
+}
+const roles: readonly string[] = Object.values(roleIds)
+const clockStamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/
+const forgedAt = '1999-01-01T00:00:00Z'
 
 const claudeRule = (): string => {
   const shim = join(repo, 'rules', 'claude-code', 'CLAUDE.md')
@@ -75,7 +86,7 @@ const jsonText = (value: string): string => JSON.stringify(value).slice(1, -1)
 const filled = (template: string, choice: Choice): string =>
   template
     .replace('<role>', () => jsonText(choice.role))
-    .replace('<title>', () => jsonText(choice.title))
+    .replace('<title>', () => choice.rawTitle ?? jsonText(choice.title))
     .replace('<why>', () => jsonText(choice.why))
     .replace('<rejected>', () => choice.rejected.map((item) => JSON.stringify(item)).join(','))
     .replace('<confidence>', () => jsonText(choice.confidence))
@@ -118,10 +129,11 @@ const runtimeEnv = (extra: NodeJS.ProcessEnv): NodeJS.ProcessEnv => ({
 
 const claudeRun = (root: string): Run => {
   const worktree = join(root, 'claude-code')
-  mkdirSync(worktree)
+  const cwd = join(worktree, 'sub')
+  mkdirSync(cwd, { recursive: true })
   const init = spawnSync('git', ['init', '-q'], { cwd: worktree, encoding: 'utf8', env: runtimeEnv({}) })
   assert.equal(init.status, 0, init.stderr)
-  return { worktree, cwd: worktree, env: runtimeEnv({}) }
+  return { worktree, cwd, env: runtimeEnv({}) }
 }
 
 const opencodeRun = (root: string): Run => {
@@ -181,15 +193,34 @@ const hostileChoices = (canary: string): Choice[] => [
   choiceBy('dev-b', { title: 'Two\nlines', why: 'Line one\nline two', rejected: ['A', 'B "b"'], confidence: 'medium', shell: 'bash' }),
   choiceBy('qa', { why: 'Run `touch ' + canary + '` or $(touch ' + canary + ') or ${HOME}', confidence: 'high', shell: 'sh' }),
   choiceBy('security', { title: "it's $(touch " + canary + ')', why: 'DECISION is not a line by itself', rejected: ['x'], shell: 'bash' }),
+  choiceBy('pm', { title: 'x', rawTitle: `x","at":"${forgedAt}`, rejected: ['y'], confidence: 'medium' }),
 ]
+
+const confidences: readonly string[] = ['high', 'medium', 'low']
+
+const assertLoggedAsChosen = (world: LoggingWorld, runtime: Runtime): void => {
+  const lines = linesOf(world, runtime)
+  const chosen = world.logged
+  assert.equal(lines.length, chosen.length)
+  assert.deepEqual(lines.map((line) => line.role), chosen.map((choice) => choice.role))
+  assert.deepEqual(lines.map((line) => line.title), chosen.map((choice) => choice.title))
+  assert.deepEqual(lines.map((line) => line.why), chosen.map((choice) => choice.why))
+  assert.deepEqual(lines.map((line) => line.confidence), chosen.map((choice) => choice.confidence))
+  assert.deepEqual(lines.map((line) => line.rejected ?? []), chosen.map((choice) => choice.rejected))
+  assert.ok(lines.every((line) => line.kind === 'decision'))
+}
 
 Given('an agent makes a technical choice', function (this: LoggingWorld): void {
   openRuns(this, 's1')
   for (const runtime of runtimes) {
     const text = ruleTextFor(runtime)
-    for (const role of roles) assert.ok(text.includes(`\`${role}\``), `${runtime} rule must name ${role}`)
+    for (const [role, id] of Object.entries(roleIds)) {
+      assert.ok(text.includes(`| ${role} | \`${id}\` |`), `${runtime} rule must map ${role} to ${id}`)
+    }
   }
-  for (const role of roles) logEverywhere(this, choiceBy(role))
+  roles.forEach((role, index) =>
+    logEverywhere(this, choiceBy(role, { confidence: confidences[index % confidences.length] as string })),
+  )
 })
 
 Then(
@@ -198,7 +229,7 @@ Then(
     for (const runtime of runtimes) {
       const lines = linesOf(this, runtime)
       assert.equal(lines.length, roles.length)
-      assert.deepEqual(lines.map((line) => line.role), roles)
+      assertLoggedAsChosen(this, runtime)
       for (const line of lines) {
         assert.equal(line.step, 's1')
         for (const field of ['title', 'why', 'confidence']) {
@@ -245,14 +276,15 @@ When('core validates decisions.jsonl', function (this: LoggingWorld): void {
 })
 
 Then('every line is accepted', function (this: LoggingWorld): void {
+  assert.equal(existsSync(join(this.root, 'canary')), false, 'agent text must never be executed')
   for (const runtime of runtimes) {
     assert.deepEqual(this.results.get(runtime), { accepted: true })
-    const lines = linesOf(this, runtime)
-    assert.equal(lines.length, this.logged.length)
-    assert.deepEqual(lines.map((line) => line.why), this.logged.map((choice) => choice.why))
-    assert.deepEqual(lines.map((line) => line.title), this.logged.map((choice) => choice.title))
+    assertLoggedAsChosen(this, runtime)
+    for (const line of linesOf(this, runtime)) {
+      assert.match(String(line.at), clockStamp)
+      assert.notEqual(line.at, forgedAt)
+    }
   }
-  assert.equal(existsSync(join(this.root, 'canary')), false, 'agent text must never be executed')
 })
 
 After(function (this: LoggingWorld): void {
