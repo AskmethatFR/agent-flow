@@ -24,6 +24,9 @@
 | `loop-threshold` | Loop threshold (plan.md Q6) | current | 2026-10-26 | `capture-events` | `docs/technical/decisions/loop-threshold.md` |
 | `scope-origin` | Origin of scope.json (plan.md Q5) | current | 2026-10-26 | `capture-events` | `docs/technical/decisions/scope-origin.md` |
 
+- `features/phase-1/contract-check.feature` — #17 Contract check: every file under .agent-flow reported checked, violation reported with file and line, unsafe layout refused (S1-S3)
+- `features/phase-1/real-issue-capture.feature` — #17 Real-issue capture, run by hand per runtime (`@manual`): a real issue produces correct .agent-flow files (S1)
+
 ## T3
 
 | ID | Title | Status | Updated | Links | Path |
