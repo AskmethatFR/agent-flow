@@ -3,9 +3,10 @@ id: "feature-catalog"
 type: "functional"
 owner: "pm"
 status: "current"
-updated: "2026-11-03"
+updated: "2026-11-05"
 links:
   - "glossary"
+  - "real-issue-run"
 answers:
   - "Which roles log decisions, in which runtimes, and what does each logged line carry?"
   - "Which data contracts under .agent-flow/ are frozen and validated?"
@@ -19,6 +20,9 @@ answers:
   - "What does the snapshot give for an invalid or missing plan?"
   - "When capture records a step start or finish, what is written, where, and what is refused?"
   - "How are decisions attached to plan steps in the snapshot, and what happens to a bad or orphan record?"
+  - "How does anyone check that every file under .agent-flow honours its contract, and what does the check report?"
+  - "Which layouts of .agent-flow does the contract check refuse?"
+  - "When is Phase 1 accepted on a real issue, and who runs that acceptance?"
 decided_in:
   - "#32"
   - "#38"
@@ -26,6 +30,7 @@ decided_in:
   - "#34"
   - "#39"
   - "#16"
+  - "#17"
 ---
 
 # Feature catalog
@@ -172,6 +177,40 @@ it by step with no further work. The role rule is `rules/decision-logging.md`.
 Acceptance: `decision-logging` S1-S3 (`features/phase-1/decision-logging.feature`).
 Out of scope: logging questions and deviations (Phase 4); wiring the rule into a
 real project (#17).
+
+### Capability: checking the contracts of a worktree
+
+Anyone can ask whether every file under a worktree's `.agent-flow/` honours its
+frozen contract by running the [[glossary]] contract check on that worktree. It is
+read-only: it never creates, edits or removes a file. It serves both runtimes.
+
+| Situation | Behaviour | Outcome |
+|---|---|---|
+| Every file honours its contract | Each file is reported as checked. | Success; the checked files are listed. |
+| A file breaks its contract | The violation is reported. | Failure; the error names the file and, for `decisions.jsonl`, the line. |
+| A contract file is a symlink | Refused, not followed. | Failure; the error names the layout. |
+| A file whose name is not a contract | Refused. | Failure; the error names the layout. |
+| A leftover temporary file | Refused. | Failure; the error names the layout. |
+| No `.agent-flow` directory | Refused. | Failure; the error names the layout. |
+| No worktree given, or one that is not absolute | Refused as a wrong call, distinct from a contract failure. | A usage failure. |
+
+An unsafe layout is refused as a whole: the check never reports files it could not
+read safely.
+
+Acceptance: `contract-check` S1-S3 (`features/phase-1/contract-check.feature`).
+The usage-failure row is pinned by unit tests only.
+
+### Capability: Phase 1 accepted on a real issue
+
+Phase 1 is done when a real issue, worked end to end by agents of one runtime,
+produces correct files under `.agent-flow/` with no human edit: `plan.json` lists
+every step with its start and end, `decisions.jsonl` holds at least one decision
+per role that ran, and the [[glossary]] contract check passes. The run is made by
+hand, once per runtime (Claude Code, OpenCode v2); it is not automated.
+
+Acceptance: `real-issue-capture` S1 (`features/phase-1/real-issue-capture.feature`,
+`@manual`). The setup and evidence procedure is `real-issue-run`
+(`docs/technical/capture/real-issue-run.md`).
 
 ## Consequences / Constraints
 

@@ -61,8 +61,8 @@
 
 | ID | Title | Status | Updated | Links | Path |
 |---|---|---|---|---|---|
-| `feature-catalog` | Capabilities, frozen data contracts, plan snapshot, step decisions, plan writer | current | 2026-11-03 | `glossary` | `docs/functional/features.md` |
-| `glossary` | Ubiquitous language: decision, snapshot, time spent, step decisions, plan writer | current | 2026-11-03 | `feature-catalog` | `docs/functional/glossary.md` |
+| `feature-catalog` | Capabilities: contracts, snapshot, decisions, plan writer, contract check | current | 2026-11-05 | `glossary`, `real-issue-run` | `docs/functional/features.md` |
+| `glossary` | Ubiquitous language: decision, snapshot, time spent, plan writer, contract check | current | 2026-11-05 | `feature-catalog` | `docs/functional/glossary.md` |
 
 - `features/phase-0/plan-contract.feature` — #23 Frozen data contracts: plan.json schema (S1, S2)
 - `features/phase-0/decisions-contract.feature` — #32 Frozen data contracts: decisions.jsonl schema and reader (S1, S2)

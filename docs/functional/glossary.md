@@ -3,7 +3,7 @@ id: "glossary"
 type: "functional"
 owner: "pm"
 status: "current"
-updated: "2026-11-03"
+updated: "2026-11-05"
 links:
   - "feature-catalog"
 answers:
@@ -14,6 +14,7 @@ answers:
   - "What do snapshot, time spent and current step mean?"
   - "What do step event and plan writer mean?"
   - "What are the decisions of a step?"
+  - "What does contract check mean, and what is an unsafe layout?"
 decided_in:
   - "#32"
   - "#38"
@@ -21,6 +22,7 @@ decided_in:
   - "#34"
   - "#39"
   - "#16"
+  - "#17"
 ---
 
 # Glossary — ubiquitous language
@@ -53,6 +55,8 @@ decided_in:
 | **request id** | The identifier of a request: bounded in length and unique within its file. Answers refer to it. |
 | **answer** | One record, in `responses.jsonl`, replying to a request by its request id. A request id may collect several answers; none replaces another. |
 | **scope** | What a run is expected to touch: the issue it derives from and a list of repo-relative paths, kept in `scope.json`. |
+| **contract check** | The read-only verification of one worktree: does every file under its `.agent-flow/` honour its frozen contract. It reports the files it checked, or the file (and, for `decisions.jsonl`, the line) that broke its contract; it never changes anything. |
+| **unsafe layout** | A shape of `.agent-flow/` the contract check refuses instead of reading: a contract file that is a symlink, a file whose name is not a contract, a leftover temporary file, or no `.agent-flow/` at all. |
 | **path entry** | One element of a scope's paths. Safe means repo-relative and specific; an entry that is absolute, climbs out of the repository, matches everything or looks like a command is unsafe and refused. |
 
 ## Consequences / Constraints
