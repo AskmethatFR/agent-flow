@@ -19,10 +19,14 @@
 
 | ID | Title | Status | Updated | Links | Path |
 |---|---|---|---|---|---|
-| `agent-rules` | Agent rules: runtime-neutral source, per-runtime shims, decision command | current | 2026-11-03 | [[decisions-jsonl-schema]], [[capture-events]], [[host-adapter-boundary]], [[snapshot-decisions]], [[workspace-layout-core-boundary]] | `docs/technical/capture/agent-rules.md` |
+| `agent-rules` | Agent rules: runtime-neutral source, per-runtime shims, decision command | current | 2026-11-05 | [[decisions-jsonl-schema]], [[capture-events]], [[host-adapter-boundary]], [[snapshot-decisions]], [[workspace-layout-core-boundary]] | `docs/technical/capture/agent-rules.md` |
 | `capture-events` | Runtime events for step started/done (Claude Code, OpenCode v2) | current | 2026-10-26 | — | `docs/technical/capture/events.md` |
 | `loop-threshold` | Loop threshold (plan.md Q6) | current | 2026-10-26 | `capture-events` | `docs/technical/decisions/loop-threshold.md` |
+| `real-issue-run` | Real-issue capture run: setup, AC4 evidence, QA procedure | current | 2026-11-05 | [[capture-events]], [[agent-rules]], [[plan-writer-confinement]] | `docs/technical/capture/real-issue-run.md` |
 | `scope-origin` | Origin of scope.json (plan.md Q5) | current | 2026-10-26 | `capture-events` | `docs/technical/decisions/scope-origin.md` |
+
+- `features/phase-1/contract-check.feature` — #17 Contract check: every file under .agent-flow reported checked, violation reported with file and line, unsafe layout refused (S1-S3)
+- `features/phase-1/real-issue-capture.feature` — #17 Real-issue capture, run by hand per runtime (`@manual`): a real issue produces correct .agent-flow files (S1)
 
 ## T3
 
@@ -57,8 +61,8 @@
 
 | ID | Title | Status | Updated | Links | Path |
 |---|---|---|---|---|---|
-| `feature-catalog` | Capabilities, frozen data contracts, plan snapshot, step decisions, plan writer | current | 2026-11-03 | `glossary` | `docs/functional/features.md` |
-| `glossary` | Ubiquitous language: decision, snapshot, time spent, step decisions, plan writer | current | 2026-11-03 | `feature-catalog` | `docs/functional/glossary.md` |
+| `feature-catalog` | Capabilities: contracts, snapshot, decisions, plan writer, contract check | current | 2026-11-05 | `glossary`, `real-issue-run` | `docs/functional/features.md` |
+| `glossary` | Ubiquitous language: decision, snapshot, time spent, plan writer, contract check | current | 2026-11-05 | `feature-catalog` | `docs/functional/glossary.md` |
 
 - `features/phase-0/plan-contract.feature` — #23 Frozen data contracts: plan.json schema (S1, S2)
 - `features/phase-0/decisions-contract.feature` — #32 Frozen data contracts: decisions.jsonl schema and reader (S1, S2)
