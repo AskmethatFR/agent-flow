@@ -3,10 +3,11 @@ id: "glossary"
 type: "functional"
 owner: "pm"
 status: "current"
-updated: "2026-11-02"
+updated: "2026-11-03"
 links:
   - "feature-catalog"
 answers:
+  - "Which role ids can write a decision?"
   - "What does a decision record mean in the business?"
   - "What do request, request type, blocking, answer, scope and path entry mean?"
   - "What do the kinds and confidence levels of a decision mean?"
@@ -19,6 +20,7 @@ decided_in:
   - "#24"
   - "#34"
   - "#39"
+  - "#16"
 ---
 
 # Glossary — ubiquitous language
@@ -33,7 +35,7 @@ decided_in:
 | **decision** | One record of a choice an agent role made during a run, with its step, its role, the reason it was made and how sure the role was. |
 | **decisions.jsonl** | The log of decisions for a run: one JSON record per line, kept under `.agent-flow/`. |
 | **step** | The workflow step during which a record was written. |
-| **role** | The agent role that wrote a record. |
+| **role** | The agent role that wrote a record, named by its id: `pm`, `architect`, `dev-a`, `dev-b`, `qa` or `security`. |
 | **kind** | What a record is about: `decision` (a choice made), `step_event` (something that happened in a step), `question` (something left open for someone to answer), `deviation` (a departure from the plan). |
 | **confidence** | How sure the writing role is of a record: `high`, `medium` or `low`. |
 | **rejected** | Optional: the alternatives that were considered and set aside. |
