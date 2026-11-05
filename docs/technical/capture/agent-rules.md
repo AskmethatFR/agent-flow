@@ -3,7 +3,7 @@ id: "agent-rules"
 type: "technical"
 owner: "architect"
 status: "current"
-updated: "2026-11-03"
+updated: "2026-11-05"
 relations:
   depends-on: ["decisions-jsonl-schema", "capture-events"]
   related: ["host-adapter-boundary", "snapshot-decisions", "workspace-layout-core-boundary"]
@@ -64,6 +64,6 @@ The capture spike showed that no runtime event names the role on a plan-item eve
 
 ## Open questions / Gaps
 
-- [ ] OpenCode with `AGENT_FLOW_HOME` unset: `{env:AGENT_FLOW_HOME}` fails open. Routed to #17.
+- [ ] OpenCode with `AGENT_FLOW_HOME` unset: `{env:AGENT_FLOW_HOME}` fails open. Routed to #79.
 - [ ] The #35 appender passes a caller-supplied `step` through unchanged (`capture/shared/src/decision-append/decision-append.ts:53`). The rule forbids setting `step`, but nothing enforces that. Waiting for the human's decision.
-- [ ] A live check of the template under zsh and bash 3.2 has not been run. Belongs to #17.
+- [ ] A live check of the template under zsh and bash 3.2 has not been run. Recorded by the real-issue runs #80 and #81.
