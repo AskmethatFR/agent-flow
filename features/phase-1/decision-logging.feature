@@ -20,3 +20,32 @@ Feature: Decision logging
     Given an agent has logged several decisions
     When core validates decisions.jsonl
     Then every line is accepted
+
+  # origin: #79
+  @scenario:S4
+  Scenario Outline: OpenCode refuses to start the rule set when AGENT_FLOW_HOME is unset
+    Given OpenCode v2 has AGENT_FLOW_HOME <state>
+    When OpenCode v2 starts with the shim
+    Then stderr has one line naming "AGENT_FLOW_HOME"
+    And the decision-logging rule is not loaded
+    And the stderr line does not echo the value of AGENT_FLOW_HOME
+
+    Examples:
+      | state                   |
+      | unset                   |
+      | empty                   |
+      | naming another checkout |
+
+  # origin: #79
+  @scenario:S5
+  Scenario Outline: OpenCode starts the rule set when AGENT_FLOW_HOME names this checkout
+    Given OpenCode v2 has AGENT_FLOW_HOME naming this checkout <reference>
+    When OpenCode v2 starts with the shim
+    Then the decision-logging rule is loaded
+    And the shim lists exactly one instruction
+    And stderr is empty
+
+    Examples:
+      | reference         |
+      | exactly           |
+      | through a symlink |
