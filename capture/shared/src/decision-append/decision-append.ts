@@ -1,4 +1,4 @@
-import { constants, lstatSync, realpathSync } from 'node:fs'
+import { constants, realpathSync } from 'node:fs'
 import type * as NodeFs from 'node:fs'
 import { join } from 'node:path'
 import { MAX_TEXT_LENGTH, serializeDecision } from '@agent-flow/core/contracts'
@@ -7,6 +7,7 @@ import { buildSnapshot } from '@agent-flow/core/snapshot'
 import {
   attempt,
   codeOf,
+  inspectAgentFlowDirectory,
   isConfinableWorktree,
   notRegularFile,
   readPlan,
@@ -29,16 +30,6 @@ const openFlags =
   constants.O_CREAT |
   constants.O_NOFOLLOW |
   constants.O_NONBLOCK
-
-const inspectDirectory = (directory: string): ValidationResult | undefined => {
-  let isDirectory: boolean
-  try {
-    isDirectory = lstatSync(directory).isDirectory()
-  } catch (error) {
-    return refuse(codeOf(error) === 'ENOENT' ? '.agent-flow is missing' : '.agent-flow cannot be read')
-  }
-  return isDirectory ? undefined : refuse('.agent-flow must be a real directory')
-}
 
 type Completed = { readonly decision: unknown }
 
@@ -108,7 +99,7 @@ export function createDecisionAppender(io: DecisionAppenderIo): Appender {
     const realWorktree = resolveWorktree(worktree, refuse)
     if (typeof realWorktree !== 'string') return realWorktree
     const directory = join(realWorktree, '.agent-flow')
-    const directoryRefusal = inspectDirectory(directory)
+    const directoryRefusal = inspectAgentFlowDirectory(directory, refuse)
     if (directoryRefusal !== undefined) return directoryRefusal
     const completed = withCurrentStep(io, directory, decision)
     if (!('decision' in completed)) return completed
