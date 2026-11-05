@@ -31,10 +31,11 @@ Feature: Decision logging
     And the stderr line does not echo the value of AGENT_FLOW_HOME
 
     Examples:
-      | state                   |
-      | unset                   |
-      | empty                   |
-      | naming another checkout |
+      | state                             |
+      | unset                             |
+      | empty                             |
+      | naming another checkout           |
+      | naming a path that does not exist |
 
   # origin: #79
   @scenario:S5

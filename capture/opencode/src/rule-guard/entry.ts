@@ -15,4 +15,5 @@ export default createRuleGuardPlugin({
   checkout: fileURLToPath(new URL('../../../../', import.meta.url)),
   resolve: realpathOrUndefined,
   report: (text) => void process.stderr.write(text),
+  exit: (code) => process.exit(code),
 })

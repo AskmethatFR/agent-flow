@@ -28,8 +28,9 @@ type Choice = {
 }
 
 type Launch = {
+  status: number | null
+  stdout: string
   stderr: string
-  refused: boolean
 }
 
 type LoggingWorld = {
@@ -302,8 +303,8 @@ const tsx = join(repo, 'node_modules', '.bin', 'tsx')
 
 const guardProbe = `
 const { default: plugin } = await import(process.argv[2])
-const refused = await plugin.setup().then(() => false, () => true)
-process.stdout.write(JSON.stringify({ id: plugin.id, refused }) + '\\n')
+await plugin.setup()
+process.stdout.write(JSON.stringify({ id: plugin.id }) + '\\n')
 `
 
 const openGuardScenario = (world: LoggingWorld): void => {
@@ -318,7 +319,13 @@ Given(/^OpenCode v2 has AGENT_FLOW_HOME (unset|empty)$/, function (this: Logging
 Given('OpenCode v2 has AGENT_FLOW_HOME naming another checkout', function (this: LoggingWorld): void {
   openGuardScenario(this)
   this.home = join(this.root, 'another-checkout')
-  mkdirSync(this.home)
+  mkdirSync(join(this.home, 'rules'), { recursive: true })
+  writeFileSync(join(this.home, 'rules', 'decision-logging.md'), 'another checkout rule\n')
+})
+
+Given('OpenCode v2 has AGENT_FLOW_HOME naming a path that does not exist', function (this: LoggingWorld): void {
+  openGuardScenario(this)
+  this.home = join(this.root, 'no-such-checkout')
 })
 
 Given(
@@ -342,8 +349,7 @@ When('OpenCode v2 starts with the shim', function (this: LoggingWorld): void {
     ['--tsconfig', join(repo, 'tsconfig.json'), probe, join(resolve(dirname(opencodeShimPath), plugins[0] as string), 'index.ts')],
     { cwd: this.root, encoding: 'utf8', env: { ...process.env, AGENT_FLOW_HOME: this.home } },
   )
-  assert.equal(result.status, 0, result.stderr)
-  this.launch = { stderr: result.stderr, refused: JSON.parse(result.stdout).refused }
+  this.launch = { status: result.status, stdout: result.stdout, stderr: result.stderr }
 })
 
 Then('stderr has one line naming {string}', function (this: LoggingWorld, name: string): void {
@@ -354,7 +360,8 @@ Then('stderr has one line naming {string}', function (this: LoggingWorld, name: 
 })
 
 Then('the decision-logging rule is not loaded', function (this: LoggingWorld): void {
-  assert.equal(this.launch.refused, true, 'the rule guard must refuse to activate')
+  assert.equal(this.launch.status, 1, 'the rule guard must terminate the session with exit code 1')
+  assert.equal(this.launch.stdout, '', 'nothing may start after the guard refused')
 })
 
 Then('the stderr line does not echo the value of AGENT_FLOW_HOME', function (this: LoggingWorld): void {
@@ -363,7 +370,7 @@ Then('the stderr line does not echo the value of AGENT_FLOW_HOME', function (thi
 })
 
 Then('the decision-logging rule is loaded', function (this: LoggingWorld): void {
-  assert.equal(this.launch.refused, false, 'the rule guard must let the setup proceed')
+  assert.equal(this.launch.status, 0, 'the rule guard must let the setup proceed')
   assert.equal(opencodeRule(this.home), realpathSync(ruleFile))
 })
 
