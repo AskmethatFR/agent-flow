@@ -7,6 +7,7 @@ import {
   readFileSync,
   readSync,
   realpathSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -186,6 +187,92 @@ describe('createContractCheck', () => {
     }
 
     expect(check(worktree, failing)).toEqual(refusal('.agent-flow cannot be read'))
+  })
+
+  it('caps the not-a-contract errors at 100 and a marker, after the errors of the contract files', () => {
+    writeFileSync(join(directory, 'plan.json'), '{}')
+    for (let index = 0; index < 101; index += 1) writeFileSync(join(directory, `.stray-${index}`), '')
+
+    const result = check()
+
+    expect(result.accepted).toBe(false)
+    if (result.accepted) return
+    const planErrors = result.errors.filter((error) => error.file === 'plan.json')
+    const strayErrors = result.errors.filter((error) => error.file === '.agent-flow')
+    expect(planErrors.length).toBeGreaterThan(0)
+    expect(result.errors.slice(0, planErrors.length)).toEqual(planErrors)
+    expect(strayErrors).toHaveLength(101)
+    expect(strayErrors.at(-1)).toEqual({
+      file: '.agent-flow',
+      location: null,
+      field: null,
+      message: 'too many errors, only the first 100 are shown',
+    })
+  })
+
+  it('shows every stray entry when there are exactly 100 of them', () => {
+    for (let index = 0; index < 100; index += 1) writeFileSync(join(directory, `.stray-${index}`), '')
+
+    const result = check()
+
+    expect(result.accepted).toBe(false)
+    if (result.accepted) return
+    expect(result.errors).toHaveLength(100)
+    expect(result.errors.every((error) => error.message === 'is not a contract file')).toBe(true)
+  })
+
+  describe('when .agent-flow is swapped after it was listed', () => {
+    const swappingAfterListing = (swap: () => void): ContractCheckIo => ({
+      ...realIo,
+      readdirSync: ((path: string) => {
+        const names = readdirSync(path)
+        swap()
+        return names
+      }) as never,
+    })
+
+    beforeEach(() => {
+      writeFileSync(join(directory, 'plan.json'), plan)
+    })
+
+    it('refuses a .agent-flow replaced by a symlink', () => {
+      const swap = (): void => {
+        renameSync(directory, join(root, 'moved'))
+        symlinkSync(join(root, 'moved'), directory)
+      }
+
+      expect(check(worktree, swappingAfterListing(swap))).toEqual(
+        refusal('.agent-flow must be a real directory'),
+      )
+    })
+
+    it('refuses a worktree whose path was redirected through a symlink', () => {
+      const swap = (): void => {
+        renameSync(worktree, join(root, 'moved'))
+        symlinkSync(join(root, 'moved'), worktree)
+      }
+
+      expect(check(worktree, swappingAfterListing(swap))).toEqual(
+        refusal('.agent-flow must be a real directory'),
+      )
+    })
+
+    it('refuses a .agent-flow replaced by a regular file', () => {
+      const swap = (): void => {
+        rmSync(directory, { recursive: true })
+        writeFileSync(directory, 'x')
+      }
+
+      expect(check(worktree, swappingAfterListing(swap))).toEqual(
+        refusal('.agent-flow must be a real directory'),
+      )
+    })
+
+    it('refuses a .agent-flow removed after it was listed', () => {
+      const swap = (): void => rmSync(directory, { recursive: true })
+
+      expect(check(worktree, swappingAfterListing(swap))).toEqual(refusal('.agent-flow cannot be read'))
+    })
   })
 
   it('never writes under the worktree', () => {

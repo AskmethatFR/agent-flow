@@ -1,5 +1,5 @@
 export type { ContractError, ValidationResult } from './contract-error'
-export { MAX_TEXT_LENGTH } from './contract-error'
+export { MAX_TEXT_LENGTH, capErrors } from './contract-error'
 export { checkContractFile, contractFileNames } from './contract-check'
 export { validatePlan } from './plan'
 export { validateRequests } from './requests'

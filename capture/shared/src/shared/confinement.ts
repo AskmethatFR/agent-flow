@@ -8,16 +8,13 @@ export type ReadIo = Pick<typeof NodeFs, 'openSync' | 'readSync' | 'closeSync'>
 
 export type Rejected = Extract<ValidationResult, { readonly accepted: false }>
 
-export type Refuse<Refusal extends ValidationResult = ValidationResult> = (
-  message: string,
-  field?: string | null,
-) => Refusal
+export type Refuse = (message: string, field?: string | null) => Rejected
 
 export const notRegularFile = 'must be a regular file, not a link'
 const readLimit = 4 * MAX_TEXT_LENGTH
 
 export const refusalFor =
-  (file: string): Refuse<Rejected> =>
+  (file: string): Refuse =>
   (message, field = null) => ({
     accepted: false,
     errors: [{ file, location: null, field, message }],
@@ -39,10 +36,7 @@ const hasDotSegment = (path: string): boolean =>
 export const isConfinableWorktree = (worktree: unknown): worktree is string =>
   typeof worktree === 'string' && isAbsolute(worktree) && !hasDotSegment(worktree)
 
-export const resolveWorktree = <Refusal extends ValidationResult>(
-  worktree: string,
-  refuse: Refuse<Refusal>,
-): string | Refusal => {
+export const resolveWorktree = (worktree: string, refuse: Refuse): string | Rejected => {
   try {
     return realpathSync(worktree)
   } catch {
@@ -50,10 +44,7 @@ export const resolveWorktree = <Refusal extends ValidationResult>(
   }
 }
 
-export const inspectAgentFlowDirectory = <Refusal extends ValidationResult>(
-  directory: string,
-  refuse: Refuse<Refusal>,
-): Refusal | undefined => {
+export const inspectAgentFlowDirectory = (directory: string, refuse: Refuse): Rejected | undefined => {
   let isDirectory: boolean
   try {
     isDirectory = lstatSync(directory).isDirectory()
@@ -63,14 +54,23 @@ export const inspectAgentFlowDirectory = <Refusal extends ValidationResult>(
   return isDirectory ? undefined : refuse('.agent-flow must be a real directory')
 }
 
-const openRefusal = (error: unknown, refuse: Refuse): ValidationResult => {
+export const confirmAgentFlowDirectory = (directory: string, refuse: Refuse): Rejected | undefined => {
+  try {
+    if (realpathSync(directory) !== directory) return refuse('.agent-flow must be a real directory')
+  } catch {
+    return refuse('.agent-flow cannot be read')
+  }
+  return inspectAgentFlowDirectory(directory, refuse)
+}
+
+const openRefusal = (error: unknown, refuse: Refuse): Rejected => {
   const code = codeOf(error)
   if (code === 'ENOENT') return refuse('is missing')
   if (code === 'ELOOP') return refuse(notRegularFile)
   return refuse('cannot be read')
 }
 
-const readBounded = (io: ReadIo, fd: number, refuse: Refuse): string | ValidationResult => {
+const readBounded = (io: ReadIo, fd: number, refuse: Refuse): string | Rejected => {
   const buffer = Buffer.allocUnsafe(readLimit + 1)
   let total = 0
   for (;;) {
@@ -81,13 +81,9 @@ const readBounded = (io: ReadIo, fd: number, refuse: Refuse): string | Validatio
   return total > readLimit ? refuse('is too large') : buffer.toString('utf8', 0, total)
 }
 
-export type PlanFile = { readonly text: string; readonly mode: number }
+export type ContractFile = { readonly text: string; readonly mode: number }
 
-export const readContractFile = (
-  io: ReadIo,
-  path: string,
-  refuse: Refuse,
-): PlanFile | ValidationResult => {
+export const readContractFile = (io: ReadIo, path: string, refuse: Refuse): ContractFile | Rejected => {
   let fd: number
   try {
     fd = io.openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
@@ -106,5 +102,5 @@ export const readContractFile = (
   }
 }
 
-export const readPlan = (io: ReadIo, planPath: string): PlanFile | ValidationResult =>
+export const readPlan = (io: ReadIo, planPath: string): ContractFile | Rejected =>
   readContractFile(io, planPath, refusePlan)
