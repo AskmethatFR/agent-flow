@@ -71,7 +71,7 @@
 - `features/phase-1/decision-append.feature` — #35 Decision append: a decision is added to decisions.jsonl, invalid ones and outside targets refused (S1-S4)
 - `features/phase-1/step-timing-claude-code.feature` — #14 Step timing captured automatically in Claude Code, one step in progress at a time (S1, S2)
 - `features/phase-1/step-timing-opencode.feature` — #15 Step timing captured automatically in OpenCode, one step in progress at a time (S1, S2)
-- `features/phase-1/decision-logging.feature` — #16 Decision logging: every role logs its decisions with step, role, title, why and confidence (S1-S3)
+- `features/phase-1/decision-logging.feature` — #16 Decision logging: every role logs its decisions with step, role, title, why and confidence (S1-S5)
 - `features/phase-2/snapshot-steps.feature` — #38 Core snapshot: steps with time spent and current step (S1-S5)
 - `features/phase-2/snapshot-decisions.feature` — #39 Core snapshot: decisions grouped by step, malformed line reported (S1-S3)
 - `features/phase-2/time-spent.feature` — #19 Plan rail: time spent per step and the current step marked (S1-S3)

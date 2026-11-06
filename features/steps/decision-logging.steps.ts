@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -27,11 +27,19 @@ type Choice = {
   rawTitle?: string
 }
 
+type Launch = {
+  status: number | null
+  stdout: string
+  stderr: string
+}
+
 type LoggingWorld = {
   root: string
   runs: Map<Runtime, Run>
   logged: Choice[]
   results: Map<Runtime, ValidationResult>
+  home: string | undefined
+  launch: Launch
 }
 
 const repo = realpathSync(fileURLToPath(new URL('../../', import.meta.url)))
@@ -58,10 +66,14 @@ const claudeRule = (): string => {
   return realpathSync(resolve(dirname(shim), imports[0] as string))
 }
 
-const opencodeRule = (): string => {
-  const config = JSON.parse(readFileSync(join(repo, 'rules', 'opencode', 'opencode.json'), 'utf8'))
-  assert.equal(config.instructions.length, 1, 'the OpenCode shim must list exactly one instruction')
-  return realpathSync(config.instructions[0].replace('{env:AGENT_FLOW_HOME}', repo))
+const opencodeShimPath = join(repo, 'rules', 'opencode', 'opencode.json')
+
+const opencodeShim = (): { plugins: string[]; instructions: string[] } => JSON.parse(readFileSync(opencodeShimPath, 'utf8'))
+
+const opencodeRule = (home: string = repo): string => {
+  const { instructions } = opencodeShim()
+  assert.equal(instructions.length, 1, 'the OpenCode shim must list exactly one instruction')
+  return realpathSync((instructions[0] as string).replace('{env:AGENT_FLOW_HOME}', home))
 }
 
 const ruleLoadedBy: Record<Runtime, () => string> = {
@@ -285,6 +297,89 @@ Then('every line is accepted', function (this: LoggingWorld): void {
       assert.notEqual(line.at, forgedAt)
     }
   }
+})
+
+const tsx = join(repo, 'node_modules', '.bin', 'tsx')
+
+const guardProbe = `
+const { default: plugin } = await import(process.argv[2])
+await plugin.setup()
+process.stdout.write(JSON.stringify({ id: plugin.id }) + '\\n')
+`
+
+const openGuardScenario = (world: LoggingWorld): void => {
+  world.root = realpathSync(mkdtempSync(join(tmpdir(), 'decision-logging-guard-')))
+}
+
+Given(/^OpenCode v2 has AGENT_FLOW_HOME (unset|empty)$/, function (this: LoggingWorld, state: string): void {
+  openGuardScenario(this)
+  this.home = state === 'unset' ? undefined : ''
+})
+
+Given('OpenCode v2 has AGENT_FLOW_HOME naming another checkout', function (this: LoggingWorld): void {
+  openGuardScenario(this)
+  this.home = join(this.root, 'another-checkout')
+  mkdirSync(join(this.home, 'rules'), { recursive: true })
+  writeFileSync(join(this.home, 'rules', 'decision-logging.md'), 'another checkout rule\n')
+})
+
+Given('OpenCode v2 has AGENT_FLOW_HOME naming a path that does not exist', function (this: LoggingWorld): void {
+  openGuardScenario(this)
+  this.home = join(this.root, 'no-such-checkout')
+})
+
+Given(
+  /^OpenCode v2 has AGENT_FLOW_HOME naming this checkout (exactly|through a symlink)$/,
+  function (this: LoggingWorld, reference: string): void {
+    openGuardScenario(this)
+    this.home = repo
+    if (reference === 'exactly') return
+    this.home = join(this.root, 'checkout-link')
+    symlinkSync(repo, this.home)
+  },
+)
+
+When('OpenCode v2 starts with the shim', function (this: LoggingWorld): void {
+  const { plugins } = opencodeShim()
+  assert.equal(plugins.length, 1, 'the OpenCode shim must enable exactly one plugin')
+  const probe = join(this.root, 'probe.mjs')
+  writeFileSync(probe, guardProbe)
+  const result = spawnSync(
+    tsx,
+    ['--tsconfig', join(repo, 'tsconfig.json'), probe, join(resolve(dirname(opencodeShimPath), plugins[0] as string), 'index.ts')],
+    { cwd: this.root, encoding: 'utf8', env: { ...process.env, AGENT_FLOW_HOME: this.home } },
+  )
+  this.launch = { status: result.status, stdout: result.stdout, stderr: result.stderr }
+})
+
+Then('stderr has one line naming {string}', function (this: LoggingWorld, name: string): void {
+  const lines = this.launch.stderr.split('\n')
+  assert.equal(lines.length, 2, 'stderr must hold exactly one newline-terminated line')
+  assert.equal(lines[1], '')
+  assert.ok((lines[0] as string).includes(name), `stderr must name ${name}`)
+})
+
+Then('the decision-logging rule is not loaded', function (this: LoggingWorld): void {
+  assert.equal(this.launch.status, 1, 'the rule guard must terminate the session with exit code 1')
+  assert.equal(this.launch.stdout, '', 'nothing may start after the guard refused')
+})
+
+Then('the stderr line does not echo the value of AGENT_FLOW_HOME', function (this: LoggingWorld): void {
+  if (this.home === undefined || this.home === '') return
+  assert.ok(!this.launch.stderr.includes(this.home))
+})
+
+Then('the decision-logging rule is loaded', function (this: LoggingWorld): void {
+  assert.equal(this.launch.status, 0, 'the rule guard must let the setup proceed')
+  assert.equal(opencodeRule(this.home), realpathSync(ruleFile))
+})
+
+Then('the shim lists exactly one instruction', function (): void {
+  assert.equal(opencodeShim().instructions.length, 1)
+})
+
+Then('stderr is empty', function (this: LoggingWorld): void {
+  assert.equal(this.launch.stderr, '')
 })
 
 After(function (this: LoggingWorld): void {

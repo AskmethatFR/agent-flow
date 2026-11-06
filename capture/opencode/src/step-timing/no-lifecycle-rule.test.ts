@@ -41,6 +41,9 @@ afterEach(() => {
 describe('the OpenCode plugin holds no lifecycle rule', () => {
   it('finds the non-test sources', () => {
     expect(sources(sourceRoot).map((path) => relative(sourceRoot, path)).sort()).toEqual([
+      'rule-guard/entry.ts',
+      'rule-guard/index.ts',
+      'rule-guard/rule-guard.ts',
       'step-timing/entry.ts',
       'step-timing/index.ts',
       'step-timing/plugin.ts',

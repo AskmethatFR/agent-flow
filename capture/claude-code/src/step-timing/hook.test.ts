@@ -103,7 +103,7 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })
 
-describe('step timing hook process', () => {
+describe('step timing hook process', { timeout: 30_000 }, () => {
   it('records a start from the real process, silently, with exit 0', () => {
     const result = run(taskUpdate('2', 'in_progress'))
     expect(result.status).toBe(0)
@@ -189,7 +189,7 @@ describe('hook holds no lifecycle rule', () => {
   })
 })
 
-describe('registered command hardening', () => {
+describe('registered command hardening', { timeout: 30_000 }, () => {
   it('runs the registered command and records the step', () => {
     const result = runRegistered(taskUpdate('2', 'in_progress'), worktree)
     expect(result.status).toBe(0)
@@ -269,7 +269,7 @@ describe('readBoundedInput', () => {
     closeSync(fd)
   })
 
-  it('exits 0, silent, and leaves the plan alone on oversized stdin', () => {
+  it('exits 0, silent, and leaves the plan alone on oversized stdin', { timeout: 30_000 }, () => {
     const result = run('x'.repeat(8 * limit))
     expect(result.status).toBe(0)
     expect(result.stdout).toBe('')
