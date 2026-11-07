@@ -87,22 +87,20 @@ const choiceBy = (role: string, overlays: Partial<Choice> = {}): Choice => ({
   ...overlays,
 })
 
-const planWith = (id: string): string =>
-  JSON.stringify({
-    issue: '#16',
-    title: 'Decision logging',
-    steps: [
-      {
-        id,
-        title: 'Implementation',
-        role: 'dev-a',
-        status: 'in_progress',
-        origin: 'planned',
-        startedAt: '2026-01-01T10:00:00.000Z',
-        endedAt: null,
-      },
-    ],
-  })
+const inProgressStep = (id: string, role: string, startedAt: string): Record<string, unknown> => ({
+  id,
+  title: 'Implementation',
+  role,
+  status: 'in_progress',
+  origin: 'planned',
+  startedAt,
+  endedAt: null,
+})
+
+const planOf = (...steps: readonly Record<string, unknown>[]): string =>
+  JSON.stringify({ issue: '#16', title: 'Decision logging', steps })
+
+const planWith = (id: string): string => planOf(inProgressStep(id, 'dev-a', '2026-01-01T10:00:00.000Z'))
 
 const runtimeEnv = (extra: NodeJS.ProcessEnv): NodeJS.ProcessEnv => ({
   ...process.env,
@@ -132,7 +130,7 @@ const opencodeRun = (root: string): Run => {
 
 const decisionsOf = (run: Run): string => join(run.worktree, '.agent-flow', 'decisions.jsonl')
 
-const openRuns = (world: LoggingWorld, stepId: string): void => {
+const openRuns = (world: LoggingWorld, plan: string): void => {
   world.root = realpathSync(mkdtempSync(join(tmpdir(), 'decision-logging-')))
   world.logged = []
   world.runs = new Map([
@@ -141,7 +139,7 @@ const openRuns = (world: LoggingWorld, stepId: string): void => {
   ])
   for (const run of world.runs.values()) {
     mkdirSync(join(run.worktree, '.agent-flow'))
-    writeFileSync(join(run.worktree, '.agent-flow', 'plan.json'), planWith(stepId))
+    writeFileSync(join(run.worktree, '.agent-flow', 'plan.json'), plan)
   }
 }
 
@@ -197,7 +195,7 @@ const assertLoggedAsChosen = (world: LoggingWorld, runtime: Runtime): void => {
 }
 
 Given('an agent makes a technical choice', function (this: LoggingWorld): void {
-  openRuns(this, 's1')
+  openRuns(this, planWith('s1'))
   for (const runtime of runtimes) {
     const text = ruleTextFor(runtime)
     for (const [role, id] of Object.entries(roleIds)) {
@@ -228,8 +226,45 @@ Then(
 )
 
 Given('the step {string} is in progress', function (this: LoggingWorld, id: string): void {
-  openRuns(this, id)
+  openRuns(this, planWith(id))
 })
+
+Given(
+  'the steps {string} of role {string} and {string} of role {string} are in progress, {string} started last',
+  function (
+    this: LoggingWorld,
+    first: string,
+    firstRole: string,
+    second: string,
+    secondRole: string,
+    last: string,
+  ): void {
+    assert.equal(last, second, 'the second step must be the one started last')
+    openRuns(
+      this,
+      planOf(
+        inProgressStep(first, firstRole, '2026-01-01T10:00:00.000Z'),
+        inProgressStep(second, secondRole, '2026-01-01T10:05:00.000Z'),
+      ),
+    )
+  },
+)
+
+When('the {string} and {string} agents each log a decision', function (this: LoggingWorld, first: string, second: string): void {
+  logEverywhere(this, choiceBy(first))
+  logEverywhere(this, choiceBy(second))
+})
+
+Then(
+  'the decision line of role {string} has step {string}',
+  function (this: LoggingWorld, role: string, step: string): void {
+    for (const runtime of runtimes) {
+      const lines = linesOf(this, runtime).filter((line) => line.role === role)
+      assert.equal(lines.length, 1)
+      assert.equal(lines[0]?.step, step)
+    }
+  },
+)
 
 When('the {string} agent logs a decision', function (this: LoggingWorld, role: string): void {
   logEverywhere(this, choiceBy(role))
@@ -248,7 +283,7 @@ Then(
 )
 
 Given('an agent has logged several decisions', function (this: LoggingWorld): void {
-  openRuns(this, 's1')
+  openRuns(this, planWith('s1'))
   for (const choice of hostileChoices(join(this.root, 'canary'))) logEverywhere(this, choice)
 })
 

@@ -2,7 +2,7 @@
 # origin: #35
 @feature:decision-append
 Feature: Decision append
-  Capture appends a decision to a worktree's decisions.jsonl, attached to the step in progress, never touching anything outside the worktree's .agent-flow directory.
+  Capture appends a decision to a worktree's decisions.jsonl, attached to the step in progress of its role, never touching anything outside the worktree's .agent-flow directory.
 
   @scenario:S1
   Scenario: Appending a decision keeps the existing lines
@@ -74,3 +74,39 @@ Feature: Decision append
     When a decision is appended
     Then the decisions.jsonl has 4 lines
     And the last line is filed under step "s1"
+
+  # origin: #89
+  @scenario:S9
+  Scenario: A decision is filed under its role's step while other roles' steps are in progress
+    Given a worktree whose decisions.jsonl has 3 lines
+    And the plan has step "s1" in progress for role "dev-b" since "2026-01-01T10:00:00.000Z"
+    And the plan also has step "s2" in progress for role "qa" since "2026-01-01T10:05:00.000Z"
+    And no step is given for the decision
+    And the decision is by role "dev-b"
+    When a decision is appended
+    Then the decisions.jsonl has 4 lines
+    And the last line is filed under step "s1"
+
+  # origin: #89
+  @scenario:S10
+  Scenario: A role with no step in progress, while several are in progress, is refused and nothing is written
+    Given a worktree whose decisions.jsonl has 3 lines
+    And the plan has step "s1" in progress for role "dev-a" since "2026-01-01T10:00:00.000Z"
+    And the plan also has step "s2" in progress for role "qa" since "2026-01-01T10:05:00.000Z"
+    And no step is given for the decision
+    And the decision is by role "security"
+    When a decision is appended
+    Then the decision is refused with the message "has no step in progress" on field "role"
+    And the decisions.jsonl is unchanged
+
+  # origin: #89
+  @scenario:S11
+  Scenario: A decision logged during rework is filed under the rework step
+    Given a worktree whose decisions.jsonl has 3 lines
+    And the plan has step "s1" done and its rework "s1.rework-1" in progress for role "dev-a" since "2026-01-01T10:00:00.000Z"
+    And the plan also has step "s2" in progress for role "qa" since "2026-01-01T10:05:00.000Z"
+    And no step is given for the decision
+    And the decision is by role "dev-a"
+    When a decision is appended
+    Then the decisions.jsonl has 4 lines
+    And the last line is filed under step "s1.rework-1"

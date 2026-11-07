@@ -50,3 +50,11 @@ Feature: Decision logging
       | reference         |
       | exactly           |
       | through a symlink |
+
+  # origin: #89
+  @scenario:S6
+  Scenario: Roles working in parallel each log under their own step
+    Given the steps "s1" of role "dev-b" and "s2" of role "qa" are in progress, "s2" started last
+    When the "dev-b" and "qa" agents each log a decision
+    Then the decision line of role "dev-b" has step "s1"
+    And the decision line of role "qa" has step "s2"

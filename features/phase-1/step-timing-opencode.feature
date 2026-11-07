@@ -15,12 +15,27 @@ Feature: Step timing capture
       | runtime     |
       | OpenCode v2 |
 
-  @scenario:S2
-  Scenario Outline: Only one step is in progress at a time
+  # origin: #88
+  @scenario:S3
+  Scenario Outline: Steps started together are each timed from their own start to their own end
     Given a <runtime> agent has the step "Architecture" in progress
     When the agent starts the step "Implementation"
+    And the agent marks the step "Architecture" as done
     Then "Architecture" is done with an endedAt
+    And step "Architecture" ended after step "Implementation" started
     And "Implementation" is in progress with a startedAt
+
+    Examples:
+      | runtime     |
+      | OpenCode v2 |
+
+  # origin: #90
+  @scenario:S4
+  Scenario Outline: Reopening a completed step times the rework as its own step
+    Given a <runtime> agent has completed the step "Implementation"
+    When the agent reopens the step "Implementation"
+    Then "Implementation" is done with an endedAt
+    And "Implementation (rework 1)" is in progress with a startedAt
 
     Examples:
       | runtime     |

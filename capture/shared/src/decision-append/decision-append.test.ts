@@ -46,6 +46,9 @@ const planWith = (steps: readonly unknown[]): string =>
 const inProgress = (id: string) =>
   stepOf(id, { status: 'in_progress', startedAt: '2026-01-01T10:00:00.000Z' })
 
+const inProgressFor = (id: string, role: string, startedAt: string) =>
+  stepOf(id, { role, status: 'in_progress', startedAt })
+
 const decisionOf = (overlays: Record<string, unknown> = {}) => ({
   at: '2026-01-01T10:05:00.000Z',
   step: 's1',
@@ -348,6 +351,133 @@ describe('appendDecision', () => {
 
       expect(result.accepted).toBe(false)
       expect(readdirSync(agentFlow)).toEqual(['plan.json'])
+    })
+  })
+
+  describe('binding the decision to the step in progress of its role', () => {
+    const parallel = () =>
+      planWith([
+        inProgressFor('s1', 'dev-b', '2026-01-01T10:00:00.000Z'),
+        inProgressFor('s2', 'qa', '2026-01-01T10:05:00.000Z'),
+        inProgressFor('s3', 'security', '2026-01-01T10:06:00.000Z'),
+      ])
+
+    it.each([
+      ['dev-b', 's1'],
+      ['qa', 's2'],
+      ['security', 's3'],
+    ])('files a decision of role %s under its own step', (role, id) => {
+      givenPlan(parallel())
+      const decision = { ...withoutStep(), role }
+
+      const result = appendDecision(worktree, decision)
+
+      expect(result).toEqual({ accepted: true })
+      expect(decisionsOnDisk()).toBe(lineOf({ ...decision, step: id }))
+    })
+
+    it('accepts a decision naming the step of its role', () => {
+      givenPlan(parallel())
+
+      const result = appendDecision(worktree, decisionOf({ role: 'qa', step: 's2' }))
+
+      expect(result).toEqual({ accepted: true })
+      expect(decisionsOnDisk()).toBe(lineOf(decisionOf({ role: 'qa', step: 's2' })))
+    })
+
+    it('refuses a decision naming the step of another role and writes nothing', () => {
+      givenPlan(parallel())
+      givenDecisions('x\n')
+
+      const result = appendDecision(worktree, decisionOf({ role: 'qa', step: 's1' }))
+
+      expect(result).toEqual(refused('is not the step in progress', 'step'))
+      expect(decisionsOnDisk()).toBe('x\n')
+    })
+
+    it('refuses a decision naming the finished step during its rework and writes nothing', () => {
+      givenPlan(
+        planWith([
+          stepOf('s1', { status: 'done', startedAt: '2026-01-01T08:00:00.000Z', endedAt: '2026-01-01T09:00:00.000Z' }),
+          inProgressFor('s1.rework-1', 'dev-a', '2026-01-01T10:00:00.000Z'),
+        ]),
+      )
+      givenDecisions('x\n')
+
+      const result = appendDecision(worktree, decisionOf({ step: 's1' }))
+
+      expect(result).toEqual(refused('is not the step in progress', 'step'))
+      expect(decisionsOnDisk()).toBe('x\n')
+    })
+
+    it('refuses a decision naming a todo step and writes nothing', () => {
+      givenPlan(planWith([inProgress('s1'), stepOf('s2')]))
+      givenDecisions('x\n')
+
+      const result = appendDecision(worktree, decisionOf({ step: 's2' }))
+
+      expect(result).toEqual(refused('is not the step in progress', 'step'))
+      expect(decisionsOnDisk()).toBe('x\n')
+    })
+
+    it.each<[string, unknown]>([
+      ['a role with no step in progress', 'pm'],
+      ['an empty role', ''],
+      ['a number as role', 7],
+      ['a null role', null],
+      ['an array as role', ['qa']],
+    ])('refuses %s while several steps are in progress and writes nothing', (_name, role) => {
+      givenPlan(parallel())
+      givenDecisions('x\n')
+
+      const result = appendDecision(worktree, { ...withoutStep(), role })
+
+      expect(result).toEqual(refused('has no step in progress', 'role'))
+      expect(decisionsOnDisk()).toBe('x\n')
+    })
+
+    it('refuses an explicit step with a role that has no step in progress', () => {
+      givenPlan(parallel())
+      givenDecisions('x\n')
+
+      const result = appendDecision(worktree, decisionOf({ role: 'pm', step: 's1' }))
+
+      expect(result).toEqual(refused('has no step in progress', 'role'))
+      expect(decisionsOnDisk()).toBe('x\n')
+    })
+
+    it('files a decision of a role with no step under the only step in progress', () => {
+      givenPlan(planWith([stepOf('s0', { status: 'done' }), inProgressFor('s1', 'dev-a', '2026-01-01T10:00:00.000Z')]))
+      const decision = { ...withoutStep(), role: 'qa' }
+
+      const result = appendDecision(worktree, decision)
+
+      expect(result).toEqual({ accepted: true })
+      expect(decisionsOnDisk()).toBe(lineOf({ ...decision, step: 's1' }))
+    })
+
+    it.each<[string, unknown]>([
+      ['a number', 7],
+      ['an empty text', ''],
+      ['null', null],
+    ])('refuses a role that is %s on the role field and writes nothing', (_name, role) => {
+      givenPlan(planWith([inProgress('s1')]))
+      givenDecisions('x\n')
+
+      const result = appendDecision(worktree, { ...withoutStep(), role })
+
+      expect(result).toMatchObject({ accepted: false, errors: [{ file: 'decisions.jsonl', field: 'role' }] })
+      expect(decisionsOnDisk()).toBe('x\n')
+    })
+
+    it('refuses with no step in progress whatever the role', () => {
+      givenPlan(planWith([stepOf('s1'), stepOf('s2', { role: 'qa' })]))
+      givenDecisions('x\n')
+
+      const result = appendDecision(worktree, { ...withoutStep(), role: 'qa' })
+
+      expect(result).toEqual(refused('no step is in progress', 'step'))
+      expect(decisionsOnDisk()).toBe('x\n')
     })
   })
 

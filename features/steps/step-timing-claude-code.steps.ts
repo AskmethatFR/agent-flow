@@ -70,6 +70,23 @@ Given(
   },
 )
 
+Given(
+  /^a (.+) agent has completed the step "([^"]+)"$/,
+  function (this: TimingWorld, name: string, title: string): void {
+    useRuntime(this, name)
+    this.runtime.start(this, title)
+    this.runtime.finish(this, title)
+  },
+)
+
+When('the agent marks the step {string} as done', function (this: TimingWorld, title: string): void {
+  this.runtime.finish(this, title)
+})
+
+When('the agent reopens the step {string}', function (this: TimingWorld, title: string): void {
+  this.runtime.start(this, title)
+})
+
 When('the agent marks the step as done', function (this: TimingWorld): void {
   const running = stepsOf(this).find((step) => step.status === 'in_progress')
   assert.ok(running !== undefined, 'no step is in progress')
@@ -93,7 +110,20 @@ Then('endedAt is not earlier than startedAt', function (this: TimingWorld): void
   assert.ok(Date.parse(step.endedAt as string) >= Date.parse(step.startedAt as string))
 })
 
-Then('{string} is done with an endedAt', function (this: TimingWorld, title: string): void {
+Then(
+  'step {string} ended after step {string} started',
+  function (this: TimingWorld, ended: string, started: string): void {
+    const endedAt = stepTitled(this, ended).endedAt
+    const startedAt = stepTitled(this, started).startedAt
+    assert.ok(endedAt !== null && startedAt !== null, 'both instants must be recorded')
+    assert.ok(
+      Date.parse(endedAt) > Date.parse(startedAt),
+      `${ended} ended at ${endedAt}, not after ${started} started at ${startedAt}`,
+    )
+  },
+)
+
+Then('{string} is done with an endedAt',function (this: TimingWorld, title: string): void {
   const step = stepTitled(this, title)
   assert.equal(step.status, 'done')
   assert.equal(typeof step.endedAt, 'string')

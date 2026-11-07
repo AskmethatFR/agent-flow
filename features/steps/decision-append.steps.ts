@@ -109,6 +109,45 @@ Given(
   },
 )
 
+const planPathOf = (world: DecisionWorld): string => join(agentFlowOf(world), 'plan.json')
+
+const stepsOnDisk = (world: DecisionWorld): unknown[] =>
+  JSON.parse(readFileSync(planPathOf(world), 'utf8')).steps
+
+const inProgressFor = (id: string, role: string, since: string): Record<string, unknown> =>
+  stepOf(id, { role, status: 'in_progress', startedAt: since })
+
+Given(
+  'the plan has step {string} in progress for role {string} since {string}',
+  function (this: DecisionWorld, id: string, role: string, since: string): void {
+    writeFileSync(planPathOf(this), planWith([inProgressFor(id, role, since)]))
+  },
+)
+
+Given(
+  'the plan also has step {string} in progress for role {string} since {string}',
+  function (this: DecisionWorld, id: string, role: string, since: string): void {
+    writeFileSync(planPathOf(this), planWith([...stepsOnDisk(this), inProgressFor(id, role, since)]))
+  },
+)
+
+Given(
+  'the plan has step {string} done and its rework {string} in progress for role {string} since {string}',
+  function (this: DecisionWorld, id: string, rework: string, role: string, since: string): void {
+    const done = stepOf(id, {
+      role,
+      status: 'done',
+      startedAt: '2026-01-01T08:00:00.000Z',
+      endedAt: '2026-01-01T09:00:00.000Z',
+    })
+    writeFileSync(planPathOf(this), planWith([done, inProgressFor(rework, role, since)]))
+  },
+)
+
+Given('the decision is by role {string}', function (this: DecisionWorld, role: string): void {
+  this.decision = { ...this.decision, role }
+})
+
 Given('a decision that fails the decisions contract', function (this: DecisionWorld): void {
   this.decision = { ...validDecision(), confidence: 'certain' }
 })
@@ -185,6 +224,14 @@ Then(
   function (this: DecisionWorld): void {
     assert.ok(!this.result.accepted, 'expected the decision to be refused')
     assert.ok(this.result.errors.some((error) => error.message === 'no step is in progress'))
+  },
+)
+
+Then(
+  'the decision is refused with the message {string} on field {string}',
+  function (this: DecisionWorld, message: string, field: string): void {
+    assert.ok(!this.result.accepted, 'expected the decision to be refused')
+    assert.deepEqual(this.result.errors, [{ file: 'decisions.jsonl', location: null, field, message }])
   },
 )
 
