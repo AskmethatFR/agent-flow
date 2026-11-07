@@ -243,15 +243,18 @@ describe('buildSnapshot', () => {
     expect(agentOf(planText(inProgress({ role: 'dev-a' })), status)).toEqual({ role: 'dev-a', state })
   })
 
-  it('reports the role of the in-progress step with the latest start, whatever its position', () => {
+  it.each([
+    ['after an earlier one', '2026-10-22T09:00:00Z', '2026-10-22T10:00:00Z', 'dev-a'],
+    ['before an earlier one', '2026-10-22T10:00:00Z', '2026-10-22T09:00:00Z', 'architect'],
+  ])('reports the role of the in-progress step with the latest start when it comes %s', (_, firstStart, secondStart, expectedRole) => {
     const text = planText(
-      inProgress({ id: 'a', role: 'dev-a', startedAt: '2026-10-22T10:00:00Z' }),
-      inProgress({ id: 'b', role: 'architect', startedAt: '2026-10-22T09:00:00Z' }),
       finished({ id: 'c', role: 'qa' }),
+      inProgress({ id: 'a', role: 'architect', startedAt: firstStart }),
+      inProgress({ id: 'b', role: 'dev-a', startedAt: secondStart }),
     )
     const snapshot = buildSnapshot({ plan: text }, now, 'running')
     const currentStep = snapshot.steps.find(({ id }) => id === snapshot.currentStepId)
-    expect(snapshot.currentAgent).toEqual({ role: 'dev-a', state: 'running' })
+    expect(snapshot.currentAgent).toEqual({ role: expectedRole, state: 'running' })
     expect(snapshot.currentAgent?.role).toBe(currentStep?.role)
   })
 
