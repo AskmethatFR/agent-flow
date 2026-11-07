@@ -3,12 +3,12 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { After, Given, Then, When } from '@cucumber/cucumber'
 import { validateDecisions } from '@agent-flow/core/contracts'
 import type { ValidationResult } from '@agent-flow/core/contracts'
+import { assertShimsMirror, opencodeShim, opencodeShimPath, repo, rulesReachedBy, runtimes } from './rule-shims'
+import type { Runtime } from './rule-shims'
 
-type Runtime = 'Claude Code' | 'OpenCode v2'
 type Shell = 'sh' | 'bash'
 
 type Run = {
@@ -42,9 +42,7 @@ type LoggingWorld = {
   launch: Launch
 }
 
-const repo = realpathSync(fileURLToPath(new URL('../../', import.meta.url)))
 const ruleFile = join(repo, 'rules', 'decision-logging.md')
-const runtimes: readonly Runtime[] = ['Claude Code', 'OpenCode v2']
 const roleIds: Readonly<Record<string, string>> = {
   PM: 'pm',
   Architect: 'architect',
@@ -57,34 +55,10 @@ const roles: readonly string[] = Object.values(roleIds)
 const clockStamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/
 const forgedAt = '1999-01-01T00:00:00Z'
 
-const claudeRule = (): string => {
-  const shim = join(repo, 'rules', 'claude-code', 'CLAUDE.md')
-  const imports = readFileSync(shim, 'utf8')
-    .split('\n')
-    .flatMap((line) => /^@(\S+)$/.exec(line)?.[1] ?? [])
-  assert.equal(imports.length, 1, 'the Claude Code shim must import exactly one file')
-  return realpathSync(resolve(dirname(shim), imports[0] as string))
-}
-
-const opencodeShimPath = join(repo, 'rules', 'opencode', 'opencode.json')
-
-const opencodeShim = (): { plugins: string[]; instructions: string[] } => JSON.parse(readFileSync(opencodeShimPath, 'utf8'))
-
-const opencodeRule = (home: string = repo): string => {
-  const { instructions } = opencodeShim()
-  assert.equal(instructions.length, 1, 'the OpenCode shim must list exactly one instruction')
-  return realpathSync((instructions[0] as string).replace('{env:AGENT_FLOW_HOME}', home))
-}
-
-const ruleLoadedBy: Record<Runtime, () => string> = {
-  'Claude Code': claudeRule,
-  'OpenCode v2': opencodeRule,
-}
-
 const ruleTextFor = (runtime: Runtime): string => {
-  const path = ruleLoadedBy[runtime]()
-  assert.equal(path, realpathSync(ruleFile), `${runtime} must load rules/decision-logging.md`)
-  return readFileSync(path, 'utf8')
+  assertShimsMirror()
+  assert.ok(rulesReachedBy(runtime).includes(realpathSync(ruleFile)), `${runtime} must load rules/decision-logging.md`)
+  return readFileSync(ruleFile, 'utf8')
 }
 
 const commandTemplateFor = (runtime: Runtime): string => {
@@ -371,11 +345,12 @@ Then('the stderr line does not echo the value of AGENT_FLOW_HOME', function (thi
 
 Then('the decision-logging rule is loaded', function (this: LoggingWorld): void {
   assert.equal(this.launch.status, 0, 'the rule guard must let the setup proceed')
-  assert.equal(opencodeRule(this.home), realpathSync(ruleFile))
+  assert.ok(rulesReachedBy('OpenCode v2', this.home).includes(realpathSync(ruleFile)))
 })
 
-Then('the shim lists exactly one instruction', function (): void {
-  assert.equal(opencodeShim().instructions.length, 1)
+Then('the shim lists each rule file once', function (this: LoggingWorld): void {
+  const reached = rulesReachedBy('OpenCode v2', this.home)
+  assert.equal(opencodeShim().instructions.length, new Set(reached).size, 'each instruction must name a distinct rule file')
 })
 
 Then('stderr is empty', function (this: LoggingWorld): void {

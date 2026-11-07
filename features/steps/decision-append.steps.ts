@@ -1,11 +1,8 @@
 import assert from 'node:assert/strict'
 import {
-  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  readdirSync,
-  readlinkSync,
   renameSync,
   rmSync,
   symlinkSync,
@@ -16,6 +13,7 @@ import { join } from 'node:path'
 import { After, Given, Then, When } from '@cucumber/cucumber'
 import { appendDecision } from '@agent-flow/capture-shared/decision-append'
 import type { ValidationResult } from '@agent-flow/core/contracts'
+import { snapshotOf } from './snapshot-of'
 
 type DecisionWorld = {
   root: string
@@ -68,18 +66,6 @@ const openWorktree = (world: DecisionWorld): void => {
   world.decision = validDecision()
   mkdirSync(agentFlowOf(world), { recursive: true })
   mkdirSync(outsideOf(world))
-}
-
-const snapshotOf = (root: string): Map<string, string> => {
-  const entries = new Map<string, string>()
-  for (const relative of readdirSync(root, { recursive: true, encoding: 'utf8' })) {
-    const path = join(root, relative)
-    const stats = lstatSync(path)
-    if (stats.isSymbolicLink()) entries.set(relative, `link:${readlinkSync(path)}`)
-    else if (stats.isDirectory()) entries.set(relative, 'dir')
-    else entries.set(relative, `file:${readFileSync(path, 'utf8')}`)
-  }
-  return entries
 }
 
 const redirections: Record<string, (world: DecisionWorld) => void> = {

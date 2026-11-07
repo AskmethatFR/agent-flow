@@ -1,7 +1,8 @@
 #!/usr/bin/env node
+import { fileURLToPath } from 'node:url'
 import { register } from 'tsx/esm/api'
 
-register()
+register({ tsconfig: fileURLToPath(new URL('../../../tsconfig.json', import.meta.url)) })
 
 const { runContractCheckCommand } = await import('../src/contract-check/command.ts')
 

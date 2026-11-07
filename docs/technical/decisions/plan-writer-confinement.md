@@ -32,7 +32,8 @@ decided_in:
 | Concern | Decision | Rationale |
 |---|---|---|
 | Surface | `applyStepEvent(worktree, event)`, `event = { kind: 'start' \| 'finish', stepId, at }`; result is core's `ValidationResult`; reached only as `@agent-flow/capture-shared/plan-writer` | one implementation for both runtimes; callers already read the `accepted / errors` shape; `at` is caller-supplied (host clock rule) |
-| Sync | `node:fs` `*Sync` only | #14 is a one-shot hook process that must exit 0 silently; no intra-process interleaving in the race analysis |
+| Sync | `node:fs` `*Sync` only; the lock wait is a synchronous poll (`Atomics.wait`, 5 ms) bounded by the lock policy | #14 is a one-shot hook process that must exit 0 silently; no intra-process interleaving in the race analysis. The OpenCode plugin runs in the host process, so it submits a whole todo batch through `applyPlanOperations`: one lock, one bounded wait per event, every operation refused together on a busy or stale lock (never up to 128 waits of 5 s) |
+| Concurrency | the whole read-modify-write of `plan.json` runs under `.agent-flow/.plan.lock`; `createPlanWriter` and `createPlanStepAdder` take an optional lock policy (wait 5 s, stale 30 s by default) that tests shrink | parallel hooks (`TaskCreate` bursts) each read, modify and rename; without the lock the last rename wins and a step is lost |
 | Never throws | every failure, including a non-object event, is a refusal value | mirrors core (`host-adapter-boundary` `:126`) |
 | Errors | closed set, fixed messages labelled `plan.json`; a lifecycle refusal is returned verbatim; never raw `error.message` or a path | `host-adapter-boundary` `:127`. The wording is not frozen: no consumer branches on it |
 | Missing files | absent `.agent-flow` is created, then the call is refused; absent `plan.json` is refused | the writer never creates a first plan (#12) |
@@ -44,6 +45,7 @@ decided_in:
 |---|---|---|
 | 1 | worktree is a string, absolute, with no `.` or `..` segment; then `realpath` | relative paths, traversal, unresolvable roots |
 | 2 | `<realWorktree>/.agent-flow` must `lstat` as a directory | a symlinked or non-directory `.agent-flow` |
+| 2a | `.agent-flow/.plan.lock` created `O_CREAT \| O_EXCL \| O_NOFOLLOW`, mode `0o600`; an existing entry is `lstat`ed: a link or non-regular file is refused, a regular file is waited on; the `{dev, ino}` of the created file is kept from `fstat`, and release `lstat`s the path and unlinks only on a match, in `finally`, only by the call that created it; a lock dated in the future beyond the stale age counts as stale; the wait deadline runs on the monotonic clock, the stale test on the wall clock | two writers interleaving the read-modify-write; a linked or planted lock path |
 | 3 | `plan.json` opened `O_RDONLY \| O_NOFOLLOW \| O_NONBLOCK`; `fstat` must be a regular file | a linked `plan.json` (ELOOP); a FIFO or directory without hanging |
 | 4 | read capped at `4 × MAX_TEXT_LENGTH + 1` bytes from the open descriptor; one byte over → refused | oversize, including a file grown after open (no `fstat.size` gate) |
 | 5 | temp `.plan.json.<uuid>.tmp` in the same directory, `O_CREAT \| O_EXCL`, mode = original `& 0o777` (umask applies) | a planted temp name or link; widening the plan's permissions |
@@ -63,7 +65,7 @@ decided_in:
 |---|---|---|
 | No directory `fsync` after rename | a power loss can lose the last event, never corrupt the file; not an AC | none |
 | TOCTOU window between step 7 and step 8 | Node has no `openat`/`renameat`; the only racer is the same-uid agent that can already write the worktree | none |
-| Concurrent writers can lose an update (read-modify-write, no lock) | no concurrent event source exists yet | #14 / #15, where same-step events first coincide (`capture-events` `:97`) |
+| A crashed writer leaves `.plan.lock` behind | a lock older than 30 s is refused at once with `is locked by a stale lock file; remove .agent-flow/.plan.lock`, never stolen; a younger lock is waited on for at most 5 s, then refused as `is busy` | the human removes the file |
 | Windows | `O_NOFOLLOW` absent; Linux and macOS only, as Paseo | none |
 
 ### Considered and rejected
@@ -75,7 +77,7 @@ decided_in:
 | In-place `writeFileSync` | torn file on a mid-write failure |
 | `fstat.size` pre-check | stale after open (CWE-367); the capped read is the gate |
 | Directory `fsync` | buys only last-event durability |
-| Lock file | no concurrent writer yet |
+| Stealing a stale lock | a steal races a slow live holder and reopens the lost update; a clear refusal is safer |
 | Writer in `core` | needs `node:fs`; core stays pure |
 
 ## Consequences / Constraints
@@ -88,5 +90,4 @@ decided_in:
 
 ## Open questions / Gaps
 
-- [ ] Ordering or locking of concurrent step events — #14 / #15.
 - [ ] `capture-events` `:72` calls the shared writer "append-only" (spike recorder); true for `decisions.jsonl`, not for `plan.json`, which this node governs.

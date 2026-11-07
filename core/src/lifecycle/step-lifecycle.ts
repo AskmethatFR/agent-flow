@@ -1,6 +1,7 @@
 import { capErrors, safeLabel } from '../contracts/contract-error'
 import type { ContractError } from '../contracts/contract-error'
 import { validatePlan } from '../contracts/plan'
+import { ROLE_IDS } from './roles'
 
 export type StepLifecycleResult =
   | { readonly accepted: true; readonly plan: string }
@@ -11,6 +12,12 @@ type Step = {
   readonly status: string
   readonly startedAt: string | null
   readonly endedAt: string | null
+}
+
+type AddedStep = Step & {
+  readonly title: string
+  readonly role: string
+  readonly origin: 'planned' | 'proposed'
 }
 
 type Plan = { readonly steps: readonly Step[] }
@@ -26,6 +33,8 @@ type Transition = {
 
 const file = 'plan.json'
 const notInstant = 'must be an ISO-8601 UTC instant'
+const issuePattern = /^[1-9][0-9]{0,9}$/
+const roleOfItem = new RegExp(`^(${ROLE_IDS.join('|')}): (.+)$`)
 
 const refused = (
   location: string | null,
@@ -56,7 +65,7 @@ const closingError = (step: Step, index: number, atTime: number): ContractError[
   return []
 }
 
-const emit = (document: Plan, steps: readonly Step[]): StepLifecycleResult => {
+const emit = (document: object, steps: readonly Step[]): StepLifecycleResult => {
   const text = `${JSON.stringify({ ...document, steps }, null, 2)}\n`
   const readBack = validatePlan(text)
   return readBack.accepted ? { accepted: true, plan: text } : readBack
@@ -115,6 +124,32 @@ function applyTransition(
     return closes(candidate, position) ? closed(candidate, at) : candidate
   })
   return emit(document, steps)
+}
+
+export function createPlan(issue: string, title: string): StepLifecycleResult {
+  if (typeof issue !== 'string' || !issuePattern.test(issue)) {
+    return refused(null, 'issue', 'must be a number of 1 to 10 digits without leading zero')
+  }
+  if (typeof title !== 'string' || title.trim() === '') {
+    return refused(null, 'title', 'must not be blank')
+  }
+  return emit({ issue: `#${issue}`, title }, [])
+}
+
+export function addStep(plan: string, stepId: string, itemTitle: string): StepLifecycleResult {
+  if (typeof plan !== 'string') return refused(null, null, 'must be a string')
+  const input = validatePlan(plan)
+  if (!input.accepted) return input
+  if (typeof stepId !== 'string') return refused(null, 'id', 'must be text')
+  if (typeof itemTitle !== 'string') return refused(safeLabel(stepId), 'title', 'must be text')
+  const document = JSON.parse(plan) as Plan
+  if (document.steps.some((step) => step.id === stepId)) return { accepted: true, plan }
+  const parsed = roleOfItem.exec(itemTitle)
+  const role = parsed?.[1] ?? ''
+  const title = parsed?.[2] ?? itemTitle
+  const origin = document.steps.every((step) => step.status === 'todo') ? 'planned' : 'proposed'
+  const added: AddedStep = { id: stepId, title, role, status: 'todo', origin, startedAt: null, endedAt: null }
+  return emit(document, [...document.steps, added])
 }
 
 export function startStep(plan: string, stepId: string, at: string): StepLifecycleResult {

@@ -31,6 +31,8 @@ const event = (todos: unknown, overlays: Record<string, unknown> = {}) => ({
 
 const todo = (content: unknown, status: unknown): Todo => ({ content, status })
 
+const accepted = (count: number) => Array.from({ length: count }, () => ({ accepted: true }))
+
 let root: string
 let worktree: string
 let planPath: string
@@ -54,13 +56,72 @@ afterEach(() => {
 })
 
 describe('captureStepTiming', () => {
+  describe('plan seeding', () => {
+    it('adds a new todo as a planned step of its role and starts it from the same call', () => {
+      const results = captureStepTiming(event([todo('qa: Verify', 'in_progress')]), worktree, () => earlier)
+      expect(results).toEqual([{ accepted: true }, { accepted: true }])
+      expect(stepsNow()[2]).toEqual({
+        id: 'qa: Verify',
+        title: 'Verify',
+        role: 'qa',
+        status: 'in_progress',
+        origin: 'planned',
+        startedAt: earlier.toISOString(),
+        endedAt: null,
+      })
+    })
+
+    it('adds every new todo in list order whatever its status', () => {
+      captureStepTiming(
+        event([todo('qa: One', 'pending'), todo('Architecture', 'pending'), todo('qa: Two', 'pending')]),
+        worktree,
+        () => earlier,
+      )
+      expect(stepsNow().map((step) => step.id)).toEqual(['Architecture', 'Implementation', 'qa: One', 'qa: Two'])
+    })
+
+    it('proposes a todo that appears after a step has left todo', () => {
+      captureStepTiming(event([todo('Implementation', 'in_progress')]), worktree, () => earlier)
+      captureStepTiming(
+        event([todo('Implementation', 'in_progress'), todo('qa: Extra', 'pending')]),
+        worktree,
+        () => later,
+      )
+      expect(stepsNow()[2]).toMatchObject({ id: 'qa: Extra', origin: 'proposed', status: 'todo', role: 'qa' })
+    })
+
+    it('keeps an unprefixed todo whole as the title of a step without a role', () => {
+      captureStepTiming(event([todo('Write the docs', 'pending')]), worktree, () => earlier)
+      expect(stepsNow()[2]).toMatchObject({ id: 'Write the docs', title: 'Write the docs', role: '' })
+    })
+
+    it('leaves a todo that is already a step untouched', () => {
+      captureStepTiming(event([todo('Implementation', 'pending')]), worktree, () => earlier)
+      expect(stepsNow()).toEqual([stepOf('Architecture'), stepOf('Implementation')])
+    })
+
+    it('reports the refusal of an add and still reports the transition after it', () => {
+      rmSync(planPath)
+      const results = captureStepTiming(event([todo('qa: Verify', 'in_progress')]), worktree, () => earlier)
+      expect(results?.map((result) => result.accepted)).toEqual([false, false])
+    })
+
+    it('adds at most 64 items', () => {
+      const names = Array.from({ length: 65 }, (_unused, index) => `qa: Check ${index}`)
+      seed([])
+      captureStepTiming(event(names.map((name) => todo(name, 'pending'))), worktree, () => earlier)
+      expect(stepsNow()).toHaveLength(64)
+      expect(stepsNow()[63]).toMatchObject({ id: 'qa: Check 63' })
+    })
+  })
+
   it('starts the step named by the in_progress todo content with the injected time', () => {
     const results = captureStepTiming(
       event([todo('Architecture', 'pending'), todo('Implementation', 'in_progress')]),
       worktree,
       () => earlier,
     )
-    expect(results).toEqual([{ accepted: true }])
+    expect(results).toEqual(accepted(3))
     expect(stepsNow()[1]).toMatchObject({ status: 'in_progress', startedAt: earlier.toISOString() })
     expect(stepsNow()[0]).toMatchObject({ status: 'todo', startedAt: null })
   })
@@ -68,7 +129,7 @@ describe('captureStepTiming', () => {
   it('finishes an in_progress step from a completed todo with endedAt not earlier than startedAt', () => {
     captureStepTiming(event([todo('Implementation', 'in_progress')]), worktree, () => earlier)
     const results = captureStepTiming(event([todo('Implementation', 'completed')]), worktree, () => later)
-    expect(results).toEqual([{ accepted: true }])
+    expect(results).toEqual(accepted(2))
     const done = stepsNow()[1] as Record<string, unknown>
     expect(done).toMatchObject({ status: 'done', startedAt: earlier.toISOString(), endedAt: later.toISOString() })
     expect(Date.parse(done.endedAt as string)).toBeGreaterThanOrEqual(Date.parse(done.startedAt as string))
@@ -92,7 +153,7 @@ describe('captureStepTiming', () => {
       worktree,
       () => later,
     )
-    expect(results).toEqual([{ accepted: true }, { accepted: true }])
+    expect(results).toEqual(accepted(4))
     expect(stepsNow()[0]).toMatchObject({ status: 'done', endedAt: later.toISOString() })
     expect(stepsNow()[1]).toMatchObject({ status: 'in_progress', startedAt: later.toISOString() })
   })
@@ -104,7 +165,7 @@ describe('captureStepTiming', () => {
       worktree,
       () => later,
     )
-    expect(results).toEqual([{ accepted: true }, { accepted: true }])
+    expect(results).toEqual(accepted(4))
     expect(stepsNow()[0]).toMatchObject({ status: 'done', endedAt: later.toISOString() })
     expect(stepsNow()[1]).toMatchObject({ status: 'in_progress', startedAt: later.toISOString() })
   })
@@ -128,7 +189,7 @@ describe('captureStepTiming', () => {
     captureStepTiming(event(list), worktree, () => later)
     const before = planText()
     const results = captureStepTiming(event(list), worktree, () => new Date('2026-01-02T00:00:00.000Z'))
-    expect(results?.every((result) => result.accepted === false)).toBe(true)
+    expect(results?.map((result) => result.accepted)).toEqual([true, true, false, false])
     expect(planText()).toBe(before)
   })
 
@@ -138,12 +199,10 @@ describe('captureStepTiming', () => {
     expect(readdirSync(join(worktree, '.agent-flow'))).toEqual(['plan.json'])
   })
 
-  it('returns the writer refusal for an unknown content and leaves the plan byte-identical', () => {
-    const before = planText()
-    const results = captureStepTiming(event([todo('No such step', 'in_progress')]), worktree, () => earlier)
-    expect(results).toHaveLength(1)
-    expect(results?.[0]?.accepted).toBe(false)
-    expect(planText()).toBe(before)
+  it('returns the writer refusal of a finish on a step that was only just added', () => {
+    const results = captureStepTiming(event([todo('No such step', 'completed')]), worktree, () => earlier)
+    expect(results?.map((result) => result.accepted)).toEqual([true, false])
+    expect(stepsNow()[2]).toMatchObject({ id: 'No such step', status: 'todo', endedAt: null })
   })
 
   it('does not throw and reports a refusal when plan.json is missing', () => {
@@ -152,8 +211,8 @@ describe('captureStepTiming', () => {
     expect(results?.[0]?.accepted).toBe(false)
   })
 
-  it('returns an empty list when no item carries a transition', () => {
-    expect(captureStepTiming(event([todo('Implementation', 'pending')]), worktree, () => earlier)).toEqual([])
+  it('reports only the add of an item that carries no transition', () => {
+    expect(captureStepTiming(event([todo('Implementation', 'pending')]), worktree, () => earlier)).toEqual(accepted(1))
   })
 
   it.each([undefined, ''])('returns undefined and writes nothing when the worktree is %j', (empty) => {
@@ -193,11 +252,18 @@ describe('captureStepTiming', () => {
       ['an array content', todo(['Implementation'], 'in_progress')],
       ['an empty content', todo('', 'in_progress')],
       ['an over-long content', todo('x'.repeat(MAX_TEXT_LENGTH + 1), 'in_progress')],
-      ['an unknown status', todo('Implementation', 'cancelled')],
-      ['a pending item', todo('Implementation', 'pending')],
     ])('skips %s', (_name, item) => {
       const before = planText()
       expect(captureStepTiming(event([item]), worktree, () => earlier)).toEqual([])
+      expect(planText()).toBe(before)
+    })
+
+    it.each([
+      ['an unknown status', todo('Implementation', 'cancelled')],
+      ['a pending item', todo('Implementation', 'pending')],
+    ])('adds %s without a transition', (_name, item) => {
+      const before = planText()
+      expect(captureStepTiming(event([item]), worktree, () => earlier)).toEqual(accepted(1))
       expect(planText()).toBe(before)
     })
 
@@ -208,8 +274,7 @@ describe('captureStepTiming', () => {
         worktree,
         () => earlier,
       )
-      expect(results).toHaveLength(1)
-      expect(results?.[0]?.accepted).toBe(false)
+      expect(results?.map((result) => result.accepted)).toEqual([false, false])
       expect(planText()).toBe(before)
     })
 
@@ -221,7 +286,7 @@ describe('captureStepTiming', () => {
         worktree,
         () => earlier,
       )
-      expect(results).toHaveLength(64)
+      expect(results).toHaveLength(128)
       expect(stepsNow()[64]).toMatchObject({ status: 'todo', startedAt: null })
     })
 
@@ -229,7 +294,7 @@ describe('captureStepTiming', () => {
       const names = Array.from({ length: 64 }, (_unused, index) => `Step ${index}`)
       seed(names.map((name) => stepOf(name, { status: 'in_progress', startedAt: earlier.toISOString() })))
       const items = names.map((name, index) => todo(name, index === 63 ? 'completed' : 'pending'))
-      expect(captureStepTiming(event(items), worktree, () => later)).toEqual([{ accepted: true }])
+      expect(captureStepTiming(event(items), worktree, () => later)).toEqual(accepted(65))
     })
 
     it('persists nothing from the payload beyond status and timestamps', () => {

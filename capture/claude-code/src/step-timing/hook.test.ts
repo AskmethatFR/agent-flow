@@ -146,10 +146,10 @@ describe('step timing hook process', { timeout: 30_000 }, () => {
 describe('hook registration', () => {
   const settings = JSON.parse(readFileSync(settingsPath, 'utf8'))
 
-  it('registers PostToolUse for TaskUpdate only', () => {
+  it('registers PostToolUse for TaskCreate and TaskUpdate only', () => {
     expect(Object.keys(settings.hooks)).toEqual(['PostToolUse'])
     expect(settings.hooks.PostToolUse).toHaveLength(1)
-    expect(settings.hooks.PostToolUse[0].matcher).toBe('TaskUpdate')
+    expect(settings.hooks.PostToolUse[0].matcher).toBe('TaskCreate|TaskUpdate')
   })
 
   it('runs the step timing hook through tsx under AGENT_FLOW_HOME', () => {

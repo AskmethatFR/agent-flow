@@ -1,5 +1,5 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "plugins": ["../../capture/opencode/src/rule-guard"],
-  "instructions": ["{env:AGENT_FLOW_HOME}/rules/decision-logging.md"]
+  "instructions": ["{env:AGENT_FLOW_HOME}/rules/decision-logging.md", "{env:AGENT_FLOW_HOME}/rules/plan-steps.md"]
 }

@@ -119,22 +119,25 @@ const idOf = (title: string): string => {
   return id
 }
 
-const taskUpdate = (world: TimingWorld, title: string, to: string): void => {
-  const input = JSON.stringify({
-    hook_event_name: 'PostToolUse',
-    tool_name: 'TaskUpdate',
-    tool_input: { taskId: idOf(title), status: to },
-    tool_response: { success: true, statusChange: { from: 'pending', to } },
-  })
+export const runHook = (worktree: string, payload: object): void => {
   const result = spawnSync(join(repo, 'node_modules/.bin/tsx'), [hook], {
-    cwd: world.worktree,
-    input,
+    cwd: worktree,
+    input: JSON.stringify({ hook_event_name: 'PostToolUse', ...payload }),
     encoding: 'utf8',
-    env: { ...process.env, CLAUDE_PROJECT_DIR: world.worktree },
+    env: { ...process.env, CLAUDE_PROJECT_DIR: worktree },
   })
   assert.equal(result.status, 0)
   assert.equal(result.stdout, '')
 }
+
+export const taskUpdateOf = (taskId: string, to: string): object => ({
+  tool_name: 'TaskUpdate',
+  tool_input: { taskId, status: to },
+  tool_response: { success: true, statusChange: { from: 'pending', to } },
+})
+
+const taskUpdate = (world: TimingWorld, title: string, to: string): void =>
+  runHook(world.worktree, taskUpdateOf(idOf(title), to))
 
 registerRuntimeDriver('Claude Code', {
   seedPlan: (world) =>
