@@ -43,7 +43,7 @@ Feature: Decision logging
     Given OpenCode v2 has AGENT_FLOW_HOME naming this checkout <reference>
     When OpenCode v2 starts with the shim
     Then the decision-logging rule is loaded
-    And the shim lists exactly one instruction
+    And the shim lists each rule file once
     And stderr is empty
 
     Examples:

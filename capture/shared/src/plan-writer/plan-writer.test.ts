@@ -24,8 +24,8 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { applyStepEvent } from './index'
-import { createPlanWriter } from './plan-writer'
+import { addPlanStep, applyStepEvent } from './index'
+import { createPlanStepAdder, createPlanWriter } from './plan-writer'
 import type { PlanWriterIo } from './plan-writer'
 
 const startedAt = '2026-01-01T10:00:00.000Z'
@@ -601,5 +601,106 @@ describe('applyStepEvent', () => {
       expect(result).toEqual(missing('is missing'))
       expect(readdirSync(agentFlow)).toEqual([])
     })
+  })
+})
+
+describe('addPlanStep', () => {
+  const adderWith = (overrides: Partial<PlanWriterIo>) => createPlanStepAdder({ ...realIo, ...overrides })
+  const created = { stepId: 's2', title: 'dev-a: Implementation' }
+
+  it('adds a todo step with the role and title of the item and reports acceptance', () => {
+    givenPlan(planWith([]))
+
+    const result = addPlanStep(worktree, created)
+
+    expect(result).toEqual({ accepted: true })
+    expect(stepsOnDisk()).toEqual([stepOf('s2')])
+    expect(readdirSync(agentFlow)).toEqual(['plan.json'])
+  })
+
+  it('proposes the step once another step has left todo', () => {
+    givenPlan(planWith([stepOf('s1', { status: 'in_progress', startedAt })]))
+
+    const result = addPlanStep(worktree, { stepId: 's2', title: 'qa: Extra check' })
+
+    expect(result).toEqual({ accepted: true })
+    expect(stepsOnDisk()[1]).toEqual(stepOf('s2', { title: 'Extra check', role: 'qa', origin: 'proposed' }))
+  })
+
+  it('keeps the permission bits of the plan it replaces', () => {
+    givenPlan(planWith([]))
+    chmodSync(planPath, 0o600)
+
+    addPlanStep(worktree, created)
+
+    expect(statSync(planPath).mode & 0o777).toBe(0o600)
+  })
+
+  it('accepts a step the plan already holds and writes nothing', () => {
+    const calls: string[] = []
+    const plan = planWith([stepOf('s2')])
+    givenPlan(plan)
+
+    const result = adderWith(recordingIo(calls))(worktree, created)
+
+    expect(result).toEqual({ accepted: true })
+    expect(calls).toEqual(['open', 'close'])
+    expect(readFileSync(planPath, 'utf8')).toBe(plan)
+  })
+
+  it('returns the lifecycle refusal untouched and leaves plan.json byte-identical', () => {
+    const plan = planWith([stepOf('s1')])
+    givenPlan(plan)
+
+    const result = addPlanStep(worktree, { stepId: '', title: 'dev-a: Implementation' })
+
+    expect(result.accepted).toBe(false)
+    expect(readFileSync(planPath, 'utf8')).toBe(plan)
+  })
+
+  it.each([undefined, null])('refuses %s as a step without throwing and leaves plan.json byte-identical', (step) => {
+    const plan = planWith([stepOf('s1')])
+    givenPlan(plan)
+
+    const result = addPlanStep(worktree, step as unknown as { stepId: string; title: string })
+
+    expect(result.accepted).toBe(false)
+    expect(readFileSync(planPath, 'utf8')).toBe(plan)
+  })
+
+  it('keeps the previous plan and leaves no temporary file after a failing rename', () => {
+    const plan = planWith([])
+    givenPlan(plan)
+
+    const result = adderWith({ renameSync: failure })(worktree, created)
+
+    expect(result).toEqual(missing('cannot be written'))
+    expect(readFileSync(planPath, 'utf8')).toBe(plan)
+    expect(readdirSync(agentFlow)).toEqual(['plan.json'])
+  })
+
+  it('refuses a relative worktree before touching the disk', () => {
+    expect(addPlanStep('worktree', created)).toEqual(
+      missing('worktree must be an absolute path without . or .. segments'),
+    )
+  })
+
+  it('creates a missing .agent-flow directory, refuses the step and writes no plan', () => {
+    const result = addPlanStep(worktree, created)
+
+    expect(result).toEqual(missing('is missing'))
+    expect(readdirSync(agentFlow)).toEqual([])
+  })
+
+  it('refuses a plan.json symlinked to an outside file and writes nothing', () => {
+    const target = join(root, 'outside-plan.json')
+    writeFileSync(target, planWith([]))
+    mkdirSync(agentFlow)
+    symlinkSync(target, planPath)
+
+    const result = addPlanStep(worktree, created)
+
+    expect(result).toEqual(missing('must be a regular file, not a link'))
+    expect(readFileSync(target, 'utf8')).toBe(planWith([]))
   })
 })

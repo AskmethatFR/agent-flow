@@ -1,10 +1,10 @@
 import { closeSync, fsyncSync, openSync, readSync, renameSync, unlinkSync, writeSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
-import { createPlanWriter } from './plan-writer'
+import { createPlanBatchWriter, createPlanStepAdder, createPlanWriter } from './plan-writer'
 
-export type { StepEvent } from './plan-writer'
+export type { NewStep, PlanOperation, StepEvent } from './plan-writer'
 
-export const applyStepEvent = createPlanWriter({
+const io = {
   openSync,
   readSync,
   writeSync,
@@ -13,4 +13,10 @@ export const applyStepEvent = createPlanWriter({
   renameSync,
   unlinkSync,
   temporaryName: randomUUID,
-})
+}
+
+export const applyStepEvent = createPlanWriter(io)
+
+export const addPlanStep = createPlanStepAdder(io)
+
+export const applyPlanOperations = createPlanBatchWriter(io)

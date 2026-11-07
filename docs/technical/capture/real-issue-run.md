@@ -72,7 +72,7 @@ The check command is read-only and validates each file on its own; cross-file ch
 | Decisions per role | distinct `role` of started plan steps, versus distinct `role` in `decisions.jsonl` lines | the first set is included in the second |
 | No human edit | section 2 verdict rule | no unexplained change, attestation present |
 
-Check command contract, as built: exit 1 with `{"errors":[…]}` on stderr on any violation or unsafe layout; exit 2 with `usage: agent-flow-check <worktree>` on a wrong argument count. It needs neither `plan.json` nor `decisions.jsonl` to exist. It applies steps 1 to 4 of the [[plan-writer-confinement]] chain to every contract-named entry, re-confirms `.agent-flow` is the same real directory after the reads, and reports any other entry by name without opening it. A leftover `.plan.json.*.tmp` after the run therefore fails the check, and that is a defect too.
+Check command contract, as built: exit 1 with `{"errors":[…]}` on stderr on any violation or unsafe layout; exit 2 with `usage: agent-flow-check <worktree>` on a wrong argument count. It needs neither `plan.json` nor `decisions.jsonl` to exist. It applies steps 1 to 4 of the [[plan-writer-confinement]] chain to every contract-named entry, re-confirms `.agent-flow` is the same real directory after the reads, and reports any other entry by name without opening it. A leftover `.plan.json.*.tmp` or `.plan.lock` after the run therefore fails the check (`is not a contract file`), and that is a defect too; a `.plan.lock` is removed by hand only when no write is running.
 
 ## 4. Results
 

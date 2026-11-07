@@ -1,8 +1,10 @@
-import { constants, lstatSync, mkdirSync, realpathSync } from 'node:fs'
+import { lstatSync, mkdirSync } from 'node:fs'
 import type * as NodeFs from 'node:fs'
 import { join } from 'node:path'
 import type { ValidationResult } from '@agent-flow/core/contracts'
-import { finishStep, startStep } from '@agent-flow/core/lifecycle'
+import { addStep, finishStep, startStep } from '@agent-flow/core/lifecycle'
+import type { StepLifecycleResult } from '@agent-flow/core/lifecycle'
+import { replaceAtomically } from '../shared/atomic-write'
 import {
   attempt,
   codeOf,
@@ -11,6 +13,9 @@ import {
   refusalFor,
   resolveWorktree,
 } from '../shared/confinement'
+import type { Rejected } from '../shared/confinement'
+import { defaultLockPolicy, lockFileName, withLock } from '../shared/plan-lock'
+import type { LockPolicy } from '../shared/plan-lock'
 
 export type StepEvent = {
   readonly kind: 'start' | 'finish'
@@ -23,7 +28,18 @@ export type PlanWriterIo = Pick<
   'openSync' | 'readSync' | 'writeSync' | 'fsyncSync' | 'closeSync' | 'renameSync' | 'unlinkSync'
 > & { readonly temporaryName: () => string }
 
+export type NewStep = {
+  readonly stepId: string
+  readonly title: string
+}
+
+export type PlanOperation = ({ readonly kind: 'add' } & NewStep) | StepEvent
+
 type Applier = (worktree: string, event: StepEvent) => ValidationResult
+
+type StepAdder = (worktree: string, step: NewStep) => ValidationResult
+
+type BatchWriter = (worktree: string, operations: readonly PlanOperation[]) => ValidationResult[]
 
 const refuse = refusalFor('plan.json')
 
@@ -39,58 +55,90 @@ const inspectDirectory = (directory: string): ValidationResult | undefined => {
   return isDirectory ? undefined : refuse('.agent-flow must be a real directory')
 }
 
-const writeAtomically = (
-  io: PlanWriterIo,
-  directory: string,
-  planPath: string,
-  text: string,
-  mode: number,
-): ValidationResult => {
-  const temporary = join(directory, `.plan.json.${io.temporaryName()}.tmp`)
-  let fd: number | undefined
-  let created = false
-  const failed = (): ValidationResult => {
-    if (fd !== undefined) attempt(() => io.closeSync(fd as number))
-    if (created) attempt(() => io.unlinkSync(temporary))
-    return refuse('cannot be written')
+type Transform = (current: string) => StepLifecycleResult
+
+const readModifyWrite = (io: PlanWriterIo, directory: string, transform: Transform): ValidationResult => {
+  const planPath = join(directory, 'plan.json')
+  const current = readPlan(io, planPath)
+  if ('accepted' in current) return current
+  const result = transform(current.text)
+  if (!result.accepted) return result
+  if (result.plan === current.text) return { accepted: true }
+  return replaceAtomically(io, directory, planPath, result.plan, current.mode)
+}
+
+const confine = (worktree: string): string | ValidationResult => {
+  if (!isConfinableWorktree(worktree)) {
+    return refuse('worktree must be an absolute path without . or .. segments')
   }
-  try {
-    fd = io.openSync(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, mode)
-    created = true
-    const bytes = Buffer.from(text)
-    let offset = 0
-    while (offset < bytes.length) offset += io.writeSync(fd, bytes, offset)
-    io.fsyncSync(fd)
-    const closing = fd
-    fd = undefined
-    io.closeSync(closing)
-    if (realpathSync(directory) !== directory) return failed()
-    io.renameSync(temporary, planPath)
+  const realWorktree = resolveWorktree(worktree, refuse)
+  if (typeof realWorktree !== 'string') return realWorktree
+  const directory = join(realWorktree, '.agent-flow')
+  return inspectDirectory(directory) ?? directory
+}
+
+const isTransform = (prepared: Transform | Rejected): prepared is Transform => typeof prepared === 'function'
+
+const updatePlans = (
+  io: PlanWriterIo,
+  policy: LockPolicy,
+  worktree: string,
+  prepared: readonly (Transform | Rejected)[],
+): ValidationResult[] => {
+  if (!prepared.some(isTransform)) return prepared as Rejected[]
+  const failure = (refusal: ValidationResult): ValidationResult[] =>
+    prepared.map((entry) => (isTransform(entry) ? refusal : entry))
+  const directory = confine(worktree)
+  if (typeof directory !== 'string') return failure(directory)
+  const results: ValidationResult[] = []
+  const locked = withLock(join(directory, lockFileName), policy, refuse, () => {
+    for (const entry of prepared) {
+      results.push(isTransform(entry) ? readModifyWrite(io, directory, entry) : entry)
+    }
     return { accepted: true }
-  } catch {
-    return failed()
+  })
+  return locked.accepted ? results : failure(locked)
+}
+
+const transitionOf = (event: StepEvent): Transform | Rejected => {
+  if (event?.kind !== 'start' && event?.kind !== 'finish') {
+    return refuse('must be start or finish', 'kind')
+  }
+  const transition = event.kind === 'start' ? startStep : finishStep
+  return (text) => transition(text, event.stepId, event.at)
+}
+
+const additionOf =
+  (step: NewStep): Transform =>
+  (text) =>
+    addStep(text, step?.stepId, step?.title)
+
+const updateOne = (
+  io: PlanWriterIo,
+  policy: LockPolicy,
+  worktree: string,
+  prepared: Transform | Rejected,
+): ValidationResult => updatePlans(io, policy, worktree, [prepared])[0] as ValidationResult
+
+export function createPlanWriter(io: PlanWriterIo, policy: LockPolicy = defaultLockPolicy): Applier {
+  return function applyStepEvent(worktree, event) {
+    return updateOne(io, policy, worktree, transitionOf(event))
   }
 }
 
-export function createPlanWriter(io: PlanWriterIo): Applier {
-  return function applyStepEvent(worktree, event) {
-    if (event?.kind !== 'start' && event?.kind !== 'finish') {
-      return refuse('must be start or finish', 'kind')
-    }
-    if (!isConfinableWorktree(worktree)) {
-      return refuse('worktree must be an absolute path without . or .. segments')
-    }
-    const realWorktree = resolveWorktree(worktree, refuse)
-    if (typeof realWorktree !== 'string') return realWorktree
-    const directory = join(realWorktree, '.agent-flow')
-    const directoryRefusal = inspectDirectory(directory)
-    if (directoryRefusal !== undefined) return directoryRefusal
-    const planPath = join(directory, 'plan.json')
-    const current = readPlan(io, planPath)
-    if ('accepted' in current) return current
-    const transition = event.kind === 'start' ? startStep : finishStep
-    const result = transition(current.text, event.stepId, event.at)
-    if (!result.accepted) return result
-    return writeAtomically(io, directory, planPath, result.plan, current.mode)
+export function createPlanStepAdder(io: PlanWriterIo, policy: LockPolicy = defaultLockPolicy): StepAdder {
+  return function addPlanStep(worktree, step) {
+    return updateOne(io, policy, worktree, additionOf(step))
+  }
+}
+
+export function createPlanBatchWriter(io: PlanWriterIo, policy: LockPolicy = defaultLockPolicy): BatchWriter {
+  return function applyPlanOperations(worktree, operations) {
+    return updatePlans(
+      io,
+      policy,
+      worktree,
+      operations.map((operation) => (operation.kind === 'add' ? additionOf(operation) : transitionOf(operation))),
+    )
   }
 }

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { validatePlan } from '../contracts/index'
 import type { StepLifecycleResult } from './index'
-import { finishStep, startStep } from './index'
+import { addStep, createPlan, finishStep, startStep } from './index'
+import { ROLE_IDS } from './roles'
 
 const todo = {
   id: 's1',
@@ -308,5 +309,156 @@ describe('finishStep', () => {
 
   it('returns the validation errors of an invalid plan', () => {
     expect(finishStep('{', 's1', end)).toEqual(refusal(null, null, 'is not valid JSON'))
+  })
+})
+
+describe('createPlan', () => {
+  const seeded = (issue: string, title: string): string =>
+    `${JSON.stringify({ issue, title, steps: [] }, null, 2)}\n`
+
+  it('creates an empty plan whose issue is the number prefixed with a hash', () => {
+    const result = createPlan('78', 'Seed plan.json on real runs')
+
+    expect(result).toEqual({ accepted: true, plan: seeded('#78', 'Seed plan.json on real runs') })
+    if (!result.accepted) throw new Error('expected an acceptance')
+    expect(validatePlan(result.plan)).toEqual({ accepted: true })
+  })
+
+  it.each(['1', '9', '10', '1234567890'])('accepts the issue number %s', (issue) => {
+    expect(createPlan(issue, 'T')).toEqual({ accepted: true, plan: seeded(`#${issue}`, 'T') })
+  })
+
+  it.each(['', '0', '01', '-1', '7a', 'a7', ' 78', '78 ', '78\n', '#78', '1.5', '12345678901', '٣'])(
+    'refuses the issue %j',
+    (issue) => {
+      expect(createPlan(issue, 'T')).toEqual(
+        refusal(null, 'issue', 'must be a number of 1 to 10 digits without leading zero'),
+      )
+    },
+  )
+
+  it('refuses an issue that is not text', () => {
+    expect(createPlan(78 as unknown as string, 'T')).toEqual(
+      refusal(null, 'issue', 'must be a number of 1 to 10 digits without leading zero'),
+    )
+  })
+
+  it.each(['', ' ', '  \t\n '])('refuses the blank title %j', (title) => {
+    expect(createPlan('78', title)).toEqual(refusal(null, 'title', 'must not be blank'))
+  })
+
+  it('refuses a title that is not text', () => {
+    expect(createPlan('78', 7 as unknown as string)).toEqual(
+      refusal(null, 'title', 'must not be blank'),
+    )
+  })
+
+  it('keeps the title exactly as given, spaces included', () => {
+    expect(createPlan('78', '  Seed  ')).toEqual({ accepted: true, plan: seeded('#78', '  Seed  ') })
+  })
+})
+
+describe('addStep', () => {
+  const fresh = (id: string, overlays: Record<string, unknown> = {}) => ({
+    id,
+    title: 'Implementation',
+    role: 'dev-a',
+    status: 'todo',
+    origin: 'planned',
+    startedAt: null,
+    endedAt: null,
+    ...overlays,
+  })
+
+  it('appends a todo step with the role and the title parsed from the item title', () => {
+    expectAccepted(addStep(planText(), '1', 'dev-a: Implementation'), fresh('1'))
+  })
+
+  it('appends after the steps already in the plan and leaves them alone', () => {
+    expectAccepted(addStep(planText(todo), 's2', 'qa: Check'), todo, fresh('s2', { title: 'Check', role: 'qa' }))
+  })
+
+  it.each(ROLE_IDS)('reads %s as a role when the item title starts with it', (role) => {
+    expectAccepted(addStep(planText(), '1', `${role}: Work`), fresh('1', { role, title: 'Work' }))
+  })
+
+  it.each([
+    ['no prefix', 'Implementation'],
+    ['a prefix that is not a role', 'frontend: Implementation'],
+    ['an upper-case role', 'DEV-A: Implementation'],
+    ['no space after the colon', 'dev-a:Implementation'],
+    ['a role in the middle', 'see dev-a: Implementation'],
+    ['a role that is only the start of a longer word', 'dev-ab: Implementation'],
+    ['nothing after the prefix', 'dev-a: '],
+    ['a second line', 'dev-a: Implementation\nmore'],
+    ['a first line break', 'dev-a: \nImplementation'],
+  ])('keeps the whole item title and an empty role for %s', (_name, itemTitle) => {
+    expectAccepted(addStep(planText(), '1', itemTitle), fresh('1', { role: '', title: itemTitle }))
+  })
+
+  it('keeps everything after the first role prefix as the title', () => {
+    expectAccepted(addStep(planText(), '1', 'pm: Plan: phase 1'), fresh('1', { role: 'pm', title: 'Plan: phase 1' }))
+  })
+
+  it('plans a step while every step of the plan is still todo', () => {
+    expectAccepted(addStep(planText(todo, other), 's3', 'qa: Check'), todo, other, fresh('s3', { title: 'Check', role: 'qa' }))
+  })
+
+  it.each([
+    ['in progress', { status: 'in_progress', startedAt: at }],
+    ['done', { status: 'done', startedAt: at, endedAt: at }],
+  ])('proposes a step once a step of the plan is %s', (_name, overlay) => {
+    const started = { ...todo, ...overlay }
+    expectAccepted(
+      addStep(planText(started, other), 's3', 'qa: Check'),
+      started,
+      other,
+      fresh('s3', { title: 'Check', role: 'qa', origin: 'proposed' }),
+    )
+  })
+
+  it('accepts a step id the plan already holds and returns the plan text untouched', () => {
+    const compact = planText(todo)
+    expect(addStep(compact, 's1', 'qa: Another title')).toEqual({ accepted: true, plan: compact })
+  })
+
+  it('accepts a known step id even when the plan is in progress', () => {
+    const started = { ...todo, status: 'in_progress', startedAt: at }
+    const text = planText(started)
+    expect(addStep(text, 's1', 'dev-a: Implementation')).toEqual({ accepted: true, plan: text })
+  })
+
+  it.each(['{', 'not json'])('returns the validation errors of an invalid plan (%j)', (text) => {
+    expect(addStep(text, '1', 'dev-a: Implementation')).toEqual(refusal(null, null, 'is not valid JSON'))
+  })
+
+  it.each([null, undefined, {}])('refuses a plan that is not text (%j)', (plan) => {
+    expect(addStep(plan as unknown as string, '1', 'dev-a: Implementation')).toEqual(
+      refusal(null, null, 'must be a string'),
+    )
+  })
+
+  it.each([7, null, undefined, {}])('refuses a step id that is not text (%j)', (stepId) => {
+    expect(addStep(planText(), stepId as unknown as string, 'dev-a: Implementation')).toEqual(
+      refusal(null, 'id', 'must be text'),
+    )
+  })
+
+  it.each([7, null, undefined, {}])('refuses an item title that is not text (%j)', (itemTitle) => {
+    expect(addStep(planText(), '1', itemTitle as unknown as string)).toEqual(
+      refusal('1', 'title', 'must be text'),
+    )
+  })
+
+  it('refuses an empty step id through the contract', () => {
+    const result = addStep(planText(), '', 'dev-a: Implementation')
+    expect(result.accepted).toBe(false)
+  })
+
+  it('refuses a result that exceeds the size ceiling', () => {
+    const big = { ...todo, title: 'x'.repeat(1_048_576 - planText(todo).length - 100) }
+    expect(addStep(planText(big), 's2', 'y'.repeat(200))).toEqual(
+      refusal(null, null, 'exceeds 1048576 characters'),
+    )
   })
 })
