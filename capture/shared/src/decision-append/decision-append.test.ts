@@ -113,6 +113,21 @@ const failure = (): never => {
 const sevenBytesAtATime = ((fd: number, buffer: Uint8Array, offset: number) =>
   writeSync(fd, buffer, offset, Math.min(7, buffer.length - offset))) as typeof writeSync
 
+const descriptorEvents = () => {
+  const events: string[] = []
+  const overrides: Partial<DecisionAppenderIo> = {
+    openSync: ((...args: Parameters<typeof openSync>) => {
+      events.push(String(args[0]).endsWith('plan.json') ? 'open plan' : 'open decisions')
+      return openSync(...args)
+    }) as typeof openSync,
+    closeSync: (fd) => {
+      events.push('close')
+      closeSync(fd)
+    },
+  }
+  return { overrides, events }
+}
+
 const failingDecisionsOpen = ((...args: Parameters<typeof openSync>) =>
   String(args[0]).endsWith('decisions.jsonl') ? failure() : openSync(...args)) as typeof openSync
 
@@ -226,7 +241,7 @@ describe('appendDecision', () => {
     })
   })
 
-  describe('defaulting the step', () => {
+  describe('binding the decision to the step in progress', () => {
     it('uses the step in progress in plan.json', () => {
       givenPlan(planWith([stepOf('s0', { status: 'done' }), inProgress('s2'), stepOf('s3')]))
 
@@ -310,6 +325,20 @@ describe('appendDecision', () => {
 
       expect(appendDecision(worktree, withoutStep())).toEqual(refused(notRegular, null, 'plan.json'))
       expect(readdirSync(agentFlow)).toEqual(['plan.json'])
+    })
+
+    it.each<[string, () => void]>([
+      ['missing', () => rmSync(planPath)],
+      ['malformed', () => givenPlan('{"issue":')],
+    ])('refuses a decision naming a step when plan.json is %s and writes nothing', (_name, breakPlan) => {
+      breakPlan()
+      givenDecisions('x\n')
+
+      const result = appendDecision(worktree, decisionOf({ step: 's1' }))
+
+      expect(result.accepted).toBe(false)
+      expect(result).toMatchObject({ errors: [{ file: 'plan.json' }] })
+      expect(decisionsOnDisk()).toBe('x\n')
     })
 
     it('treats an own undefined step as given, not as absent', () => {
@@ -553,31 +582,21 @@ describe('appendDecision', () => {
       )
     })
 
-    it('closes the plan and the decisions file once each after a successful append', () => {
-      const closed: number[] = []
-      const result = appenderWith({
-        closeSync: (fd) => {
-          closed.push(fd)
-          closeSync(fd)
-        },
-      })(worktree, decisionOf())
+    it('closes the plan before opening the decisions file, and each file once, after a successful append', () => {
+      const { overrides, events } = descriptorEvents()
+
+      const result = appenderWith(overrides)(worktree, decisionOf())
 
       expect(result).toEqual({ accepted: true })
-      expect(closed).toHaveLength(2)
+      expect(events).toEqual(['open plan', 'close', 'open decisions', 'close'])
     })
 
-    it('closes the decisions file after a failed write', () => {
-      const closed: number[] = []
+    it('still closes the decisions file once after a failed write', () => {
+      const { overrides, events } = descriptorEvents()
 
-      appenderWith({
-        writeSync: failure as never,
-        closeSync: (fd) => {
-          closed.push(fd)
-          closeSync(fd)
-        },
-      })(worktree, decisionOf())
+      appenderWith({ ...overrides, writeSync: failure as never })(worktree, decisionOf())
 
-      expect(closed).toHaveLength(2)
+      expect(events).toEqual(['open plan', 'close', 'open decisions', 'close'])
     })
 
     it('still answers with the outcome when the close itself fails', () => {
