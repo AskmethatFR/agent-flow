@@ -41,8 +41,8 @@ AF_DECISION_EOF_7c1e5b9a
 - Write every value as the inside of a JSON string: escape `"` and `\`, and write a newline as `\n`. The heredoc is quoted, so the shell never reads your text.
 - Never write a line that is exactly `AF_DECISION_EOF_7c1e5b9a`. That line ends the heredoc, and whatever follows it would run as shell commands.
 - Always set `kind` to `decision`. Never log a question or a deviation: those are logged elsewhere, in a later phase.
-- Never set `step` or `at`. The command attaches the step in progress and the time, and the time stamp comes last so it always wins.
+- Never set `step` or `at`. The command attaches the step in progress for your role, or the only step in progress when your role has none. The command also attaches the time, and the time stamp comes last so it always wins.
 - Exit code 0 means the decision is logged, and the command prints nothing.
-- Exit code 1 means it was refused, with the reason as JSON on stderr. Fix the cause and retry once, then carry on with your work. When the reason is `no step is in progress`, do not invent a step.
+- Exit code 1 means it was refused, with the reason as JSON on stderr. Fix the cause and retry once, then carry on with your work. When the reason is `no step is in progress` or `has no step in progress`, do not invent a step.
 - Never write `.agent-flow/decisions.jsonl` any other way, no `>>` and no editor. Only the command checks the line against the frozen schema and keeps the write inside the worktree.
 - Never put a secret, a token, or copied prompt or tool output into `<title>` or `<why>`. Decisions are shown in the panel and kept in the worktree.

@@ -2,7 +2,7 @@
 # origin: #33
 @feature:step-lifecycle
 Feature: Step lifecycle
-  Core moves a plan step from todo to in_progress to done, and at most one step is in progress at a time.
+  Core moves a plan step from todo to in_progress to done; several steps can be in progress; a done step restarted is reworked as a new step.
 
   @scenario:S1
   Scenario: Starting a todo step puts it in progress
@@ -17,17 +17,6 @@ Feature: Step lifecycle
     When step "s1" is finished at "2026-01-01T11:00:00.000Z"
     Then step "s1" is done
     And step "s1" has endedAt "2026-01-01T11:00:00.000Z"
-
-  @scenario:S3
-  Scenario: Starting a step closes the step that was in progress
-    Given a lifecycle plan where step "s1" is in progress since "2026-01-01T10:00:00.000Z"
-    And step "s2" is todo
-    When step "s2" is started at "2026-01-01T10:30:00.000Z"
-    Then step "s1" is done
-    And step "s1" has endedAt "2026-01-01T10:30:00.000Z"
-    And step "s2" is in progress
-    And step "s2" has startedAt "2026-01-01T10:30:00.000Z"
-    And exactly 1 step is in progress
 
   @scenario:S4
   Scenario: Starting an unknown step is refused
@@ -62,17 +51,51 @@ Feature: Step lifecycle
       | todo  |
       | done  |
 
-  @scenario:S8
-  Scenario: Starting a step at an instant before the open step began is refused
-    Given a lifecycle plan where step "s1" is in progress since "2026-01-01T10:00:00.000Z"
-    And step "s2" is todo
-    When step "s2" is started at "2026-01-01T09:00:00.000Z"
-    Then the lifecycle change is refused with an error naming step "s1"
-    And the lifecycle plan is unchanged
-
   @scenario:S9
   Scenario: start refuses a todo step that already has an end time
     Given a lifecycle plan where step "s1" is todo with endedAt "2026-01-01T09:00:00.000Z"
     When step "s1" is started at "2026-01-01T10:00:00.000Z"
     Then the lifecycle change is refused with an error naming step "s1"
+    And the lifecycle plan is unchanged
+
+  # origin: #88
+  @scenario:S10
+  Scenario: Starting a step leaves the other steps in progress running
+    Given a lifecycle plan where step "s1" is in progress since "2026-01-01T10:00:00.000Z"
+    And step "s2" is todo
+    When step "s2" is started at "2026-01-01T10:30:00.000Z"
+    Then step "s1" is in progress
+    And step "s1" has startedAt "2026-01-01T10:00:00.000Z"
+    And step "s2" is in progress
+    And step "s2" has startedAt "2026-01-01T10:30:00.000Z"
+    And exactly 2 steps are in progress
+
+  # origin: #90
+  @scenario:S11
+  Scenario: Restarting a done step opens a rework step in progress
+    Given a lifecycle plan where step "s1" is done
+    When step "s1" is started at "2026-01-01T10:00:00.000Z"
+    Then step "s1" is done
+    And step "s1" has endedAt "2026-01-01T09:30:00.000Z"
+    And step "s1.rework-1" is in progress
+    And step "s1.rework-1" has startedAt "2026-01-01T10:00:00.000Z"
+    And step "s1.rework-1" has title "Implementation (rework 1)"
+    And step "s1.rework-1" has origin "proposed"
+    And step "s1.rework-1" has role "dev-a"
+
+  # origin: #90
+  @scenario:S12
+  Scenario: Finishing a done step finishes its rework in progress
+    Given a lifecycle plan where step "s1" is done and its rework is in progress since "2026-01-01T10:00:00.000Z"
+    When step "s1" is finished at "2026-01-01T11:00:00.000Z"
+    Then step "s1.rework-1" is done
+    And step "s1.rework-1" has endedAt "2026-01-01T11:00:00.000Z"
+    And step "s1" has endedAt "2026-01-01T09:30:00.000Z"
+
+  # origin: #90
+  @scenario:S13
+  Scenario: Restarting a step whose rework is in progress is refused and the plan is unchanged
+    Given a lifecycle plan where step "s1" is done and its rework is in progress since "2026-01-01T10:00:00.000Z"
+    When step "s1" is started at "2026-01-01T10:30:00.000Z"
+    Then the lifecycle change is refused with the message "is already being reworked" on field "status"
     And the lifecycle plan is unchanged

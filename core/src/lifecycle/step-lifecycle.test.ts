@@ -91,11 +91,166 @@ describe('startStep', () => {
     )
   })
 
-  it.each(['in_progress', 'done'])('refuses to start a step that is %s', (status) => {
-    const step = { ...todo, status, startedAt: at, endedAt: status === 'done' ? at : null }
+  it('refuses to start a step that is in progress', () => {
+    const step = { ...todo, status: 'in_progress', startedAt: at }
     expect(startStep(planText(step), 's1', '2026-01-01T11:00:00.000Z')).toEqual(
       refusal('s1', 'status', 'must be todo to start'),
     )
+  })
+
+  describe('a done step', () => {
+    const done = { ...todo, status: 'done', startedAt: at, endedAt: at }
+    const reworkAt = '2026-01-01T11:00:00.000Z'
+    const reworkOf = (n: number, overlays: Record<string, unknown> = {}) => ({
+      ...done,
+      id: `s1.rework-${n}`,
+      title: `Implementation (rework ${n})`,
+      origin: 'proposed',
+      ...overlays,
+    })
+    const reworkRunning = (n: number) =>
+      reworkOf(n, { status: 'in_progress', startedAt: reworkAt, endedAt: null })
+
+    it('opens a rework step in progress after the other steps and leaves the others alone', () => {
+      expectAccepted(
+        startStep(planText(done, other), 's1', reworkAt),
+        done,
+        other,
+        reworkRunning(1),
+      )
+    })
+
+    it('gives the rework the role of the step it reworks', () => {
+      const reviewed = { ...done, role: 'qa', title: 'Check' }
+      expectAccepted(
+        startStep(planText(reviewed), 's1', reworkAt),
+        reviewed,
+        { ...reworkRunning(1), role: 'qa', title: 'Check (rework 1)' },
+      )
+    })
+
+    it.each([
+      ['one finished rework', [1], 2],
+      ['finished reworks 1 and 3', [1, 3], 4],
+      ['finished reworks 3 and 1', [3, 1], 4],
+      ['finished reworks 9 and 10', [9, 10], 11],
+    ])('numbers the next rework after the highest, given %s', (_name, numbers, next) => {
+      const finished = numbers.map((n) => reworkOf(n))
+      expectAccepted(
+        startStep(planText(done, ...finished), 's1', reworkAt),
+        done,
+        ...finished,
+        reworkRunning(next),
+      )
+    })
+
+    it.each([
+      's2.rework-5',
+      's1x.rework-5',
+      's1.rework-0',
+      's1.rework-05',
+      's1.rework-a',
+      's1.rework-5x',
+      's1.rework-',
+      's1.rework-5.rework-1',
+      'rework-5',
+    ])('ignores the step %j when numbering the rework', (id) => {
+      const unrelated = { ...todo, id }
+      expectAccepted(
+        startStep(planText(done, unrelated), 's1', reworkAt),
+        done,
+        unrelated,
+        reworkRunning(1),
+      )
+    })
+
+    it.each([[1], [2]])('refuses to restart a step whose rework %i is in progress', (n) => {
+      const text = planText(done, ...(n === 2 ? [reworkOf(1)] : []), reworkRunning(n))
+      const result = startStep(text, 's1', '2026-01-01T12:00:00.000Z')
+      expect(result).toEqual(refusal('s1', 'status', 'is already being reworked'))
+      expect(Object.hasOwn(result, 'plan')).toBe(false)
+    })
+
+    it('refuses to restart a step whose rework in progress comes first in the plan', () => {
+      expect(startStep(planText(reworkRunning(1), done), 's1', '2026-01-01T12:00:00.000Z')).toEqual(
+        refusal('s1', 'status', 'is already being reworked'),
+      )
+    })
+
+    it.each(['s1.rework-0', 's1.rework-a'])(
+      'does not count the in-progress step %j as a rework in progress',
+      (id) => {
+        const running = { ...reworkRunning(0), id }
+        expectAccepted(startStep(planText(done, running), 's1', reworkAt), done, running, reworkRunning(1))
+      },
+    )
+
+    it('does not count the rework in progress of another step', () => {
+      const sibling = { ...other, status: 'done', startedAt: at, endedAt: at }
+      const siblingRework = { ...sibling, id: 's2.rework-1', status: 'in_progress', endedAt: null }
+      expectAccepted(
+        startStep(planText(done, sibling, siblingRework), 's1', reworkAt),
+        done,
+        sibling,
+        siblingRework,
+        reworkRunning(1),
+      )
+    })
+
+    it.each([
+      ['another role', { role: 'qa' }],
+      ['an origin that is not proposed', { origin: 'planned' }],
+      ['another title', { title: 'qa: verify' }],
+    ])('does not count an in-progress step named like the rework but with %s', (_name, overlay) => {
+      const lookalike = { ...reworkRunning(1), ...overlay }
+      expectAccepted(
+        startStep(planText(done, lookalike), 's1', reworkAt),
+        done,
+        lookalike,
+        reworkRunning(2),
+      )
+    })
+
+    it.each([
+      ['a step id with a ten digit suffix', 's1.rework-1000000000'],
+      ['a step id past the safe integer range', 's1.rework-9007199254740993'],
+      ['a step id with a 22 digit suffix', 's1.rework-1000000000000000000000'],
+    ])('ignores %s when numbering and when looking for a rework in progress', (_name, id) => {
+      const huge = { ...reworkRunning(1), id }
+      expectAccepted(
+        startStep(planText(done, huge), 's1', reworkAt),
+        done,
+        huge,
+        reworkRunning(1),
+      )
+    })
+
+    it('counts a rework in progress numbered 999999999', () => {
+      expect(startStep(planText(done, reworkRunning(999999999)), 's1', reworkAt)).toEqual(
+        refusal('s1', 'status', 'is already being reworked'),
+      )
+    })
+
+    it('opens a rework of a rework with its own times', () => {
+      const firstRework = reworkOf(1)
+      expectAccepted(
+        startStep(planText(done, firstRework), 's1.rework-1', reworkAt),
+        done,
+        firstRework,
+        {
+          ...firstRework,
+          id: 's1.rework-1.rework-1',
+          title: 'Implementation (rework 1) (rework 1)',
+          status: 'in_progress',
+          startedAt: reworkAt,
+          endedAt: null,
+        },
+      )
+    })
+
+    it('refuses an instant that is not an instant before opening the rework', () => {
+      expect(startStep(planText(done), 's1', 'now')).toEqual(refusal('s1', 'startedAt', notInstant))
+    })
   })
 
   it('refuses to start a todo step that already has an end time', () => {
@@ -113,85 +268,34 @@ describe('startStep', () => {
   const finished = { ...other, id: 's3', status: 'done', startedAt: at, endedAt: at }
   const later = '2026-01-01T10:30:00.000Z'
 
-  it('closes the step in progress at the new start instant', () => {
+  it('leaves the step in progress and the finished step alone and starts the todo step', () => {
     expectAccepted(
       startStep(planText(running, todo, finished), 's1', later),
-      { ...running, status: 'done', endedAt: later },
+      running,
       { ...todo, status: 'in_progress', startedAt: later },
       finished,
     )
   })
 
-  it('closes every step in progress so that exactly one remains', () => {
+  it('leaves every step in progress running', () => {
     const second = { ...running, id: 's4', startedAt: '2026-01-01T10:10:00.000Z' }
     expectAccepted(
       startStep(planText(running, todo, second), 's1', later),
-      { ...running, status: 'done', endedAt: later },
+      running,
       { ...todo, status: 'in_progress', startedAt: later },
-      { ...second, status: 'done', endedAt: later },
+      second,
     )
   })
 
-  it('allows a start instant equal to the open step start', () => {
+  it.each([
+    ['an instant earlier than its start', running, '2026-01-01T09:59:59.999Z'],
+    ['no start instant', { ...running, startedAt: null }, later],
+  ])('leaves a step in progress with %s running', (_name, runningStep, instant) => {
     expectAccepted(
-      startStep(planText(running, todo), 's1', at),
-      { ...running, status: 'done', endedAt: at },
-      { ...todo, status: 'in_progress', startedAt: at },
+      startStep(planText(todo, runningStep), 's1', instant),
+      { ...todo, status: 'in_progress', startedAt: instant },
+      runningStep,
     )
-  })
-
-  it('refuses to close an open step at an instant earlier than its start and names it', () => {
-    expect(startStep(planText(todo, running), 's1', '2026-01-01T09:59:59.999Z')).toEqual(
-      refusal('s2', 'endedAt', earlierThanStart),
-    )
-  })
-
-  it('refuses to close an open step that has no start instant and names it', () => {
-    expect(startStep(planText(todo, { ...running, startedAt: null }), 's1', later)).toEqual(
-      refusal('s2', 'startedAt', notInstant),
-    )
-  })
-
-  it('reports every open step that cannot be closed, in document order, by position when unsafe', () => {
-    const unsafe = { ...running, id: 'a b' }
-    const second = { ...running, id: 's4' }
-    expect(startStep(planText(unsafe, todo, second), 's1', '2026-01-01T09:00:00.000Z')).toEqual({
-      accepted: false,
-      errors: [
-        { file: 'plan.json', location: 'steps[0]', field: 'endedAt', message: earlierThanStart },
-        { file: 'plan.json', location: 's4', field: 'endedAt', message: earlierThanStart },
-      ],
-    })
-  })
-
-  const tooLateToClose = (count: number) =>
-    Array.from({ length: count }, (_, index) => ({
-      ...running,
-      id: `r${index}`,
-      startedAt: '2026-01-01T12:00:00.000Z',
-    }))
-
-  const tooMany = {
-    file: 'plan.json',
-    location: null,
-    field: null,
-    message: 'too many errors, only the first 100 are shown',
-  }
-
-  it('lists all 100 closing errors without a marker', () => {
-    const result = startStep(planText(todo, ...tooLateToClose(100)), 's1', at)
-    if (result.accepted) throw new Error('expected a refusal')
-    expect(result.errors).toHaveLength(100)
-    expect(result.errors).not.toContainEqual(tooMany)
-  })
-
-  it('keeps the first 100 closing errors of 150 and appends one marker', () => {
-    const result = startStep(planText(todo, ...tooLateToClose(150)), 's1', at)
-    if (result.accepted) throw new Error('expected a refusal')
-    expect(result.errors).toHaveLength(101)
-    expect(result.errors[0]?.location).toBe('r0')
-    expect(result.errors[99]?.location).toBe('r99')
-    expect(result.errors[100]).toEqual(tooMany)
   })
 
   it.each([null, undefined, {}])('refuses a plan that is not text (%j)', (plan) => {
@@ -267,6 +371,106 @@ describe('finishStep', () => {
     const step = { ...todo, status, startedAt: at, endedAt: status === 'done' ? at : null }
     expect(finishStep(planText(step), 's1', end)).toEqual(
       refusal('s1', 'status', 'must be in_progress to finish'),
+    )
+  })
+
+  describe('a done step', () => {
+    const done = { ...open, status: 'done', endedAt: '2026-01-01T10:30:00.000Z' }
+    const rework = (overlays: Record<string, unknown> = {}) => ({
+      ...done,
+      id: 's1.rework-1',
+      title: 'Implementation (rework 1)',
+      origin: 'proposed',
+      status: 'in_progress',
+      startedAt: '2026-01-01T10:45:00.000Z',
+      endedAt: null,
+      ...overlays,
+    })
+
+    it('finishes its rework in progress and leaves the done step and the others alone', () => {
+      expectAccepted(
+        finishStep(planText(done, other, rework()), 's1', end),
+        done,
+        other,
+        { ...rework(), status: 'done', endedAt: end },
+      )
+    })
+
+    it('finishes the rework in progress after finished reworks of the same step', () => {
+      const first = rework({ id: 's1.rework-1', status: 'done', endedAt: at })
+      const second = rework({ id: 's1.rework-2', title: 'Implementation (rework 2)' })
+      expectAccepted(
+        finishStep(planText(done, first, second), 's1', end),
+        done,
+        first,
+        { ...second, status: 'done', endedAt: end },
+      )
+    })
+
+    it('accepts finishing the rework at its own start instant', () => {
+      const at45 = '2026-01-01T10:45:00.000Z'
+      expectAccepted(finishStep(planText(done, rework()), 's1', at45), done, {
+        ...rework(),
+        status: 'done',
+        endedAt: at45,
+      })
+    })
+
+    it('refuses finishing the rework earlier than its start and names the rework', () => {
+      expect(finishStep(planText(done, rework()), 's1', '2026-01-01T10:44:59.999Z')).toEqual(
+        refusal('s1.rework-1', 'endedAt', earlierThanStart),
+      )
+    })
+
+    it('refuses finishing a rework that has no start instant and names the rework', () => {
+      expect(finishStep(planText(done, rework({ startedAt: null })), 's1', end)).toEqual(
+        refusal('s1.rework-1', 'startedAt', notInstant),
+      )
+    })
+
+    it('refuses an instant that is not an instant and names the step', () => {
+      expect(finishStep(planText(done, rework()), 's1', 'now')).toEqual(
+        refusal('s1', 'endedAt', notInstant),
+      )
+    })
+
+    it.each([
+      ['no rework', []],
+      ['only a finished rework', [rework({ status: 'done', endedAt: at })]],
+      ['the rework in progress of another step', [rework({ id: 's2.rework-1' })]],
+      ['an in-progress step that is not a rework', [rework({ id: 's1.rework-0' })]],
+      ['an in-progress step that is not a rework either', [rework({ id: 's1.rework-a' })]],
+      ['an in-progress step with a suffix of ten digits', [rework({ id: 's1.rework-1000000000' })]],
+      ['an in-progress step named like the rework of another role', [rework({ role: 'qa' })]],
+      ['an in-progress step named like the rework but planned', [rework({ origin: 'planned' })]],
+      ['an in-progress step named like the rework but retitled', [rework({ title: 'qa: verify' })]],
+    ])('refuses to finish a done step with %s', (_name, steps) => {
+      expect(finishStep(planText(done, ...steps), 's1', end)).toEqual(
+        refusal('s1', 'status', 'must be in_progress to finish'),
+      )
+    })
+
+    it('finishes a rework numbered 999999999', () => {
+      const last = rework({ id: 's1.rework-999999999', title: 'Implementation (rework 999999999)' })
+      expectAccepted(finishStep(planText(done, last), 's1', end), done, {
+        ...last,
+        status: 'done',
+        endedAt: end,
+      })
+    })
+  })
+
+  it('finishes an in-progress step itself even when a step named like its rework is in progress', () => {
+    const lookalike = {
+      ...open,
+      id: 's1.rework-1',
+      title: 'Implementation (rework 1)',
+      origin: 'proposed',
+    }
+    expectAccepted(
+      finishStep(planText(open, lookalike), 's1', end),
+      { ...open, status: 'done', endedAt: end },
+      lookalike,
     )
   })
 

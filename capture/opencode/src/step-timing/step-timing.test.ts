@@ -135,15 +135,47 @@ describe('captureStepTiming', () => {
     expect(Date.parse(done.endedAt as string)).toBeGreaterThanOrEqual(Date.parse(done.startedAt as string))
   })
 
-  it('closes the step in progress when another starts', () => {
+  it('leaves the other step in progress when a step starts', () => {
     captureStepTiming(event([todo('Architecture', 'in_progress'), todo('Implementation', 'pending')]), worktree, () => earlier)
     captureStepTiming(
       event([todo('Architecture', 'in_progress'), todo('Implementation', 'in_progress')]),
       worktree,
       () => later,
     )
-    expect(stepsNow()[0]).toMatchObject({ status: 'done', startedAt: earlier.toISOString(), endedAt: later.toISOString() })
+    expect(stepsNow()[0]).toMatchObject({ status: 'in_progress', startedAt: earlier.toISOString(), endedAt: null })
     expect(stepsNow()[1]).toMatchObject({ status: 'in_progress', startedAt: later.toISOString() })
+  })
+
+  it('times a reopened step as its own rework step and ignores the list when it is re-sent', () => {
+    const reopened = new Date('2026-01-01T11:00:00.000Z')
+    const resent = new Date('2026-01-01T11:10:00.000Z')
+    captureStepTiming(event([todo('Implementation', 'in_progress')]), worktree, () => earlier)
+    captureStepTiming(event([todo('Implementation', 'completed')]), worktree, () => later)
+    captureStepTiming(event([todo('Implementation', 'in_progress')]), worktree, () => reopened)
+    const afterReopen = planText()
+    captureStepTiming(event([todo('Implementation', 'in_progress')]), worktree, () => resent)
+    expect(planText()).toBe(afterReopen)
+    expect(stepsNow()[1]).toMatchObject({ id: 'Implementation', status: 'done', endedAt: later.toISOString() })
+    expect(stepsNow()[2]).toMatchObject({
+      id: 'Implementation.rework-1',
+      title: 'Implementation (rework 1)',
+      origin: 'proposed',
+      status: 'in_progress',
+      startedAt: reopened.toISOString(),
+    })
+  })
+
+  it('finishes the rework when the reopened todo is completed again and is a no-op when re-sent', () => {
+    const reopened = new Date('2026-01-01T11:00:00.000Z')
+    const reworked = new Date('2026-01-01T11:30:00.000Z')
+    captureStepTiming(event([todo('Implementation', 'in_progress')]), worktree, () => earlier)
+    captureStepTiming(event([todo('Implementation', 'completed')]), worktree, () => later)
+    captureStepTiming(event([todo('Implementation', 'in_progress')]), worktree, () => reopened)
+    captureStepTiming(event([todo('Implementation', 'completed')]), worktree, () => reworked)
+    const afterRework = planText()
+    captureStepTiming(event([todo('Implementation', 'completed')]), worktree, () => new Date('2026-01-01T12:00:00.000Z'))
+    expect(planText()).toBe(afterRework)
+    expect(stepsNow()[2]).toMatchObject({ id: 'Implementation.rework-1', status: 'done', endedAt: reworked.toISOString() })
   })
 
   it('applies a finish then a start from one list, with one instant', () => {

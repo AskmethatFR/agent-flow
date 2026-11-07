@@ -70,11 +70,36 @@ describe('captureStepTiming', () => {
     })
   })
 
-  it('closes the step in progress when another starts', () => {
+  it('leaves the other step in progress when a step starts', () => {
     captureStepTiming(payload({ tool_input: { taskId: '1' } }), worktree, () => earlier)
     captureStepTiming(payload(), worktree, () => later)
-    expect(stepsNow()[0]).toMatchObject({ id: '1', status: 'done', endedAt: later.toISOString() })
+    expect(stepsNow()[0]).toMatchObject({ id: '1', status: 'in_progress', startedAt: earlier.toISOString(), endedAt: null })
     expect(stepsNow()[1]).toMatchObject({ id: '2', status: 'in_progress', startedAt: later.toISOString() })
+  })
+
+  it('times a reopened step as its own rework step and keeps the finished step', () => {
+    captureStepTiming(payload(), worktree, () => earlier)
+    captureStepTiming(withStatus('completed'), worktree, () => later)
+    const reopened = new Date('2026-01-01T11:00:00.000Z')
+    expect(captureStepTiming(payload(), worktree, () => reopened)).toEqual({ accepted: true })
+    expect(stepsNow()[1]).toMatchObject({ id: '2', status: 'done', endedAt: later.toISOString() })
+    expect(stepsNow()[2]).toMatchObject({
+      id: '2.rework-1',
+      title: 'Step 2 (rework 1)',
+      origin: 'proposed',
+      status: 'in_progress',
+      startedAt: reopened.toISOString(),
+    })
+  })
+
+  it('finishes the rework when the reopened step is completed again', () => {
+    captureStepTiming(payload(), worktree, () => earlier)
+    captureStepTiming(withStatus('completed'), worktree, () => later)
+    const reopened = new Date('2026-01-01T11:00:00.000Z')
+    const reworked = new Date('2026-01-01T11:30:00.000Z')
+    captureStepTiming(payload(), worktree, () => reopened)
+    expect(captureStepTiming(withStatus('completed'), worktree, () => reworked)).toEqual({ accepted: true })
+    expect(stepsNow()[2]).toMatchObject({ id: '2.rework-1', status: 'done', endedAt: reworked.toISOString() })
   })
 
   it('writes a plan that passes the frozen schema and leaves no temporary file', () => {

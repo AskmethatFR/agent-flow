@@ -3,7 +3,7 @@ import type * as NodeFs from 'node:fs'
 import { join } from 'node:path'
 import { MAX_TEXT_LENGTH, serializeDecision } from '@agent-flow/core/contracts'
 import type { ValidationResult } from '@agent-flow/core/contracts'
-import { buildSnapshot } from '@agent-flow/core/snapshot'
+import { decisionStepOf } from '@agent-flow/core/lifecycle'
 import {
   attempt,
   codeOf,
@@ -36,7 +36,7 @@ type Completed = { readonly decision: unknown }
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-const withCurrentStep = (
+const withDecisionStep = (
   io: DecisionAppenderIo,
   directory: string,
   decision: unknown,
@@ -44,13 +44,10 @@ const withCurrentStep = (
   if (!isRecord(decision)) return { decision }
   const plan = readPlan(io, join(directory, 'plan.json'))
   if ('accepted' in plan) return plan
-  const snapshot = buildSnapshot({ plan: plan.text }, new Date())
-  const [firstError, ...otherErrors] = snapshot.errors
-  if (firstError !== undefined) return { accepted: false, errors: [firstError, ...otherErrors] }
-  const { currentStepId } = snapshot
-  if (currentStepId === null) return refuse('no step is in progress', 'step')
-  if (!Object.hasOwn(decision, 'step')) return { decision: { ...decision, step: currentStepId } }
-  if (decision.step !== currentStepId) return refuse('is not the step in progress', 'step')
+  const resolved = decisionStepOf(plan.text, decision.role)
+  if (!resolved.accepted) return resolved
+  if (!Object.hasOwn(decision, 'step')) return { decision: { ...decision, step: resolved.stepId } }
+  if (decision.step !== resolved.stepId) return refuse('is not the step in progress', 'step')
   return { decision }
 }
 
@@ -104,7 +101,7 @@ export function createDecisionAppender(io: DecisionAppenderIo): Appender {
     const directory = join(realWorktree, '.agent-flow')
     const directoryRefusal = inspectAgentFlowDirectory(directory, refuse)
     if (directoryRefusal !== undefined) return directoryRefusal
-    const completed = withCurrentStep(io, directory, decision)
+    const completed = withDecisionStep(io, directory, decision)
     if (!('decision' in completed)) return completed
     const serialized = serializeDecision(completed.decision)
     if (!serialized.accepted) return { accepted: false, errors: [serialized.error] }

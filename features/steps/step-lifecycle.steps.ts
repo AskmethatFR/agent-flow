@@ -75,6 +75,24 @@ Given(
   },
 )
 
+Given(
+  'a lifecycle plan where step {string} is done and its rework is in progress since {string}',
+  function (this: LifecycleWorld, id: string, startedAt: string): void {
+    const done = stepOf(id, {
+      status: 'done',
+      startedAt: '2026-01-01T09:00:00.000Z',
+      endedAt: '2026-01-01T09:30:00.000Z',
+    })
+    const rework = stepOf(`${id}.rework-1`, {
+      title: 'Implementation (rework 1)',
+      origin: 'proposed',
+      status: 'in_progress',
+      startedAt,
+    })
+    this.plan = planWith([done, rework])
+  },
+)
+
 Given('step {string} is todo', function (this: LifecycleWorld, id: string): void {
   addStep(this, stepOf(id, {}))
 })
@@ -115,15 +133,47 @@ Then(
   },
 )
 
-Then('exactly {int} step is in progress', function (this: LifecycleWorld, count: number): void {
-  assert.ok(this.result.accepted, 'expected the lifecycle change to be accepted')
-  const inProgress = stepsOf(this.result.plan).filter((step) => step.status === 'in_progress')
-  assert.equal(inProgress.length, count)
-})
+Then(
+  'step {string} has title {string}',
+  function (this: LifecycleWorld, id: string, title: string): void {
+    assert.equal(resultingStep(this, id).title, title)
+  },
+)
+
+Then(
+  'step {string} has origin {string}',
+  function (this: LifecycleWorld, id: string, origin: string): void {
+    assert.equal(resultingStep(this, id).origin, origin)
+  },
+)
+
+Then(
+  'step {string} has role {string}',
+  function (this: LifecycleWorld, id: string, role: string): void {
+    assert.equal(resultingStep(this, id).role, role)
+  },
+)
+
+Then(
+  'exactly {int} step(s) is/are in progress',
+  function (this: LifecycleWorld, count: number): void {
+    assert.ok(this.result.accepted, 'expected the lifecycle change to be accepted')
+    const inProgress = stepsOf(this.result.plan).filter((step) => step.status === 'in_progress')
+    assert.equal(inProgress.length, count)
+  },
+)
 
 Then('the lifecycle change is refused', function (this: LifecycleWorld): void {
   assert.equal(this.result.accepted, false)
 })
+
+Then(
+  'the lifecycle change is refused with the message {string} on field {string}',
+  function (this: LifecycleWorld, message: string, field: string): void {
+    assert.ok(!this.result.accepted, 'expected the lifecycle change to be refused')
+    assert.ok(this.result.errors.some((error) => error.message === message && error.field === field))
+  },
+)
 
 Then(
   'the lifecycle change is refused with an error naming step {string}',
