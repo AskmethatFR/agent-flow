@@ -41,14 +41,17 @@ const withCurrentStep = (
   directory: string,
   decision: unknown,
 ): Completed | ValidationResult => {
-  if (!isRecord(decision) || Object.hasOwn(decision, 'step')) return { decision }
+  if (!isRecord(decision)) return { decision }
   const plan = readPlan(io, join(directory, 'plan.json'))
   if ('accepted' in plan) return plan
   const snapshot = buildSnapshot({ plan: plan.text }, new Date())
   const [firstError, ...otherErrors] = snapshot.errors
   if (firstError !== undefined) return { accepted: false, errors: [firstError, ...otherErrors] }
-  if (snapshot.currentStepId === null) return refuse('no step is in progress', 'step')
-  return { decision: { ...decision, step: snapshot.currentStepId } }
+  const { currentStepId } = snapshot
+  if (currentStepId === null) return refuse('no step is in progress', 'step')
+  if (!Object.hasOwn(decision, 'step')) return { decision: { ...decision, step: currentStepId } }
+  if (decision.step !== currentStepId) return refuse('is not the step in progress', 'step')
+  return { decision }
 }
 
 const separatorNeeded = (io: DecisionAppenderIo, fd: number, size: number): boolean => {

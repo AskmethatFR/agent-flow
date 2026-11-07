@@ -82,6 +82,7 @@ beforeEach(() => {
   decisionsPath = join(agentFlow, 'decisions.jsonl')
   planPath = join(agentFlow, 'plan.json')
   mkdirSync(agentFlow, { recursive: true })
+  writeFileSync(planPath, planWith([inProgress('s1')]))
 })
 
 afterEach(() => {
@@ -111,6 +112,17 @@ const failure = (): never => {
 
 const sevenBytesAtATime = ((fd: number, buffer: Uint8Array, offset: number) =>
   writeSync(fd, buffer, offset, Math.min(7, buffer.length - offset))) as typeof writeSync
+
+const failingDecisionsOpen = ((...args: Parameters<typeof openSync>) =>
+  String(args[0]).endsWith('decisions.jsonl') ? failure() : openSync(...args)) as typeof openSync
+
+const failingLastByteRead = ((
+  fd: number,
+  buffer: Uint8Array,
+  offset: number,
+  length: number,
+  position: number | null,
+) => (position === null ? readSync(fd, buffer, offset, length, position) : failure())) as typeof readSync
 
 const afterOpening =
   (action: () => void): typeof openSync =>
@@ -162,15 +174,6 @@ describe('appendDecision', () => {
       expect(decisionsOnDisk()).toBe(`x\n${lineOf(decisionOf())}`)
     })
 
-    it('does not touch the plan when the decision carries its step', () => {
-      givenPlan('not json')
-
-      const result = appendDecision(worktree, decisionOf({ step: 's9' }))
-
-      expect(result).toEqual({ accepted: true })
-      expect(decisionsOnDisk()).toBe(lineOf(decisionOf({ step: 's9' })))
-    })
-
     it('escapes the line separators the contract serialises away', () => {
       appendDecision(worktree, decisionOf({ title: 'a\u2028b' }))
 
@@ -193,10 +196,10 @@ describe('appendDecision', () => {
     it('does not even create decisions.jsonl', () => {
       appendDecision(worktree, decisionOf({ title: '' }))
 
-      expect(readdirSync(agentFlow)).toEqual([])
+      expect(readdirSync(agentFlow)).toEqual(['plan.json'])
     })
 
-    it('opens nothing for an invalid decision', () => {
+    it('opens only the plan for an invalid decision', () => {
       const opened: string[] = []
       const spy = ((...args: Parameters<typeof openSync>) => {
         opened.push(String(args[0]))
@@ -205,7 +208,7 @@ describe('appendDecision', () => {
 
       appenderWith({ openSync: spy })(worktree, decisionOf({ title: '' }))
 
-      expect(opened).toEqual([])
+      expect(opened).toEqual([planPath])
     })
 
     it.each<[string, unknown]>([
@@ -233,12 +236,33 @@ describe('appendDecision', () => {
       expect(decisionsOnDisk()).toBe(lineOf({ ...withoutStep(), step: 's2' }))
     })
 
-    it('keeps the given step over the one in progress', () => {
-      givenPlan(planWith([inProgress('s2')]))
+    it('appends a decision naming the step in progress unchanged', () => {
+      givenPlan(planWith([stepOf('s1', { status: 'done' }), inProgress('s2')]))
 
-      appendDecision(worktree, decisionOf({ step: 's1' }))
+      const result = appendDecision(worktree, decisionOf({ step: 's2' }))
 
-      expect(decisionsOnDisk()).toBe(lineOf(decisionOf({ step: 's1' })))
+      expect(result).toEqual({ accepted: true })
+      expect(decisionsOnDisk()).toBe(lineOf(decisionOf({ step: 's2' })))
+    })
+
+    it('refuses a step other than the one in progress and writes nothing', () => {
+      givenPlan(planWith([inProgress('s2'), stepOf('s1', { status: 'done' })]))
+      givenDecisions('x\n')
+
+      const result = appendDecision(worktree, decisionOf({ step: 's1' }))
+
+      expect(result).toEqual(refused('is not the step in progress', 'step'))
+      expect(decisionsOnDisk()).toBe('x\n')
+    })
+
+    it('refuses a step when none is in progress and writes nothing', () => {
+      givenPlan(planWith([stepOf('s1')]))
+      givenDecisions('x\n')
+
+      const result = appendDecision(worktree, decisionOf({ step: 's1' }))
+
+      expect(result).toEqual(refused('no step is in progress', 'step'))
+      expect(decisionsOnDisk()).toBe('x\n')
     })
 
     it('does not default an explicitly invalid step', () => {
@@ -273,12 +297,15 @@ describe('appendDecision', () => {
     })
 
     it('refuses with a plan.json label when plan.json is missing', () => {
+      rmSync(planPath)
+
       expect(appendDecision(worktree, withoutStep())).toEqual(refused('is missing', null, 'plan.json'))
     })
 
     it('refuses a symlinked plan.json', () => {
       const outside = join(root, 'plan.json')
       writeFileSync(outside, planWith([inProgress('s1')]))
+      rmSync(planPath)
       symlinkSync(outside, planPath)
 
       expect(appendDecision(worktree, withoutStep())).toEqual(refused(notRegular, null, 'plan.json'))
@@ -305,7 +332,7 @@ describe('appendDecision', () => {
       expect(appendDecision(path, decisionOf())).toEqual(
         refused('worktree must be an absolute path without . or .. segments'),
       )
-      expect(readdirSync(agentFlow)).toEqual([])
+      expect(readdirSync(agentFlow)).toEqual(['plan.json'])
     })
 
     it('refuses a worktree that is not a string', () => {
@@ -338,7 +365,7 @@ describe('appendDecision', () => {
       const result = appendDecision(worktree, decisionOf())
 
       expect(result).toEqual(refused('.agent-flow must be a real directory'))
-      expect(readdirSync(moved)).toEqual([])
+      expect(readdirSync(moved)).toEqual(['plan.json'])
     })
 
     it('refuses a missing .agent-flow and does not create it', () => {
@@ -500,9 +527,9 @@ describe('appendDecision', () => {
     })
 
     it.each<[string, Partial<DecisionAppenderIo>]>([
-      ['a failing open', { openSync: failure as never }],
+      ['a failing open', { openSync: failingDecisionsOpen }],
       ['a failing write', { writeSync: failure as never }],
-      ['a failing read of the last byte', { readSync: failure as never }],
+      ['a failing read of the last byte', { readSync: failingLastByteRead }],
     ])('answers cannot be written after %s', (_name, fault) => {
       givenDecisions('x\n')
 
@@ -526,7 +553,7 @@ describe('appendDecision', () => {
       )
     })
 
-    it('closes the file once after a successful append', () => {
+    it('closes the plan and the decisions file once each after a successful append', () => {
       const closed: number[] = []
       const result = appenderWith({
         closeSync: (fd) => {
@@ -536,10 +563,10 @@ describe('appendDecision', () => {
       })(worktree, decisionOf())
 
       expect(result).toEqual({ accepted: true })
-      expect(closed).toHaveLength(1)
+      expect(closed).toHaveLength(2)
     })
 
-    it('closes the file after a failed write', () => {
+    it('closes the decisions file after a failed write', () => {
       const closed: number[] = []
 
       appenderWith({
@@ -550,7 +577,7 @@ describe('appendDecision', () => {
         },
       })(worktree, decisionOf())
 
-      expect(closed).toHaveLength(1)
+      expect(closed).toHaveLength(2)
     })
 
     it('still answers with the outcome when the close itself fails', () => {
@@ -562,7 +589,7 @@ describe('appendDecision', () => {
     it('opens the file for appending without following links', () => {
       const flags: number[] = []
       const spy = ((...args: Parameters<typeof openSync>) => {
-        flags.push(args[1] as number)
+        if (String(args[0]).endsWith('decisions.jsonl')) flags.push(args[1] as number)
         return openSync(...args)
       }) as typeof openSync
 
