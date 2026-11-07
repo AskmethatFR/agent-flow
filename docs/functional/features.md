@@ -3,7 +3,7 @@ id: "feature-catalog"
 type: "functional"
 owner: "pm"
 status: "current"
-updated: "2026-11-05"
+updated: "2026-11-07"
 links:
   - "glossary"
   - "real-issue-run"
@@ -23,7 +23,9 @@ answers:
   - "How does anyone check that every file under .agent-flow honours its contract, and what does the check report?"
   - "Which layouts of .agent-flow does the contract check refuse?"
   - "When is Phase 1 accepted on a real issue, and who runs that acceptance?"
+  - "Which host statuses display as running, stopped or unknown, and when is there no current agent?"
 decided_in:
+  - "#40"
   - "#32"
   - "#38"
   - "#24"
@@ -134,6 +136,26 @@ snapshot does not filter by kind.
 Acceptance: `snapshot-decisions` S1-S3 (`features/phase-2/snapshot-decisions.feature`).
 Log order, the absent-step row, the missing-file row and the no-filter-by-kind
 rule are pinned by unit tests only. The display of these decisions is #20.
+
+### Capability: display state of the agent on the current step
+
+Core maps the host's raw agent status to a [[glossary]] display state, so the
+panel (#21) shows the [[glossary]] current agent without mapping anything itself.
+
+| Host status | Display state |
+|---|---|
+| `running`, `initializing` | `running` |
+| `idle`, `error`, `closed` | `stopped` |
+| Any other status | `unknown`; never a failure |
+
+- **Current agent**: the snapshot carries its role (the role of the current
+  step) and its display state. It is absent when the host reported no status,
+  no step is in progress, or the plan is unusable.
+- The host adapter only passes the raw status through (#41).
+
+Acceptance: `agent-state-mapping` S1-S4 (`features/phase-2/agent-state-mapping.feature`).
+Out of scope: the display itself, which cleans the role text like a step role (#21);
+wiring the host status (#41).
 
 ### Capability: recording a step start or finish in the plan
 
