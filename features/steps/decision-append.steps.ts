@@ -136,6 +136,14 @@ When('a valid decision is appended', function (this: DecisionWorld): void {
   append(this)
 })
 
+When(
+  'a valid decision for step {string} is appended',
+  function (this: DecisionWorld, id: string): void {
+    this.decision = { ...validDecision(), step: id }
+    append(this)
+  },
+)
+
 When('the decision is appended', function (this: DecisionWorld): void {
   append(this)
 })
@@ -177,6 +185,19 @@ Then(
   function (this: DecisionWorld): void {
     assert.ok(!this.result.accepted, 'expected the decision to be refused')
     assert.ok(this.result.errors.some((error) => error.message === 'no step is in progress'))
+  },
+)
+
+Then('the decision is refused with an error on the step field', function (this: DecisionWorld): void {
+  assert.ok(!this.result.accepted, 'expected the decision to be refused')
+  assert.ok(this.result.errors.some((error) => error.field === 'step'))
+})
+
+Then(
+  'the last line is filed under step {string}',
+  function (this: DecisionWorld, id: string): void {
+    const lines = readFileSync(decisionsFile(this), 'utf8').trimEnd().split('\n')
+    assert.equal(JSON.parse(lines[lines.length - 1] ?? '').step, id)
   },
 )
 

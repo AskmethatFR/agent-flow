@@ -35,10 +35,32 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })
 
+const givenStepInProgress = (id: string): void =>
+  writeFileSync(
+    join(worktree, '.agent-flow', 'plan.json'),
+    JSON.stringify({
+      issue: '#35',
+      title: 'Appender',
+      steps: [
+        {
+          id,
+          title: 'T',
+          role: 'dev-a',
+          status: 'in_progress',
+          origin: 'planned',
+          startedAt: '2026-01-01T10:00:00.000Z',
+          endedAt: null,
+        },
+      ],
+    }),
+  )
+
 const run = (...args: string[]): number => runDecisionCommand(args, (text) => errors.push(text))
 
 describe('runDecisionCommand', () => {
   it('appends the decision, exits 0 and stays silent', () => {
+    givenStepInProgress('s1')
+
     expect(run(worktree, JSON.stringify(decision))).toBe(0)
     expect(errors).toEqual([])
     expect(readFileSync(decisionsPath, 'utf8')).toBe(`${JSON.stringify(decision)}\n`)
@@ -64,6 +86,8 @@ describe('runDecisionCommand', () => {
   })
 
   it('reports a refusal as one JSON line and exits 1', () => {
+    givenStepInProgress('s1')
+
     expect(run(worktree, JSON.stringify({ ...decision, confidence: 'certain' }))).toBe(1)
     expect(errors).toHaveLength(1)
     const [line] = errors as [string]
@@ -74,24 +98,7 @@ describe('runDecisionCommand', () => {
 
   it('defaults the step from the plan in progress', () => {
     const { step: _step, ...withoutStep } = decision
-    writeFileSync(
-      join(worktree, '.agent-flow', 'plan.json'),
-      JSON.stringify({
-        issue: '#35',
-        title: 'Appender',
-        steps: [
-          {
-            id: 's7',
-            title: 'T',
-            role: 'dev-a',
-            status: 'in_progress',
-            origin: 'planned',
-            startedAt: '2026-01-01T10:00:00.000Z',
-            endedAt: null,
-          },
-        ],
-      }),
-    )
+    givenStepInProgress('s7')
 
     expect(run(worktree, JSON.stringify(withoutStep))).toBe(0)
     expect(JSON.parse(readFileSync(decisionsPath, 'utf8')).step).toBe('s7')
@@ -108,6 +115,8 @@ describe('agent-flow-decision launcher', () => {
   )
 
   it('appends a decision from a shell and exits 0', () => {
+    givenStepInProgress('s1')
+
     execFileSync(process.execPath, [launcher, worktree, JSON.stringify(decision)], { cwd: root })
 
     expect(readFileSync(decisionsPath, 'utf8')).toBe(`${JSON.stringify(decision)}\n`)

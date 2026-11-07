@@ -43,3 +43,34 @@ Feature: Decision append
       | a worktree path going through ..               |
       | .agent-flow symlinked to an outside folder     |
       | decisions.jsonl symlinked to an outside file   |
+
+  @scenario:S5
+  Scenario: A decision naming the step in progress is appended
+    Given a worktree whose decisions.jsonl has 3 lines
+    And the plan has step "s1" in progress
+    When a valid decision for step "s1" is appended
+    Then the decisions.jsonl has 4 lines
+
+  @scenario:S6
+  Scenario: A decision naming another step is refused and nothing is written
+    Given a worktree whose decisions.jsonl has 3 lines
+    And the plan has step "s1" in progress
+    When a valid decision for step "s2" is appended
+    Then the decision is refused with an error on the step field
+    And the decisions.jsonl is unchanged
+
+  @scenario:S7
+  Scenario: A decision naming a step while none is in progress is refused and nothing is written
+    Given a worktree whose plan has no step in progress
+    When a valid decision for step "s1" is appended
+    Then the decision is refused with an error on the step field
+    And the decisions.jsonl is unchanged
+
+  @scenario:S8
+  Scenario: A decision without a step is filed under the step in progress
+    Given a worktree whose decisions.jsonl has 3 lines
+    And the plan has step "s1" in progress
+    And no step is given for the decision
+    When a decision is appended
+    Then the decisions.jsonl has 4 lines
+    And the last line is filed under step "s1"
