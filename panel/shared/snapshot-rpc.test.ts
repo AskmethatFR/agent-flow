@@ -24,6 +24,7 @@ const snapshot: Snapshot = {
     },
   ],
   currentStepId: 's1',
+  currentAgent: { role: 'dev-a', state: 'running' },
   errors: [
     { file: 'plan.json', location: 3, field: 'status', message: 'bad' },
     { file: 'plan.json', location: 'steps', field: null, message: 'bad' },
@@ -54,6 +55,26 @@ describe('getSnapshotRpc', () => {
     const parsed = getSnapshotRpc.output.parse({ kind: 'snapshot', snapshot })
     expect(parsed).toMatchObject({ snapshot: { steps: [{ decisions: snapshot.steps[0]?.decisions }] } })
     const bad = { ...snapshot, steps: [{ ...snapshot.steps[0], decisions: [{ title: 't', why: 'w', rejected: [], role: 'r', confidence: 'sure' }] }] }
+    expect(getSnapshotRpc.output.safeParse({ kind: 'snapshot', snapshot: bad }).success).toBe(false)
+  })
+
+  it.each([
+    ['a running agent', { role: 'dev-a', state: 'running' }],
+    ['a stopped agent', { role: 'dev-a', state: 'stopped' }],
+    ['an unknown agent state', { role: 'dev-a', state: 'unknown' }],
+    ['no agent', null],
+  ])('keeps %s intact', (_, currentAgent) => {
+    const parsed = getSnapshotRpc.output.parse({ kind: 'snapshot', snapshot: { ...snapshot, currentAgent } })
+    expect(parsed).toMatchObject({ snapshot: { currentAgent } })
+  })
+
+  it.each([
+    ['a display state outside the set', { role: 'dev-a', state: 'idle' }],
+    ['a missing role', { state: 'running' }],
+    ['a missing state', { role: 'dev-a' }],
+    ['a missing field', undefined],
+  ])('rejects %s on the current agent', (_, currentAgent) => {
+    const bad = { ...snapshot, currentAgent }
     expect(getSnapshotRpc.output.safeParse({ kind: 'snapshot', snapshot: bad }).success).toBe(false)
   })
 

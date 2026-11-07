@@ -1,3 +1,5 @@
+import { displayStateOf } from '../agent-state/agent-state'
+import type { AgentDisplayState } from '../agent-state/agent-state'
 import { MAX_TEXT_LENGTH, capErrors } from '../contracts/contract-error'
 import type { ContractError } from '../contracts/contract-error'
 import { readLocatedDecisions } from '../contracts/decisions'
@@ -35,11 +37,17 @@ export type SnapshotStep = {
   readonly decisions: readonly SnapshotDecision[]
 }
 
+export type CurrentAgent = {
+  readonly role: string
+  readonly state: AgentDisplayState
+}
+
 export type Snapshot = {
   readonly issue: string | null
   readonly title: string | null
   readonly steps: readonly SnapshotStep[]
   readonly currentStepId: string | null
+  readonly currentAgent: CurrentAgent | null
   readonly errors: readonly ContractError[]
 }
 
@@ -59,7 +67,7 @@ const toSnapshotStep = (
 
 const startOf = (step: PlanStep): number => instantOf(step.startedAt) ?? Number.NEGATIVE_INFINITY
 
-const currentStepIdOf = (steps: readonly PlanStep[]): string | null => {
+const currentStepOf = (steps: readonly PlanStep[]): PlanStep | null => {
   let current: PlanStep | null = null
   let currentStart = Number.NEGATIVE_INFINITY
   for (const step of steps) {
@@ -70,8 +78,16 @@ const currentStepIdOf = (steps: readonly PlanStep[]): string | null => {
       currentStart = start
     }
   }
-  return current?.id ?? null
+  return current
 }
+
+const currentAgentOf = (
+  step: PlanStep | null,
+  agentStatus: string | undefined,
+): CurrentAgent | null =>
+  step === null || agentStatus === undefined
+    ? null
+    : { role: step.role, state: displayStateOf(agentStatus) }
 
 const unavailableMessages: Record<FileUnavailable['unavailable'], string> = {
   missing: 'is missing',
@@ -128,18 +144,31 @@ const groupDecisions = (
   return { perStep: buckets, errors: [...errors, ...capErrors(decisionsFile, orphans)] }
 }
 
-export const buildSnapshot = (files: SnapshotFiles, now: Date): Snapshot => {
+export const buildSnapshot = (
+  files: SnapshotFiles,
+  now: Date,
+  agentStatus?: string,
+): Snapshot => {
   const result = readPlanFile(files.plan)
   if (!result.accepted) {
-    return { issue: null, title: null, steps: [], currentStepId: null, errors: result.errors }
+    return {
+      issue: null,
+      title: null,
+      steps: [],
+      currentStepId: null,
+      currentAgent: null,
+      errors: result.errors,
+    }
   }
   const { plan } = result
   const { perStep, errors } = groupDecisions(plan.steps, files.decisions)
+  const current = currentStepOf(plan.steps)
   return {
     issue: plan.issue,
     title: plan.title,
     steps: perStep.map(({ step, decisions }) => toSnapshotStep(step, now, decisions)),
-    currentStepId: currentStepIdOf(plan.steps),
+    currentStepId: current?.id ?? null,
+    currentAgent: currentAgentOf(current, agentStatus),
     errors,
   }
 }
