@@ -1,0 +1,17 @@
+launch: claude -p <prompt below> from the worktree root, AGENT_FLOW_HOME=<checkout at eda6f51>, CLAUDE_CODE_ENABLE_TODO_TOOLS=1
+flags: --settings <home>/capture/claude-code/settings.json --permission-mode acceptEdits --output-format stream-json
+allowedTools: Read Edit Write Grep Glob Agent Skill TaskCreate TaskUpdate TaskList TaskGet mcp__jbcontext__code_search mcp__knowledge-graph__search_docs mcp__knowledge-graph__get_node mcp__knowledge-graph__get_related Bash(git:*) Bash(gh:*) Bash(npm:*) Bash(npx:*) Bash(node:*) Bash(timeout:*) Bash(rg:*) Bash(jbcontext:*) Bash(ls:*) Bash(wc:*) Bash(cat:*) Bash(test:*) Bash(bash <user-claude-dir>/*) Bash(node *agent-flow-decision.mjs*)
+decision command allow rule: Bash(node *agent-flow-decision.mjs*)
+rule shim: CLAUDE.local.md holding @<home>/rules/claude-code/CLAUDE.md, listed in .git/info/exclude
+run: 2026-11-07T14:00:15Z to 14:36:09Z, exit 0
+
+prompt:
+Work GitHub issue #77 (AskmethatFR/agent-flow) end to end, following your global agentic-team instructions and this project's rules. You are on branch t2/77-decision-appender-step-state.
+
+Plan the work with the task tools before starting it: create every plan item with TaskCreate, named "<role-id>: <title>" as the plan-steps rule says, and mark each item in_progress and then completed with TaskUpdate as the work happens. Every role logs its decisions with the decision command, as the decision-logging rule says.
+
+No human is available during this run. Proceed without asking. If you reach one of the closed list of human stops, record it as a comment on the issue and stop there.
+
+Finish by opening a pull request for #77. Do not merge it.
+
+Never create, edit, move or delete anything under .agent-flow/ yourself: only the hooks and the decision command write there.

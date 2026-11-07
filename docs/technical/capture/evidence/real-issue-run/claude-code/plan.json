@@ -1,0 +1,60 @@
+{
+  "issue": "#77",
+  "title": "Decision appender refuses a step that is not in progress",
+  "steps": [
+    {
+      "id": "1",
+      "title": "Refine ticket and promote Gherkin",
+      "role": "pm",
+      "status": "done",
+      "origin": "planned",
+      "startedAt": "2026-11-07T14:01:16.886Z",
+      "endedAt": "2026-11-07T14:03:24.787Z"
+    },
+    {
+      "id": "2",
+      "title": "Implementation",
+      "role": "dev-a",
+      "status": "done",
+      "origin": "planned",
+      "startedAt": "2026-11-07T14:03:25.141Z",
+      "endedAt": "2026-11-07T14:13:59.447Z"
+    },
+    {
+      "id": "3",
+      "title": "Cross-review",
+      "role": "dev-b",
+      "status": "done",
+      "origin": "planned",
+      "startedAt": "2026-11-07T14:13:59.847Z",
+      "endedAt": "2026-11-07T14:13:59.869Z"
+    },
+    {
+      "id": "4",
+      "title": "Functional verification",
+      "role": "qa",
+      "status": "done",
+      "origin": "planned",
+      "startedAt": "2026-11-07T14:13:59.869Z",
+      "endedAt": "2026-11-07T14:14:00.280Z"
+    },
+    {
+      "id": "5",
+      "title": "Security audit",
+      "role": "security",
+      "status": "done",
+      "origin": "planned",
+      "startedAt": "2026-11-07T14:14:00.280Z",
+      "endedAt": "2026-11-07T14:17:59.019Z"
+    },
+    {
+      "id": "6",
+      "title": "Open pull request",
+      "role": "pm",
+      "status": "done",
+      "origin": "planned",
+      "startedAt": "2026-11-07T14:33:31.006Z",
+      "endedAt": "2026-11-07T14:35:27.209Z"
+    }
+  ]
+}
