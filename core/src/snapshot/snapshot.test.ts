@@ -29,6 +29,7 @@ describe('buildSnapshot', () => {
         { id: 's2', title: 'Build', role: 'dev-a', status: 'todo', origin: 'proposed', timeSpent: null, decisions: [] },
       ],
       currentStepId: null,
+      currentAgent: null,
       errors: [],
     })
   })
@@ -38,6 +39,7 @@ describe('buildSnapshot', () => {
     title: null,
     steps: [],
     currentStepId: null,
+    currentAgent: null,
     errors: [{ file: 'plan.json', location, field, message }],
   })
 
@@ -229,9 +231,54 @@ describe('buildSnapshot', () => {
     expect(currentOf(...overlays.map(inProgress))).toBe(expected)
   })
 
+  const agentOf = (text: string, status?: string): Snapshot['currentAgent'] =>
+    buildSnapshot({ plan: text }, now, status).currentAgent
+
+  it.each([
+    ['running', 'running'],
+    ['idle', 'stopped'],
+    ['paused', 'unknown'],
+    ['', 'unknown'],
+  ])('reports the role of the current step with the display state of the host status "%s"', (status, state) => {
+    expect(agentOf(planText(inProgress({ role: 'dev-a' })), status)).toEqual({ role: 'dev-a', state })
+  })
+
+  it('reports the role of the in-progress step with the latest start', () => {
+    const text = planText(
+      inProgress({ id: 'a', role: 'architect', startedAt: '2026-10-22T09:00:00Z' }),
+      inProgress({ id: 'b', role: 'dev-a', startedAt: '2026-10-22T10:00:00Z' }),
+      finished({ id: 'c', role: 'qa' }),
+    )
+    expect(agentOf(text, 'running')).toEqual({ role: 'dev-a', state: 'running' })
+  })
+
+  it.each([
+    ['no host status is given', planText(inProgress({})), undefined],
+    ['no step is in progress', planText(step(), finished({ id: 'b' })), 'running'],
+    ['the plan is unusable', '{', 'running'],
+  ])('has no current agent when %s', (_, text, status) => {
+    expect(agentOf(text, status)).toBeNull()
+  })
+
+  it('has no current agent when the plan file is unavailable', () => {
+    expect(buildSnapshot({ plan: { unavailable: 'missing' } }, now, 'running').currentAgent).toBeNull()
+  })
+
+  it('never carries the raw host status', () => {
+    const snapshot = buildSnapshot({ plan: planText(inProgress({})) }, now, 'sentinel-raw-status')
+    expect(JSON.stringify(snapshot)).not.toContain('sentinel-raw-status')
+  })
+
+  it.each(['__proto__', 'constructor', 'toString', '\u0000', 'x'.repeat(100_000)])(
+    'builds a snapshot for the host status %j without throwing',
+    (status) => {
+      expect(agentOf(planText(inProgress({})), status)).toEqual({ role: 'architect', state: 'unknown' })
+    },
+  )
+
   it('carries no estimate or budget field', () => {
     expectTypeOf<keyof Snapshot>().toEqualTypeOf<
-      'issue' | 'title' | 'steps' | 'currentStepId' | 'errors'
+      'issue' | 'title' | 'steps' | 'currentStepId' | 'currentAgent' | 'errors'
     >()
     expectTypeOf<keyof SnapshotStep>().toEqualTypeOf<
       'id' | 'title' | 'role' | 'status' | 'origin' | 'timeSpent' | 'decisions'

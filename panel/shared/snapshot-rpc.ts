@@ -31,6 +31,10 @@ export const SnapshotSchema = z.object({
   title: z.string().nullable(),
   steps: z.array(SnapshotStepSchema).readonly(),
   currentStepId: z.string().nullable(),
+  currentAgent: z
+    .object({ role: z.string(), state: z.enum(['running', 'stopped', 'unknown']) })
+    .readonly()
+    .nullable(),
   errors: z.array(ContractErrorSchema).readonly(),
 }).readonly()
 
