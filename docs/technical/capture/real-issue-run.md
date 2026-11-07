@@ -78,7 +78,7 @@ Check command contract, as built: exit 1 with `{"errors":[…]}` on stderr on an
 
 | Runtime | Runtime version | Issue | Agent Flow commit | Timed | Decisions per role | Check | AC4 | Defects filed |
 |---|---|---|---|---|---|---|---|---|
-| Claude Code | pending #80 | | | | | | | |
+| Claude Code | 2.1.318, Node 22.22.1, bash 5.3.9 | #77 (PR #87) | `eda6f51` | pass: 6/6 steps done with both times, but parallel lanes collapse (#88) and rework is untimed (#90) | **fail**: started roles pm, dev-a, dev-b, qa, security; logged pm, dev-a, security (#89) | pass: `{"checked":["decisions.jsonl","plan.json"]}` | pass in substance: every change explained by the capture path; deviation: the section 2 rule does not yet list step creation (#78) or the transient `.plan.lock` | #88, #89, #90 |
 | OpenCode v2 | pending #81 | | | | | | | |
 
 #80 runs first. #81 runs after #79 and #80.
@@ -100,6 +100,12 @@ Check command contract, as built: exit 1 with `{"errors":[…]}` on stderr on an
 | OpenCode fails open when `AGENT_FLOW_HOME` is unset | #79 |
 | The decision template has not run live under zsh or bash 3.2 (`agent-rules` `:69`) | #80, #81: record the shell used; a failure is a defect |
 | Install friction met during a run | a defect per friction, linked here |
+| Parallel review lanes collapse to one timed step (Claude Code run) | #88 |
+| A lane whose step is not the one in progress cannot log a decision | #89 |
+| Reopening a completed step for rework is not timed | #90 |
+| Section 2 verdict rule predates #78: a `plan.json` change from step creation, and a `.plan.lock` seen in one window, are not listed as explained | runbook update, Architect |
+| The `jbcontext-first` gate blocks the decision command | `docs/TOOLING-BACKLOG.md` |
+| Claude Code run setup: rule shim line placed in `CLAUDE.local.md` (excluded locally), not in the tracked project `CLAUDE.md`; headless `claude -p` with `acceptEdits` and an allowlist (recorded in the evidence `prompt` notes) | recorded deviation |
 
 ## Consequences / Constraints
 

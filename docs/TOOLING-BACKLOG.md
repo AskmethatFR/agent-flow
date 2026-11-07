@@ -33,3 +33,13 @@ Re-observation on #79 of the 2026-10-27 blind spot: `tdd_audit.py:873-874`
 pairs only tool calls named `Bash` while OpenCode records `shell` (74 such
 calls went unread in one lane's transcript → false `no-runs`), and the stall
 watch fired `stall` on already-completed/cancelled lanes. Same fixes apply.
+
+## 2026-11-07 — jbcontext-first gate blocks the decision command (observed on #80)
+
+The `jbcontext-first` PreToolUse gate refused a lane's `agent-flow-decision.mjs`
+call (the `rules/decision-logging.md:27` template) because the lane had not run
+a semantic search yet. The template embeds `$(git rev-parse --show-toplevel)`
+and a `cat` heredoc, which the gate reads as code discovery. The decision is
+lost unless the lane retries after a search. The gate also refuses a plain
+`grep -c` on a named file in the worktree. Fix: exempt commands that invoke
+`agent-flow-decision.mjs`, and lookups in named files, from the gate.
