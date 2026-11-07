@@ -243,13 +243,16 @@ describe('buildSnapshot', () => {
     expect(agentOf(planText(inProgress({ role: 'dev-a' })), status)).toEqual({ role: 'dev-a', state })
   })
 
-  it('reports the role of the in-progress step with the latest start', () => {
+  it('reports the role of the in-progress step with the latest start, whatever its position', () => {
     const text = planText(
-      inProgress({ id: 'a', role: 'architect', startedAt: '2026-10-22T09:00:00Z' }),
-      inProgress({ id: 'b', role: 'dev-a', startedAt: '2026-10-22T10:00:00Z' }),
+      inProgress({ id: 'a', role: 'dev-a', startedAt: '2026-10-22T10:00:00Z' }),
+      inProgress({ id: 'b', role: 'architect', startedAt: '2026-10-22T09:00:00Z' }),
       finished({ id: 'c', role: 'qa' }),
     )
-    expect(agentOf(text, 'running')).toEqual({ role: 'dev-a', state: 'running' })
+    const snapshot = buildSnapshot({ plan: text }, now, 'running')
+    const currentStep = snapshot.steps.find(({ id }) => id === snapshot.currentStepId)
+    expect(snapshot.currentAgent).toEqual({ role: 'dev-a', state: 'running' })
+    expect(snapshot.currentAgent?.role).toBe(currentStep?.role)
   })
 
   it.each([
@@ -269,9 +272,15 @@ describe('buildSnapshot', () => {
     expect(JSON.stringify(snapshot)).not.toContain('sentinel-raw-status')
   })
 
-  it.each(['__proto__', 'constructor', 'toString', '\u0000', 'x'.repeat(100_000)])(
-    'builds a snapshot for the host status %j without throwing',
-    (status) => {
+  it.each([
+    ['__proto__', '__proto__'],
+    ['constructor', 'constructor'],
+    ['toString', 'toString'],
+    ['a NUL character', '\u0000'],
+    ['100000 characters', 'x'.repeat(100_000)],
+  ])(
+    'builds a snapshot for the host status of %s without throwing',
+    (_, status) => {
       expect(agentOf(planText(inProgress({})), status)).toEqual({ role: 'architect', state: 'unknown' })
     },
   )
