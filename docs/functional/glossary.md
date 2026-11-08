@@ -16,7 +16,9 @@ answers:
   - "What are the decisions of a step?"
   - "What does contract check mean, and what is an unsafe layout?"
   - "What do current agent and display state mean?"
+  - "What is the OpenCode launcher?"
 decided_in:
+  - "#83"
   - "#40"
   - "#32"
   - "#38"
@@ -61,6 +63,7 @@ decided_in:
 | **scope** | What a run is expected to touch: the issue it derives from and a list of repo-relative paths, kept in `scope.json`. |
 | **contract check** | The read-only verification of one worktree: does every file under its `.agent-flow/` honour its frozen contract. It reports the files it checked, or the file (and, for `decisions.jsonl`, the line) that broke its contract; it never changes anything. |
 | **unsafe layout** | A shape of `.agent-flow/` the contract check refuses instead of reading: a contract file that is a symlink, a file whose name is not a contract, a leftover temporary file, or no `.agent-flow/` at all. |
+| **OpenCode launcher** | The wrapper, `rules/opencode/agent-flow-opencode`, through which OpenCode users start OpenCode. It checks `AGENT_FLOW_HOME` before OpenCode starts: unless it names this checkout, it refuses with one line on stderr and OpenCode does not start. |
 | **path entry** | One element of a scope's paths. Safe means repo-relative and specific; an entry that is absolute, climbs out of the repository, matches everything or looks like a command is unsafe and refused. |
 
 ## Consequences / Constraints

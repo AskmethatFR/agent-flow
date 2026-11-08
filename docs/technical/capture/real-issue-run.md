@@ -33,11 +33,11 @@ S1 is tagged `@manual`: no BDD driver can make real agents work a real issue. Th
 | Step timing | `--settings <abs>/capture/claude-code/settings.json` (the `PostToolUse` `TaskUpdate` hook) | `export AGENT_FLOW_WORKTREE=<abs-worktree>` (absolute, no `.`/`..` segment, or the plugin stays inert or every write is refused); project plugin entry under `.opencode/plugins/` that re-exports `<abs>/capture/opencode/src/step-timing/entry.ts` |
 | Plan tool | `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` and the task tools named in `--tools`/`--allowedTools` (`capture-events` `:63`) | project `opencode.json` with `experimental.todo: true` (`capture-events` `:64`) |
 | Decision command | a Bash allow rule matching `node *agent-flow-decision.mjs*`; record the exact rule used | allowed by the project permission config; record the exact entry used |
-| Launch | `claude` with the flags above, from the worktree root | `opencode run --standalone` from the worktree root (`capture-events` `:85`, `:109`) |
+| Launch | `claude` with the flags above, from the worktree root | `<abs>/rules/opencode/agent-flow-opencode run --standalone` from the worktree root: the standard OpenCode invocation, it checks `AGENT_FLOW_HOME` before OpenCode starts and forwards every argument unchanged (`capture-events` `:85`, `:109`) |
 | First plan | seeded by the mechanism #78 delivers; no run starts before it exists | same |
 | Versions recorded | `claude --version`, `node --version` | `opencode --version`, `node --version` |
 
-The OpenCode setup above is the setup as of today: `{env:AGENT_FLOW_HOME}` in the rule shim fails open when the variable is unset. #79 adds the guard that makes it fail loudly; once it lands, the setup gains that guard and nothing else changes.
+`{env:AGENT_FLOW_HOME}` in the rule shim fails open when the variable is unset, so OpenCode v2 is guarded twice. The rule guard (#79) ends the session when `AGENT_FLOW_HOME` does not name this checkout; its stderr line reaches the console only under `--print-logs`. The launcher `agent-flow-opencode` (#83) runs the same check before OpenCode starts: it prints one stderr line naming `AGENT_FLOW_HOME` and exits non-zero without starting OpenCode. Start OpenCode through the launcher, by its real path (a symlink to the launcher is not supported).
 
 ## 2. AC4 evidence protocol: no human edit under `.agent-flow/`
 
@@ -97,8 +97,7 @@ Check command contract, as built: exit 1 with `{"errors":[…]}` on stderr on an
 | Gap | Owner |
 |---|---|
 | Nothing seeds `.agent-flow/plan.json` on a real run; it blocks both runs | #78 |
-| OpenCode fails open when `AGENT_FLOW_HOME` is unset | #79 |
-| The decision template has not run live under zsh or bash 3.2 (`agent-rules` `:69`) | #80, #81: record the shell used; a failure is a defect |
+| The decision template has not run live under zsh or bash 3.2 (`agent-rules` `:79`) | #80, #81: record the shell used; a failure is a defect |
 | Install friction met during a run | a defect per friction, linked here |
 | Parallel review lanes collapse to one timed step (Claude Code run) | #88 |
 | A lane whose step is not the one in progress cannot log a decision | #89 |
