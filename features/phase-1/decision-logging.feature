@@ -58,3 +58,12 @@ Feature: Decision logging
     When the "dev-b" and "qa" agents each log a decision
     Then the decision line of role "dev-b" has step "s1"
     And the decision line of role "qa" has step "s2"
+
+  # origin: #94
+  @scenario:S7
+  Scenario: A reviewing role logs its verdict with its reason
+    Given the step "s2" of role "qa" is in progress
+    And "qa" makes no choice between options
+    When the "qa" agent logs its verdict "approve" with the reason "The run respected every rule"
+    Then the decision line of role "qa" says the verdict "approve" with the reason "The run respected every rule"
+    And the decision line of role "qa" has step "s2"

@@ -79,6 +79,7 @@ Check command contract, as built: exit 1 with `{"errors":[…]}` on stderr on an
 | Runtime | Runtime version | Issue | Agent Flow commit | Timed | Decisions per role | Check | AC4 | Defects filed |
 |---|---|---|---|---|---|---|---|---|
 | Claude Code | 2.1.318, Node 22.22.1, bash 5.3.9 | #77 (PR #87) | `eda6f51` | pass: 6/6 steps done with both times, but parallel lanes collapse (#88) and rework is untimed (#90) | **fail**: started roles pm, dev-a, dev-b, qa, security; logged pm, dev-a, security (#89) | pass: `{"checked":["decisions.jsonl","plan.json"]}` | pass in substance: every change explained by the capture path; deviation: the section 2 rule does not yet list step creation (#78) or the transient `.plan.lock` | #88, #89, #90 |
+| Claude Code, re-run after #88-#90 | 2.1.318, Node 22.22.1, bash 5.3.9 | #40 (PR #93) | `f4b3bcc` | pass: 11/11 steps done with both times; dev-b, qa and security timed in parallel (968 s, 238 s, 164 s); two dev-a reworks timed as `3.rework-1`, `3.rework-2` | **fail**: started roles pm, architect, dev-a, dev-b, qa, security; logged all but qa (QA made no choice, so logged none); security logged only after the orchestrator asked again | pass: `{"checked":["decisions.jsonl","plan.json"]}` | pass in substance: 22 `plan.json` changes, 17 within a window holding a start or end; the other 5 are step creation (19:52:11-21, 20:34:01-06); no `.plan.lock` or temp file seen; decisions only grew by whole lines. Same deviation as the first run: section 2 does not list step creation | #94 |
 | OpenCode v2 | pending #81 | | | | | | | |
 
 #80 runs first. #81 runs after #79 and #80.
@@ -100,9 +101,10 @@ Check command contract, as built: exit 1 with `{"errors":[…]}` on stderr on an
 | OpenCode fails open when `AGENT_FLOW_HOME` is unset | #79 |
 | The decision template has not run live under zsh or bash 3.2 (`agent-rules` `:69`) | #80, #81: record the shell used; a failure is a defect |
 | Install friction met during a run | a defect per friction, linked here |
-| Parallel review lanes collapse to one timed step (Claude Code run) | #88 |
-| A lane whose step is not the one in progress cannot log a decision | #89 |
-| Reopening a completed step for rework is not timed | #90 |
+| Parallel review lanes collapse to one timed step (Claude Code run) | #88, fixed by PR #92; confirmed by the re-run |
+| A lane whose step is not the one in progress cannot log a decision | #89, fixed by PR #92; confirmed by the re-run |
+| Reopening a completed step for rework is not timed | #90, fixed by PR #92; confirmed by the re-run |
+| A role that makes no choice between options logs no decision, so "one decision per role" fails (QA, re-run) | #94 |
 | Section 2 verdict rule predates #78: a `plan.json` change from step creation, and a `.plan.lock` seen in one window, are not listed as explained | runbook update, Architect |
 | The `jbcontext-first` gate blocks the decision command | `docs/TOOLING-BACKLOG.md` |
 | Claude Code run setup: rule shim line placed in `CLAUDE.local.md` (excluded locally), not in the tracked project `CLAUDE.md`; headless `claude -p` with `acceptEdits` and an allowlist (recorded in the evidence `prompt` notes) | recorded deviation |
