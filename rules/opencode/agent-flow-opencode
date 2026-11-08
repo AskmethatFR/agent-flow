@@ -1,5 +1,5 @@
 #!/bin/sh
 here=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd -P) || exit
 checkout="$here/../.."
-"$checkout/node_modules/.bin/tsx" --tsconfig "$checkout/tsconfig.json" "$checkout/capture/opencode/src/launcher/entry.ts" || exit
+"$checkout/node_modules/.bin/tsx" --no-cache --tsconfig "$checkout/tsconfig.json" "$checkout/capture/opencode/src/launcher/entry.ts" || exit
 exec opencode "$@"

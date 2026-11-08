@@ -364,7 +364,7 @@ When('OpenCode v2 starts with the shim', function (this: LoggingWorld): void {
 })
 
 const launcherPath = join(repo, 'rules', 'opencode', 'agent-flow-opencode')
-const launcherArguments: readonly string[] = ['run', '--standalone', 'two words', '', '$HOME', '*', '--', "it's", 'line\nbreak']
+const launcherArguments: readonly string[] = ['run', '--standalone', 'two words', '', '$HOME', '*', '--', '-x', "it's", 'line\nbreak']
 
 When('the OpenCode launcher runs with arguments', function (this: LoggingWorld): void {
   const bin = join(this.root, 'bin')

@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -16,7 +16,11 @@ let elsewhere: string
 let record: string
 
 const installFakeOpencode = (status: number): void => {
-  writeFileSync(join(bin, 'opencode'), `#!/bin/sh\n: > '${record}'\nfor argument in "$@"; do printf '%s\\0' "$argument" >> '${record}'; done\nexit ${status}\n`, { mode: 0o755 })
+  writeFileSync(
+    join(bin, 'opencode'),
+    `#!/bin/sh\n: > '${record}'\nfor argument in "$@"; do printf '%s\\0' "$argument" >> '${record}'; done\necho $$ > '${record}.pid'\nexit ${status}\n`,
+    { mode: 0o755 },
+  )
 }
 
 const launch = (home: string | undefined, args: readonly string[] = hostileArguments, extraEnv: NodeJS.ProcessEnv = {}) =>
@@ -54,7 +58,7 @@ describe('the OpenCode launcher shim', { timeout: 30_000 }, () => {
     const result = launch(home)
     expect(result.status).not.toBe(0)
     expect(result.stdout).toBe('')
-    expect(result.stderr.split('\n')).toHaveLength(2)
+    expect(result.stderr).toMatch(/^[^\n]+\n$/)
     expect(result.stderr).toContain('AGENT_FLOW_HOME')
     if (home) expect(result.stderr).not.toContain(home)
     expect(existsSync(record)).toBe(false)
@@ -83,6 +87,20 @@ describe('the OpenCode launcher shim', { timeout: 30_000 }, () => {
   it('returns the exit status of OpenCode', () => {
     installFakeOpencode(7)
     expect(launch(repo).status).toBe(7)
+  })
+
+  it('replaces itself with OpenCode instead of supervising it', () => {
+    const result = launch(repo)
+    expect(Number(readFileSync(`${record}.pid`, 'utf8'))).toBe(result.pid)
+  })
+
+  it('keeps the tsx cache out of the shared temporary directory', () => {
+    const scratch = join(root, 'scratch-tmp')
+    mkdirSync(scratch)
+    const result = launch(repo, hostileArguments, { TMPDIR: scratch })
+    expect(result.status).toBe(0)
+    const cached = readdirSync(scratch, { recursive: true, withFileTypes: true }).filter((entry) => entry.isFile())
+    expect(cached.map((entry) => join(entry.parentPath, entry.name))).toEqual([])
   })
 
   it('passes its own tsconfig.json to tsx whatever tsx would otherwise pick up', () => {
