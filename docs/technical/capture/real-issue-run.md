@@ -97,8 +97,7 @@ Check command contract, as built: exit 1 with `{"errors":[…]}` on stderr on an
 | Gap | Owner |
 |---|---|
 | Nothing seeds `.agent-flow/plan.json` on a real run; it blocks both runs | #78 |
-| OpenCode fails open when `AGENT_FLOW_HOME` is unset | #79 |
-| The decision template has not run live under zsh or bash 3.2 (`agent-rules` `:69`) | #80, #81: record the shell used; a failure is a defect |
+| The decision template has not run live under zsh or bash 3.2 (`agent-rules` `:79`) | #80, #81: record the shell used; a failure is a defect |
 | Install friction met during a run | a defect per friction, linked here |
 | Parallel review lanes collapse to one timed step (Claude Code run) | #88 |
 | A lane whose step is not the one in progress cannot log a decision | #89 |

@@ -20,7 +20,7 @@
 
 | ID | Title | Status | Updated | Links | Path |
 |---|---|---|---|---|---|
-| `agent-rules` | Agent rules: runtime-neutral source, per-runtime shims, decision command | current | 2026-11-05 | [[decisions-jsonl-schema]], [[capture-events]], [[host-adapter-boundary]], [[snapshot-decisions]], [[workspace-layout-core-boundary]] | `docs/technical/capture/agent-rules.md` |
+| `agent-rules` | Agent rules: runtime-neutral source, per-runtime shims, decision command | current | 2026-11-08 | [[decisions-jsonl-schema]], [[capture-events]], [[host-adapter-boundary]], [[snapshot-decisions]], [[workspace-layout-core-boundary]] | `docs/technical/capture/agent-rules.md` |
 | `capture-events` | Runtime events for step started/done (Claude Code, OpenCode v2) | current | 2026-10-26 | — | `docs/technical/capture/events.md` |
 | `loop-threshold` | Loop threshold (plan.md Q6) | current | 2026-10-26 | `capture-events` | `docs/technical/decisions/loop-threshold.md` |
 | `real-issue-run` | Real-issue capture run: setup, AC4 evidence, QA procedure | current | 2026-11-05 | [[capture-events]], [[agent-rules]], [[plan-writer-confinement]] | `docs/technical/capture/real-issue-run.md` |
@@ -72,7 +72,7 @@
 - `features/phase-1/decision-append.feature` — #35 Decision append: a decision is added to decisions.jsonl under the step in progress of its role, invalid ones and outside targets refused (S1-S11)
 - `features/phase-1/step-timing-claude-code.feature` — #14 Step timing captured automatically in Claude Code, parallel steps timed on their own, rework timed as its own step (S1, S3, S4)
 - `features/phase-1/step-timing-opencode.feature` — #15 Step timing captured automatically in OpenCode, parallel steps timed on their own, rework timed as its own step (S1, S3, S4)
-- `features/phase-1/decision-logging.feature` — #16 Decision logging: every role logs its decisions with step, role, title, why and confidence; roles in parallel each log under their own step (S1-S6)
+- `features/phase-1/decision-logging.feature` — #16 Decision logging: every role logs its decisions with step, role, title, why and confidence; roles in parallel each log under their own step; OpenCode launcher checks AGENT_FLOW_HOME (S1-S8)
 - `features/phase-1/plan-seeding.feature` — #78 Plan seeding: plan.json seeded by the operator, steps added as the agent creates them, both runtimes (S1-S5)
 - `features/phase-2/snapshot-steps.feature` — #38 Core snapshot: steps with time spent and current step (S1-S5)
 - `features/phase-2/snapshot-decisions.feature` — #39 Core snapshot: decisions grouped by step, malformed line reported (S1-S3)

@@ -24,7 +24,9 @@ answers:
   - "Which layouts of .agent-flow does the contract check refuse?"
   - "When is Phase 1 accepted on a real issue, and who runs that acceptance?"
   - "Which host statuses display as running, stopped or unknown, and when is there no current agent?"
+  - "What does the OpenCode launcher do when AGENT_FLOW_HOME does not name this checkout?"
 decided_in:
+  - "#83"
   - "#40"
   - "#32"
   - "#38"
@@ -196,7 +198,13 @@ told by an agent rule to log each technical choice it makes as one line in
 A logged line obeys the frozen `decisions.jsonl` contract, so the snapshot groups
 it by step with no further work. The role rule is `rules/decision-logging.md`.
 
-Acceptance: `decision-logging` S1-S3 (`features/phase-1/decision-logging.feature`).
+OpenCode users start OpenCode through the [[glossary]] OpenCode launcher,
+`rules/opencode/agent-flow-opencode`. Unless `AGENT_FLOW_HOME` names this
+checkout (exactly or through a symlink), the launcher prints one line naming
+`AGENT_FLOW_HOME` on stderr and does not start OpenCode; otherwise OpenCode starts
+with its arguments unchanged.
+
+Acceptance: `decision-logging` S1-S8 (`features/phase-1/decision-logging.feature`).
 Out of scope: logging questions and deviations (Phase 4); wiring the rule into a
 real project (#17).
 
