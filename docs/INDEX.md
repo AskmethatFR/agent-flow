@@ -6,6 +6,7 @@
 |---|---|---|---|---|---|
 | `plan-writer-confinement` | Plan writer: confinement chain, atomic replace, reader contract | current | 2026-10-31 | [[host-adapter-boundary]], [[workspace-layout-core-boundary]], [[capture-events]], [[snapshot-contract]] | `docs/technical/decisions/plan-writer-confinement.md` |
 | `request-scope-contracts` | Frozen requests/responses/scope contracts: id bound, glob dialect, path rules | current | 2026-11-02 | [[decisions-jsonl-schema]], [[scope-origin]], [[paseo-messaging]], [[host-adapter-boundary]], [[workspace-layout-core-boundary]] | `docs/technical/decisions/request-scope-contracts.md` |
+| `snapshot-agent-state` | Snapshot agent state: raw status in, display state and current agent out | current | 2026-11-07 | [[snapshot-contract]], [[host-adapter-boundary]], [[paseo-agent-state]], [[snapshot-rpc]], [[snapshot-decisions]] | `docs/technical/decisions/snapshot-agent-state.md` |
 | `snapshot-contract` | Core snapshot contract: shape, failure codes, instant rule | current | 2026-11-02 | [[host-adapter-boundary]], [[workspace-layout-core-boundary]], [[decisions-jsonl-schema]], [[feature-catalog]] | `docs/technical/decisions/snapshot-contract.md` |
 | `snapshot-decisions` | Snapshot decisions: per-step grouping, orphans, decisions-file failures | current | 2026-11-02 | [[snapshot-contract]], [[decisions-jsonl-schema]], [[snapshot-rpc]], [[host-adapter-boundary]], [[glossary]] | `docs/technical/decisions/snapshot-decisions.md` |
 | `snapshot-rpc` | Snapshot RPC: workspaceId addressing, wire, reader chain, packaging | current | 2026-11-02 | [[host-adapter-boundary]], [[snapshot-contract]], [[paseo-api-version]], [[plan-writer-confinement]], [[workspace-layout-core-boundary]], [[paseo-agent-state]] | `docs/technical/decisions/snapshot-rpc.md` |
@@ -19,7 +20,7 @@
 
 | ID | Title | Status | Updated | Links | Path |
 |---|---|---|---|---|---|
-| `agent-rules` | Agent rules: runtime-neutral source, per-runtime shims, decision command | current | 2026-11-05 | [[decisions-jsonl-schema]], [[capture-events]], [[host-adapter-boundary]], [[snapshot-decisions]], [[workspace-layout-core-boundary]] | `docs/technical/capture/agent-rules.md` |
+| `agent-rules` | Agent rules: runtime-neutral source, per-runtime shims, decision command | current | 2026-11-08 | [[decisions-jsonl-schema]], [[capture-events]], [[host-adapter-boundary]], [[snapshot-decisions]], [[workspace-layout-core-boundary]] | `docs/technical/capture/agent-rules.md` |
 | `capture-events` | Runtime events for step started/done (Claude Code, OpenCode v2) | current | 2026-10-26 | — | `docs/technical/capture/events.md` |
 | `loop-threshold` | Loop threshold (plan.md Q6) | current | 2026-10-26 | `capture-events` | `docs/technical/decisions/loop-threshold.md` |
 | `real-issue-run` | Real-issue capture run: setup, AC4 evidence, QA procedure | current | 2026-11-05 | [[capture-events]], [[agent-rules]], [[plan-writer-confinement]] | `docs/technical/capture/real-issue-run.md` |
@@ -61,8 +62,8 @@
 
 | ID | Title | Status | Updated | Links | Path |
 |---|---|---|---|---|---|
-| `feature-catalog` | Capabilities: contracts, snapshot, decisions, plan writer, contract check | current | 2026-11-05 | `glossary`, `real-issue-run` | `docs/functional/features.md` |
-| `glossary` | Ubiquitous language: decision, snapshot, time spent, plan writer, contract check | current | 2026-11-05 | `feature-catalog` | `docs/functional/glossary.md` |
+| `feature-catalog` | Capabilities: contracts, snapshot, decisions, plan writer, contract check, agent display state | current | 2026-11-07 | `glossary`, `real-issue-run` | `docs/functional/features.md` |
+| `glossary` | Ubiquitous language: decision, snapshot, time spent, plan writer, contract check, current agent | current | 2026-11-07 | `feature-catalog` | `docs/functional/glossary.md` |
 
 - `features/phase-0/plan-contract.feature` — #23 Frozen data contracts: plan.json schema (S1, S2)
 - `features/phase-0/decisions-contract.feature` — #32 Frozen data contracts: decisions.jsonl schema and reader (S1, S2)
@@ -71,8 +72,9 @@
 - `features/phase-1/decision-append.feature` — #35 Decision append: a decision is added to decisions.jsonl under the step in progress of its role, invalid ones and outside targets refused (S1-S11)
 - `features/phase-1/step-timing-claude-code.feature` — #14 Step timing captured automatically in Claude Code, parallel steps timed on their own, rework timed as its own step (S1, S3, S4)
 - `features/phase-1/step-timing-opencode.feature` — #15 Step timing captured automatically in OpenCode, parallel steps timed on their own, rework timed as its own step (S1, S3, S4)
-- `features/phase-1/decision-logging.feature` — #16 Decision logging: every role logs its decisions with step, role, title, why and confidence; roles in parallel each log under their own step (S1-S7)
+- `features/phase-1/decision-logging.feature` — #16 Decision logging: every role logs its decisions with step, role, title, why and confidence; roles in parallel each log under their own step; a reviewing role logs its verdict with its reason; OpenCode launcher checks AGENT_FLOW_HOME (S1-S9)
 - `features/phase-1/plan-seeding.feature` — #78 Plan seeding: plan.json seeded by the operator, steps added as the agent creates them, both runtimes (S1-S5)
 - `features/phase-2/snapshot-steps.feature` — #38 Core snapshot: steps with time spent and current step (S1-S5)
 - `features/phase-2/snapshot-decisions.feature` — #39 Core snapshot: decisions grouped by step, malformed line reported (S1-S3)
+- `features/phase-2/agent-state-mapping.feature` — #40 Display state of the agent on the current step: running, stopped, unknown, no current agent (S1-S4)
 - `features/phase-2/time-spent.feature` — #19 Plan rail: time spent per step and the current step marked (S1-S3)

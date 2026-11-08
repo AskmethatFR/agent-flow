@@ -40,6 +40,8 @@ type LoggingWorld = {
   results: Map<Runtime, ValidationResult>
   home: string | undefined
   launch: Launch
+  record: string
+  sent: readonly string[]
 }
 
 const ruleFile = join(repo, 'rules', 'decision-logging.md')
@@ -397,6 +399,37 @@ When('OpenCode v2 starts with the shim', function (this: LoggingWorld): void {
     { cwd: this.root, encoding: 'utf8', env: { ...process.env, AGENT_FLOW_HOME: this.home } },
   )
   this.launch = { status: result.status, stdout: result.stdout, stderr: result.stderr }
+})
+
+const launcherPath = join(repo, 'rules', 'opencode', 'agent-flow-opencode')
+const launcherArguments: readonly string[] = ['run', '--standalone', 'two words', '', '$HOME', '*', '--', '-x', "it's", 'line\nbreak']
+
+When('the OpenCode launcher runs with arguments', function (this: LoggingWorld): void {
+  const bin = join(this.root, 'bin')
+  const elsewhere = join(this.root, 'elsewhere')
+  mkdirSync(bin)
+  mkdirSync(elsewhere)
+  this.record = join(this.root, 'record')
+  this.sent = launcherArguments
+  writeFileSync(join(bin, 'opencode'), `#!/bin/sh\n: > '${this.record}'\nfor argument in "$@"; do printf '%s\\0' "$argument" >> '${this.record}'; done\n`, { mode: 0o755 })
+  const result = spawnSync(launcherPath, [...launcherArguments], {
+    cwd: elsewhere,
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, AGENT_FLOW_HOME: this.home },
+  })
+  assert.ifError(result.error)
+  this.launch = { status: result.status, stdout: result.stdout, stderr: result.stderr }
+})
+
+Then('OpenCode is not started', function (this: LoggingWorld): void {
+  assert.notEqual(this.launch.status, 0, 'the launcher must exit non-zero')
+  assert.equal(existsSync(this.record), false, 'OpenCode must not have run')
+  assert.equal(this.launch.stdout, '')
+})
+
+Then('OpenCode is started with those arguments unchanged', function (this: LoggingWorld): void {
+  assert.equal(this.launch.status, 0)
+  assert.deepEqual(readFileSync(this.record, 'utf8').split('\0').slice(0, -1), [...this.sent])
 })
 
 Then('stderr has one line naming {string}', function (this: LoggingWorld, name: string): void {

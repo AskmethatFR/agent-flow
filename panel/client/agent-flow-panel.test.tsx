@@ -19,6 +19,7 @@ const snapshotReply = (overrides: Record<string, unknown> = {}) => ({
     title: 'Add login',
     steps: [step('s1', 'Write tests'), step('s2', 'Implement'), step('s3', 'Open PR')],
     currentStepId: null,
+    currentAgent: null,
     errors: [],
     ...overrides,
   },

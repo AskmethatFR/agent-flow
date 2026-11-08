@@ -11,7 +11,9 @@ export type RuleGuardOptions = {
 const refusal =
   'agent-flow: AGENT_FLOW_HOME must name the Agent Flow checkout that holds this guard; the rule guard refused to activate\n'
 
-const namesCheckout = ({ home, checkout, resolve }: RuleGuardOptions): boolean => {
+export type CheckoutHome = Pick<RuleGuardOptions, 'home' | 'checkout' | 'resolve'>
+
+export const namesCheckout = ({ home, checkout, resolve }: CheckoutHome): boolean => {
   if (!home || !isAbsolute(home)) return false
   const resolved = resolve(home)
   return resolved !== undefined && resolved === resolve(checkout)

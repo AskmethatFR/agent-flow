@@ -59,8 +59,37 @@ Feature: Decision logging
     Then the decision line of role "dev-b" has step "s1"
     And the decision line of role "qa" has step "s2"
 
-  # origin: #94
+  # origin: #83
   @scenario:S7
+  Scenario Outline: The OpenCode launcher does not start OpenCode when AGENT_FLOW_HOME does not name this checkout
+    Given OpenCode v2 has AGENT_FLOW_HOME <state>
+    When the OpenCode launcher runs with arguments
+    Then stderr has one line naming "AGENT_FLOW_HOME"
+    And OpenCode is not started
+    And the stderr line does not echo the value of AGENT_FLOW_HOME
+
+    Examples:
+      | state                             |
+      | unset                             |
+      | empty                             |
+      | naming another checkout           |
+      | naming a path that does not exist |
+
+  # origin: #83
+  @scenario:S8
+  Scenario Outline: The OpenCode launcher starts OpenCode with its arguments unchanged when AGENT_FLOW_HOME names this checkout
+    Given OpenCode v2 has AGENT_FLOW_HOME naming this checkout <reference>
+    When the OpenCode launcher runs with arguments
+    Then OpenCode is started with those arguments unchanged
+    And stderr is empty
+
+    Examples:
+      | reference         |
+      | exactly           |
+      | through a symlink |
+
+  # origin: #94
+  @scenario:S9
   Scenario: A reviewing role logs its verdict with its reason
     Given the step "s2" of role "qa" is in progress
     And the rule asks QA, Security or Dev B for its verdict even without a choice between options

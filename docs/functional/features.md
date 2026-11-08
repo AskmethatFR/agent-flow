@@ -3,7 +3,7 @@ id: "feature-catalog"
 type: "functional"
 owner: "pm"
 status: "current"
-updated: "2026-11-05"
+updated: "2026-11-07"
 links:
   - "glossary"
   - "real-issue-run"
@@ -23,7 +23,11 @@ answers:
   - "How does anyone check that every file under .agent-flow honours its contract, and what does the check report?"
   - "Which layouts of .agent-flow does the contract check refuse?"
   - "When is Phase 1 accepted on a real issue, and who runs that acceptance?"
+  - "Which host statuses display as running, stopped or unknown, and when is there no current agent?"
+  - "What does the OpenCode launcher do when AGENT_FLOW_HOME does not name this checkout?"
 decided_in:
+  - "#83"
+  - "#40"
   - "#32"
   - "#38"
   - "#24"
@@ -135,6 +139,26 @@ Acceptance: `snapshot-decisions` S1-S3 (`features/phase-2/snapshot-decisions.fea
 Log order, the absent-step row, the missing-file row and the no-filter-by-kind
 rule are pinned by unit tests only. The display of these decisions is #20.
 
+### Capability: display state of the agent on the current step
+
+Core maps the host's raw agent status to a [[glossary]] display state, so the
+panel (#21) shows the [[glossary]] current agent without mapping anything itself.
+
+| Host status | Display state |
+|---|---|
+| `running`, `initializing` | `running` |
+| `idle`, `error`, `closed` | `stopped` |
+| Any other status | `unknown`; never a failure |
+
+- **Current agent**: the snapshot carries its role (the role of the current
+  step) and its display state. It is absent when the host reported no status,
+  no step is in progress, or the plan is unusable.
+- The host adapter only passes the raw status through (#41).
+
+Acceptance: `agent-state-mapping` S1-S4 (`features/phase-2/agent-state-mapping.feature`).
+Out of scope: the display itself, which cleans the role text like a step role (#21);
+wiring the host status (#41).
+
 ### Capability: recording a step start or finish in the plan
 
 Capture applies a [[glossary]] step event (the start or the finish of a plan
@@ -174,7 +198,13 @@ told by an agent rule to log each technical choice it makes as one line in
 A logged line obeys the frozen `decisions.jsonl` contract, so the snapshot groups
 it by step with no further work. The role rule is `rules/decision-logging.md`.
 
-Acceptance: `decision-logging` S1-S3 (`features/phase-1/decision-logging.feature`).
+OpenCode users start OpenCode through the [[glossary]] OpenCode launcher,
+`rules/opencode/agent-flow-opencode`. Unless `AGENT_FLOW_HOME` names this
+checkout (exactly or through a symlink), the launcher prints one line naming
+`AGENT_FLOW_HOME` on stderr and does not start OpenCode; otherwise OpenCode starts
+with its arguments unchanged.
+
+Acceptance: `decision-logging` S1-S8 (`features/phase-1/decision-logging.feature`).
 Out of scope: logging questions and deviations (Phase 4); wiring the rule into a
 real project (#17).
 

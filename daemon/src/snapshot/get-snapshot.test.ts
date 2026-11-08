@@ -100,6 +100,7 @@ describe('getSnapshot', () => {
           },
         ],
         currentStepId: 's1',
+        currentAgent: null,
         errors: [],
       },
     })
@@ -134,6 +135,7 @@ describe('getSnapshot', () => {
         title: null,
         steps: [],
         currentStepId: null,
+        currentAgent: null,
         errors: [{ file: 'plan.json', location: null, field: null, message: 'is missing' }],
       },
     })

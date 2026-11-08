@@ -6,6 +6,7 @@ import type { Snapshot, SnapshotStep } from '@agent-flow/core/snapshot'
 type SnapshotWorld = {
   now: Date
   planText: string
+  agentStatus?: string
   snapshot: Snapshot
 }
 
@@ -95,7 +96,7 @@ Given(
 )
 
 When('core builds the snapshot', function (this: SnapshotWorld): void {
-  this.snapshot = buildSnapshot({ plan: this.planText }, this.now)
+  this.snapshot = buildSnapshot({ plan: this.planText }, this.now, this.agentStatus)
 })
 
 Then(
