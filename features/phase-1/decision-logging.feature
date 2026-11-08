@@ -63,7 +63,7 @@ Feature: Decision logging
   @scenario:S7
   Scenario: A reviewing role logs its verdict with its reason
     Given the step "s2" of role "qa" is in progress
-    And "qa" makes no choice between options
+    And the rule asks QA, Security or Dev B for its verdict even without a choice between options
     When the "qa" agent logs its verdict "approve" with the reason "The run respected every rule"
     Then the decision line of role "qa" says the verdict "approve" with the reason "The run respected every rule"
     And the decision line of role "qa" has step "s2"

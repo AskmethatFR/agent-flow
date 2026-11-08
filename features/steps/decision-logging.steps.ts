@@ -270,7 +270,7 @@ Given('the step {string} of role {string} is in progress', function (this: Loggi
   openRuns(this, planOf(inProgressStep(id, role, '2026-01-01T10:00:00.000Z')))
 })
 
-Given('{string} makes no choice between options', function (this: LoggingWorld, _role: string): void {
+Given('the rule asks QA, Security or Dev B for its verdict even without a choice between options', function (this: LoggingWorld): void {
   for (const runtime of runtimes) {
     const text = ruleTextFor(runtime)
     assert.ok(
@@ -278,8 +278,12 @@ Given('{string} makes no choice between options', function (this: LoggingWorld, 
       `${runtime} rule must ask for one decision before the step is done`,
     )
     assert.ok(
-      text.includes('as the `title`, with the reason for it as the `why`'),
-      `${runtime} rule must ask a reviewing role to log its verdict with its reason`,
+      text.includes('(QA, Security or Dev B)'),
+      `${runtime} rule must name every reviewing role: QA, Security and Dev B`,
+    )
+    assert.ok(
+      text.includes('approve or reject, as the `title`, with the reason for it as the `why`'),
+      `${runtime} rule must set the verdict approve or reject as the title and the reason as the why`,
     )
   }
 })

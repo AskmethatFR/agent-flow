@@ -71,7 +71,7 @@
 - `features/phase-1/decision-append.feature` — #35 Decision append: a decision is added to decisions.jsonl under the step in progress of its role, invalid ones and outside targets refused (S1-S11)
 - `features/phase-1/step-timing-claude-code.feature` — #14 Step timing captured automatically in Claude Code, parallel steps timed on their own, rework timed as its own step (S1, S3, S4)
 - `features/phase-1/step-timing-opencode.feature` — #15 Step timing captured automatically in OpenCode, parallel steps timed on their own, rework timed as its own step (S1, S3, S4)
-- `features/phase-1/decision-logging.feature` — #16 Decision logging: every role logs its decisions with step, role, title, why and confidence; roles in parallel each log under their own step (S1-S6)
+- `features/phase-1/decision-logging.feature` — #16 Decision logging: every role logs its decisions with step, role, title, why and confidence; roles in parallel each log under their own step (S1-S7)
 - `features/phase-1/plan-seeding.feature` — #78 Plan seeding: plan.json seeded by the operator, steps added as the agent creates them, both runtimes (S1-S5)
 - `features/phase-2/snapshot-steps.feature` — #38 Core snapshot: steps with time spent and current step (S1-S5)
 - `features/phase-2/snapshot-decisions.feature` — #39 Core snapshot: decisions grouped by step, malformed line reported (S1-S3)
