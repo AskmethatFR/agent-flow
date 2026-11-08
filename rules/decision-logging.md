@@ -6,6 +6,8 @@ Log every technical choice you make, so the team can see what was decided and wh
 
 Right after you choose between two or more credible options for how to build, test, structure or depend on something, and before you act on the choice. One command per choice.
 
+Before you mark a step done, log at least one decision for it. When you are a reviewing role (QA, Security or Dev B), your verdict is a decision: log it, approve or reject, as the `title`, with the reason for it as the `why`, even when you had nothing else to pick between.
+
 ## Your role id
 
 Use the id for the role you are playing. Never invent another one.

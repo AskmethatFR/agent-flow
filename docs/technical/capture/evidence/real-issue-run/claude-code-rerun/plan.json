@@ -1,0 +1,105 @@
+{
+  "issue": "#40",
+  "title": "Core: map host agent status to display state",
+  "steps": [
+    {
+      "id": "1",
+      "title": "Triage and refinement",
+      "role": "pm",
+      "status": "done",
+      "origin": "planned",
+      "startedAt": "2026-11-07T19:52:24.163Z",
+      "endedAt": "2026-11-07T19:53:16.696Z"
+    },
+    {
+      "id": "2",
+      "title": "Tech spec",
+      "role": "architect",
+      "status": "done",
+      "origin": "planned",
+      "startedAt": "2026-11-07T19:53:16.898Z",
+      "endedAt": "2026-11-07T20:01:24.130Z"
+    },
+    {
+      "id": "3",
+      "title": "Implementation",
+      "role": "dev-a",
+      "status": "done",
+      "origin": "planned",
+      "startedAt": "2026-11-07T20:01:26.949Z",
+      "endedAt": "2026-11-07T20:11:29.631Z"
+    },
+    {
+      "id": "4",
+      "title": "Cross-review",
+      "role": "dev-b",
+      "status": "done",
+      "origin": "planned",
+      "startedAt": "2026-11-07T20:17:42.277Z",
+      "endedAt": "2026-11-07T20:33:50.274Z"
+    },
+    {
+      "id": "5",
+      "title": "Functional verification",
+      "role": "qa",
+      "status": "done",
+      "origin": "planned",
+      "startedAt": "2026-11-07T20:17:42.934Z",
+      "endedAt": "2026-11-07T20:21:40.536Z"
+    },
+    {
+      "id": "6",
+      "title": "Security audit",
+      "role": "security",
+      "status": "done",
+      "origin": "planned",
+      "startedAt": "2026-11-07T20:17:43.030Z",
+      "endedAt": "2026-11-07T20:20:27.220Z"
+    },
+    {
+      "id": "7",
+      "title": "Pull request",
+      "role": "pm",
+      "status": "done",
+      "origin": "planned",
+      "startedAt": "2026-11-07T20:37:15.317Z",
+      "endedAt": "2026-11-07T20:37:51.334Z"
+    },
+    {
+      "id": "3.rework-1",
+      "title": "Implementation (rework 1)",
+      "role": "dev-a",
+      "status": "done",
+      "origin": "proposed",
+      "startedAt": "2026-11-07T20:26:42.115Z",
+      "endedAt": "2026-11-07T20:28:23.580Z"
+    },
+    {
+      "id": "3.rework-2",
+      "title": "Implementation (rework 2)",
+      "role": "dev-a",
+      "status": "done",
+      "origin": "proposed",
+      "startedAt": "2026-11-07T20:30:27.886Z",
+      "endedAt": "2026-11-07T20:32:36.880Z"
+    },
+    {
+      "id": "8",
+      "title": "Documentation capture",
+      "role": "architect",
+      "status": "done",
+      "origin": "proposed",
+      "startedAt": "2026-11-07T20:37:58.416Z",
+      "endedAt": "2026-11-07T20:40:51.811Z"
+    },
+    {
+      "id": "9",
+      "title": "Functional documentation capture",
+      "role": "pm",
+      "status": "done",
+      "origin": "proposed",
+      "startedAt": "2026-11-07T20:37:59.142Z",
+      "endedAt": "2026-11-07T20:39:02.477Z"
+    }
+  ]
+}

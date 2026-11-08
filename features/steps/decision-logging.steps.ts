@@ -268,6 +268,44 @@ Then(
   },
 )
 
+Given('the step {string} of role {string} is in progress', function (this: LoggingWorld, id: string, role: string): void {
+  openRuns(this, planOf(inProgressStep(id, role, '2026-01-01T10:00:00.000Z')))
+})
+
+Given('the rule asks QA, Security or Dev B for its verdict even without a choice between options', function (this: LoggingWorld): void {
+  for (const runtime of runtimes) {
+    const text = ruleTextFor(runtime)
+    assert.ok(
+      text.includes('Before you mark a step done, log at least one decision for it'),
+      `${runtime} rule must ask for one decision before the step is done`,
+    )
+    assert.ok(
+      text.includes('(QA, Security or Dev B)'),
+      `${runtime} rule must name every reviewing role: QA, Security and Dev B`,
+    )
+    assert.ok(
+      text.includes('approve or reject, as the `title`, with the reason for it as the `why`'),
+      `${runtime} rule must set the verdict approve or reject as the title and the reason as the why`,
+    )
+  }
+})
+
+When('the {string} agent logs its verdict {string} with the reason {string}', function (this: LoggingWorld, role: string, verdict: string, reason: string): void {
+  logEverywhere(this, choiceBy(role, { title: verdict, why: reason }))
+})
+
+Then(
+  'the decision line of role {string} says the verdict {string} with the reason {string}',
+  function (this: LoggingWorld, role: string, verdict: string, reason: string): void {
+    for (const runtime of runtimes) {
+      const lines = linesOf(this, runtime).filter((line) => line.role === role)
+      assert.equal(lines.length, 1)
+      assert.equal(lines[0]?.title, verdict)
+      assert.equal(lines[0]?.why, reason)
+    }
+  },
+)
+
 When('the {string} agent logs a decision', function (this: LoggingWorld, role: string): void {
   logEverywhere(this, choiceBy(role))
 })

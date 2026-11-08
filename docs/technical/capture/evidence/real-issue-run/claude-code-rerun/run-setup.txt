@@ -1,0 +1,17 @@
+launch: run.sh — claude -p <prompt below> from the worktree root, AGENT_FLOW_HOME=<checkout at f4b3bcc>, CLAUDE_CODE_ENABLE_TODO_TOOLS=1
+flags: --settings <home>/capture/claude-code/settings.json --permission-mode acceptEdits --output-format stream-json --verbose
+allowedTools: same as the first run (#80, eda6f51)
+rule shim: CLAUDE.local.md holding @<home>/rules/claude-code/CLAUDE.md, listed in .git/info/exclude
+versions: 2.1.318 (Claude Code) v22.22.1 GNU bash, version 5.3.9(1)-release (x86_64-pc-linux-gnu) 
+run: 2026-11-07T19:51:32Z to 2026-11-07T20:41:25Z, exit=0
+
+prompt:
+Work GitHub issue #40 (AskmethatFR/agent-flow) end to end, following your global agentic-team instructions and this project's rules. You are on branch t1/40-agent-display-state.
+
+Plan the work with the task tools before starting it: create every plan item with TaskCreate, named "<role-id>: <title>" as the plan-steps rule says, and mark each item in_progress and then completed with TaskUpdate as the work happens. Items worked at the same time are in progress together. Every role logs its decisions with the decision command, as the decision-logging rule says.
+
+No human is available during this run. Proceed without asking. If you reach one of the closed list of human stops, record it as a comment on the issue and stop there.
+
+Finish by opening a pull request for #40. Do not merge it.
+
+Never create, edit, move or delete anything under .agent-flow/ yourself: only the hooks and the decision command write there.
