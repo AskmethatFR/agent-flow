@@ -34,7 +34,8 @@ const firstStatusOnWorktree = (
   for (const entry of entries) {
     const root = worktreeRootOf(entry)
     if (root !== null && realPathOf(io, root) === realWorktree) {
-      return entry.agent.status ?? undefined
+      const { status } = entry.agent
+      return typeof status === 'string' ? status : undefined
     }
   }
   return undefined

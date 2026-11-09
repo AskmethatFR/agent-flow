@@ -317,6 +317,16 @@ describe('buildSnapshot', () => {
       ])
     })
 
+    it.each([
+      ['an empty object', {}],
+      ['an object with another code', { unavailable: 'x' }],
+      ['an object with an inherited member name', { unavailable: 'toString' }],
+    ])('maps %s as an unknown host status, with no error', (_, status) => {
+      const snapshot = buildSnapshot({ plan: planText(inProgress({})) }, now, status as unknown as string)
+      expect(snapshot.currentAgent).toEqual({ role: 'architect', state: 'unknown' })
+      expect(snapshot.errors).toEqual([])
+    })
+
     it('still maps a runtime null as an unknown host status', () => {
       const snapshot = buildSnapshot({ plan: planText(inProgress({})) }, now, null as unknown as string)
       expect(snapshot.currentAgent).toEqual({ role: 'architect', state: 'unknown' })

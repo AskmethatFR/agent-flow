@@ -117,9 +117,10 @@ const agentStateError = ({ unavailable }: AgentStatusUnavailable): ContractError
 
 const isStatusUnavailable = (
   agentStatus: string | AgentStatusUnavailable | undefined,
-): agentStatus is AgentStatusUnavailable => typeof agentStatus === 'object' && agentStatus !== null
+): agentStatus is AgentStatusUnavailable =>
+  typeof agentStatus === 'object' && agentStatus !== null && agentStatus.unavailable === 'host-error'
 
-const readPlanFile =(planFile: AgentFlowFile): ReadPlanResult =>
+const readPlanFile = (planFile: AgentFlowFile): ReadPlanResult =>
   typeof planFile === 'string'
     ? readPlan(planFile)
     : { accepted: false, errors: [unavailableError('plan.json', planFile.unavailable)] }

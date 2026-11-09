@@ -293,6 +293,28 @@ describe('getSnapshot', () => {
     })
 
     it.each([
+      ['an empty object', {}],
+      ['a number', 42],
+    ])('reports no agent and no error when the matching entry has %s as its status', async (_, status) => {
+      const worktree = inProgressWorktree()
+      const entry = { agent: { status }, project: { checkout: { worktreeRoot: worktree } } } as unknown as AgentEntry
+      const snapshot = await snapshotWith(worktree, [entry])
+      expect(snapshot.currentAgent).toBeNull()
+      expect(snapshot.errors).toEqual([])
+    })
+
+    it('resolves no path an entry without an absolute worktree root supplies', async () => {
+      const worktree = inProgressWorktree()
+      const noRoots: AgentEntry[] = [
+        agentAt(null),
+        agentAt('relative/path'),
+        { agent: { status: 'running' }, project: null },
+      ]
+      await snapshotWith(worktree, noRoots)
+      expect(resolved.filter((path) => !path.startsWith(worktree))).toEqual([])
+    })
+
+    it.each([
       ['null', { status: null }],
       ['missing', {}],
     ])('reports no agent when the matching entry has a %s status', async (_, agent) => {
