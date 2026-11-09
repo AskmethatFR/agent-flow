@@ -3,7 +3,7 @@ id: "feature-catalog"
 type: "functional"
 owner: "pm"
 status: "current"
-updated: "2026-11-07"
+updated: "2026-11-09"
 links:
   - "glossary"
   - "real-issue-run"
@@ -24,8 +24,10 @@ answers:
   - "Which layouts of .agent-flow does the contract check refuse?"
   - "When is Phase 1 accepted on a real issue, and who runs that acceptance?"
   - "Which host statuses display as running, stopped or unknown, and when is there no current agent?"
+  - "What does the snapshot give when the host agent state cannot be read?"
   - "What does the OpenCode launcher do when AGENT_FLOW_HOME does not name this checkout?"
 decided_in:
+  - "#41"
   - "#83"
   - "#40"
   - "#32"
@@ -151,13 +153,18 @@ panel (#21) shows the [[glossary]] current agent without mapping anything itself
 | Any other status | `unknown`; never a failure |
 
 - **Current agent**: the snapshot carries its role (the role of the current
-  step) and its display state. It is absent when the host reported no status,
-  no step is in progress, or the plan is unusable.
-- The host adapter only passes the raw status through (#41).
+  step) and its display state. It is absent when no agent runs on the
+  worktree, no step is in progress, or the plan is unusable.
+- The daemon asks the host which agent works on the worktree and passes the raw
+  status to core, which maps it. An agent working on another worktree is never
+  reported.
+- When the host cannot be read, or refuses, the snapshot keeps all its other
+  data and gains exactly one error labelled `agent-state`.
+- Known limit: only the 100 most recently updated host agents are considered.
 
-Acceptance: `agent-state-mapping` S1-S4 (`features/phase-2/agent-state-mapping.feature`).
-Out of scope: the display itself, which cleans the role text like a step role (#21);
-wiring the host status (#41).
+Acceptance: `agent-state-mapping` S1-S4 (`features/phase-2/agent-state-mapping.feature`);
+`agent-state-rpc` S1-S4 (`features/phase-2/agent-state-rpc.feature`).
+Out of scope: the display itself, which cleans the role text like a step role (#21).
 
 ### Capability: recording a step start or finish in the plan
 

@@ -37,6 +37,7 @@
 | `paseo-agent-state` | Reading agent state through the Paseo SDK: calls, statuses, permissions, agent identification (#26) | current | 2026-10-27 | `paseo-api-version`, `capture-events` | `docs/technical/paseo/agent-state.md` |
 | `paseo-messaging` | Messaging an agent via the Paseo SDK, how a blocked agent waits (#27) | current | 2026-10-27 | `paseo-api-version`, `paseo-agent-state`, `host-adapter-boundary` | `docs/technical/paseo/messaging.md` |
 | `paseo-mobile` | Paseo mobile render: desktop/mobile differences, kill-criterion verdict (#31) | current | 2026-10-26 | `paseo-api-version`, `paseo-agent-state` | `docs/technical/paseo/mobile.md` |
+| `snapshot-agent-status-read` | Snapshot agent status read: agents.list page, worktree match, host-error | current | 2026-11-09 | [[snapshot-agent-state]], [[paseo-agent-state]], [[snapshot-rpc]], [[host-adapter-boundary]], [[snapshot-contract]] | `docs/technical/decisions/snapshot-agent-status-read.md` |
 
 - `features/phase-0/host-panel-desktop.feature` — #10 Paseo host spike: empty panel renders on desktop (S1)
 - `features/phase-0/host-agent-state.feature` — #26 Paseo host spike: daemon reads a running agent's state (S1)
