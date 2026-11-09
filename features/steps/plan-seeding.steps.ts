@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { After, Given, Then, When } from '@cucumber/cucumber'
 import { seedPlan } from '@agent-flow/capture-shared/plan-seed'
 import { validatePlan } from '@agent-flow/core/contracts'
@@ -21,6 +23,7 @@ type PlanSeedingWorld = {
   worktree: string
   before: Map<string, string>
   result: ValidationResult
+  exitCode: number | null
   runtime: ItemRuntime
   item: string
   taskIds: Map<string, string>
@@ -173,11 +176,79 @@ After(function (this: PlanSeedingWorld): void {
   if (this.root !== undefined) rmSync(this.root, { recursive: true, force: true })
 })
 
+Given(
+  'a worktree whose plan for issue {string} has step {string} todo',
+  function (this: PlanSeedingWorld, issue: string, id: string): void {
+    freshWorktree(this)
+    const step: PlanStep = {
+      id,
+      title: 'Implementation',
+      role: 'dev-a',
+      status: 'todo',
+      origin: 'planned',
+      startedAt: null,
+      endedAt: null,
+    }
+    mkdirSync(join(this.worktree, '.agent-flow'))
+    writeFileSync(
+      join(this.worktree, '.agent-flow', 'plan.json'),
+      JSON.stringify({ issue, title: 'Existing plan', steps: [step] }),
+    )
+  },
+)
+
+Given(
+  'a worktree without a plan.json and content outside its .agent-flow directory',
+  function (this: PlanSeedingWorld): void {
+    freshWorktree(this)
+    writeFileSync(join(this.worktree, 'README.md'), 'kept\n')
+    mkdirSync(join(this.root, 'neighbour'))
+    writeFileSync(join(this.root, 'neighbour', 'notes.txt'), 'kept\n')
+  },
+)
+
 When(
-  'the operator seeds the plan with issue {string} and title {string}',
+  'the tower seeds the plan with issue {string} and title {string}',
   function (this: PlanSeedingWorld, issue: string, title: string): void {
     this.before = snapshotOf(this.root)
     this.result = seedPlan(this.worktree, issue, title)
+  },
+)
+
+When(
+  'the tower runs agent-flow-plan on the worktree with issue {string} and title {string}',
+  function (this: PlanSeedingWorld, issue: string, title: string): void {
+    const launcher = fileURLToPath(new URL('../../capture/shared/bin/agent-flow-plan.mjs', import.meta.url))
+    const run = spawnSync(process.execPath, [launcher, this.worktree, issue, title], { cwd: this.root })
+    assert.equal(run.error, undefined)
+    this.exitCode = run.status
+  },
+)
+
+Then('the seed reports success so the worker start proceeds', function (this: PlanSeedingWorld): void {
+  assert.deepEqual(this.result, { accepted: true })
+})
+
+Then('the launcher exits with code {int}', function (this: PlanSeedingWorld, code: number): void {
+  assert.equal(this.exitCode, code)
+})
+
+Then('the launcher exits with a non-zero code other than 3', function (this: PlanSeedingWorld): void {
+  assert.notEqual(this.exitCode, 0)
+  assert.notEqual(this.exitCode, 3)
+})
+
+Then('the worktree has no plan.json', function (this: PlanSeedingWorld): void {
+  assert.ok(!existsSync(join(this.worktree, '.agent-flow', 'plan.json')))
+})
+
+const outsideAgentFlow = (snapshot: Map<string, string>): Map<string, string> =>
+  new Map([...snapshot].filter(([path]) => path !== 'worktree/.agent-flow' && !path.startsWith('worktree/.agent-flow/')))
+
+Then(
+  "nothing outside the worktree's .agent-flow directory has changed",
+  function (this: PlanSeedingWorld): void {
+    assert.deepEqual(outsideAgentFlow(snapshotOf(this.root)), outsideAgentFlow(this.before))
   },
 )
 

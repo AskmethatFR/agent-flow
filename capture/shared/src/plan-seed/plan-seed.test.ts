@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   openSync,
   readFileSync,
+  readSync,
   readdirSync,
   realpathSync,
   renameSync,
@@ -57,6 +58,7 @@ const realIo: PlanSeederIo = {
   closeSync,
   linkSync,
   unlinkSync,
+  readSync,
   temporaryName: () => 'fixed',
 }
 
@@ -169,7 +171,7 @@ describe('seedPlan', () => {
 
       seederWith(recordingIo(calls))(worktree, issue, title)
 
-      expect(calls.at(-1)).toBe('unlink .plan.json.fixed.tmp')
+      expect(calls.filter((call) => call.startsWith('unlink'))).toEqual(['unlink .plan.json.fixed.tmp'])
     })
 
     it('answers already exists even when removing the temporary file fails', () => {
@@ -196,6 +198,54 @@ describe('seedPlan', () => {
       mkdirSync(planPath, { recursive: true })
 
       expect(seedPlan(worktree, issue, title)).toEqual(refused('already exists'))
+    })
+
+    it.each<[string, string]>([
+      ['another issue', JSON.stringify({ issue: '#34', title: 'Plan writer', steps: [] })],
+      ['an issue sharing only a prefix', JSON.stringify({ issue: '#780', title, steps: [] })],
+      ['the same issue but breaks the contract', JSON.stringify({ issue: '#78' })],
+      ['no issue', '{}'],
+      ['a JSON null', 'null'],
+      ['text that is not JSON', 'not json'],
+    ])('refuses a plan that names %s and keeps its bytes', (_name, existing) => {
+      givenPlan(existing)
+
+      expect(seedPlan(worktree, issue, title)).toEqual(refused('already exists'))
+      expect(readFileSync(planPath, 'utf8')).toBe(existing)
+    })
+
+    it('refuses a symlinked plan.json even when its target names the same issue', () => {
+      mkdirSync(agentFlow)
+      const target = join(root, 'same-issue.json')
+      writeFileSync(target, JSON.stringify({ issue: '#78', title, steps: [] }))
+      symlinkSync(target, planPath)
+
+      expect(seedPlan(worktree, issue, title)).toEqual(refused('already exists'))
+    })
+  })
+
+  describe('a plan that already names the same issue', () => {
+    const existing = JSON.stringify({ issue: '#78', title: 'Another title', steps: [] })
+
+    it('accepts the seed and keeps the bytes without a temporary file', () => {
+      givenPlan(existing)
+
+      expect(seedPlan(worktree, issue, title)).toEqual({ accepted: true })
+      expect(readFileSync(planPath, 'utf8')).toBe(existing)
+      expect(readdirSync(agentFlow)).toEqual(['plan.json'])
+    })
+
+    it('still reports a write failure that is not an existing plan', () => {
+      givenPlan(existing)
+
+      expect(seederWith({ linkSync: failure })(worktree, issue, title)).toEqual(refused('cannot be written'))
+    })
+
+    it('accepts it when the seed is retried after a first success', () => {
+      seedPlan(worktree, issue, title)
+
+      expect(seedPlan(worktree, issue, title)).toEqual({ accepted: true })
+      expect(readFileSync(planPath, 'utf8')).toBe(seededText)
     })
   })
 

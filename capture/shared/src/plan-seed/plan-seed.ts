@@ -1,5 +1,6 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { validatePlan } from '@agent-flow/core/contracts'
 import type { ValidationResult } from '@agent-flow/core/contracts'
 import { createPlan } from '@agent-flow/core/lifecycle'
 import { createAtomically } from '../shared/atomic-write'
@@ -8,15 +9,29 @@ import {
   attempt,
   inspectAgentFlowDirectory,
   isConfinableWorktree,
+  readPlan,
   refusalFor,
   resolveWorktree,
 } from '../shared/confinement'
+import type { ReadIo } from '../shared/confinement'
 
-export type PlanSeederIo = CreateIo
+export type PlanSeederIo = CreateIo & ReadIo
 
 type Seeder = (worktree: string, issue: string, title: string) => ValidationResult
 
 const refuse = refusalFor('plan.json')
+
+export const isExistingPlanRefusal = (result: ValidationResult): boolean =>
+  !result.accepted && result.errors.map((error) => error.message).includes('already exists')
+
+const namesIssue = (io: ReadIo, planPath: string, issue: string): boolean => {
+  const existing = readPlan(io, planPath)
+  return (
+    'text' in existing &&
+    validatePlan(existing.text).accepted &&
+    JSON.parse(existing.text).issue === issue
+  )
+}
 
 export function createPlanSeeder(io: PlanSeederIo): Seeder {
   return function seedPlan(worktree, issue, title) {
@@ -31,6 +46,10 @@ export function createPlanSeeder(io: PlanSeederIo): Seeder {
     attempt(() => mkdirSync(directory))
     const directoryRefusal = inspectAgentFlowDirectory(directory, refuse)
     if (directoryRefusal !== undefined) return directoryRefusal
-    return createAtomically(io, directory, join(directory, 'plan.json'), plan.plan, 0o666)
+    const planPath = join(directory, 'plan.json')
+    const created = createAtomically(io, directory, planPath, plan.plan, 0o666)
+    return isExistingPlanRefusal(created) && namesIssue(io, planPath, `#${issue}`)
+      ? { accepted: true }
+      : created
   }
 }

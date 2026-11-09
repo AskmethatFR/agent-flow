@@ -45,11 +45,11 @@ describe('runPlanCommand', () => {
     expect(errors).toEqual([usage])
   })
 
-  it('reports an existing plan as one JSON line and exits 1', () => {
+  it('reports a plan of another issue as one JSON line and exits 3', () => {
     mkdirSync(join(worktree, '.agent-flow'))
     writeFileSync(planPath, '{}')
 
-    expect(run(worktree, '78', title)).toBe(1)
+    expect(run(worktree, '78', title)).toBe(3)
     expect(errors).toEqual([
       `${JSON.stringify({
         errors: [{ file: 'plan.json', location: null, field: null, message: 'already exists' }],
@@ -58,11 +58,30 @@ describe('runPlanCommand', () => {
     expect(readFileSync(planPath, 'utf8')).toBe('{}')
   })
 
-  it('reports an issue that is not a number and writes nothing', () => {
-    expect(run(worktree, 'seventy-eight', title)).toBe(1)
+  it('exits 0 and stays silent when the plan already names the same issue', () => {
+    mkdirSync(join(worktree, '.agent-flow'))
+    writeFileSync(planPath, seededText.replace(title, 'Another title'))
+
+    expect(run(worktree, '78', title)).toBe(0)
+    expect(errors).toEqual([])
+    expect(readFileSync(planPath, 'utf8')).toBe(seededText.replace(title, 'Another title'))
+  })
+
+  it.each<[string, string, string, string]>([
+    ['an issue that is not a number', 'seventy-eight', title, 'issue'],
+    ['an issue with a leading zero', '078', title, 'issue'],
+    ['a blank title', '78', '   ', 'title'],
+    ['an empty title', '78', '', 'title'],
+  ])('reports %s, exits 1 and writes nothing', (_name, issue, titleArgument, field) => {
+    expect(run(worktree, issue, titleArgument)).toBe(1)
     expect(errors).toHaveLength(1)
-    expect(JSON.parse(errors[0] as string).errors[0]).toMatchObject({ file: 'plan.json', field: 'issue' })
+    expect(JSON.parse(errors[0] as string).errors[0]).toMatchObject({ file: 'plan.json', field })
     expect(() => readFileSync(planPath)).toThrow()
+  })
+
+  it('exits 1 and not 3 when the worktree cannot be resolved', () => {
+    expect(run(join(root, 'absent'), '78', title)).toBe(1)
+    expect(JSON.parse(errors[0] as string).errors[0]).toMatchObject({ message: 'worktree cannot be resolved' })
   })
 })
 
@@ -84,5 +103,18 @@ describe('agent-flow-plan launcher', () => {
     expect(result.status).toBe(1)
     expect(result.stdout).toBe('')
     expect(JSON.parse(result.stderr).errors[0]).toMatchObject({ file: 'plan.json', field: 'issue' })
+  })
+
+  it('exits 3 when a plan of another issue exists and leaves it untouched', () => {
+    mkdirSync(join(worktree, '.agent-flow'))
+    writeFileSync(planPath, seededText.replace('#78', '#34'))
+
+    const result = spawnSync(process.execPath, [launcher, worktree, '78', title], {
+      cwd: root,
+      encoding: 'utf8',
+    })
+
+    expect(result.status).toBe(3)
+    expect(readFileSync(planPath, 'utf8')).toBe(seededText.replace('#78', '#34'))
   })
 })

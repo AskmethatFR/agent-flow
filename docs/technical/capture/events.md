@@ -3,7 +3,7 @@ id: "capture-events"
 type: "technical"
 owner: "architect"
 status: "current"
-updated: "2026-10-26"
+updated: "2026-11-09"
 links: []
 answers:
   - "What is the OpenCode v2 equivalent of Claude Code hooks for capturing plan updates? (plan.md Q3)"
@@ -11,6 +11,7 @@ answers:
   - "Where does the initial list of plan steps come from, and which payload fields give step id, title and role?"
 decided_in:
   - "#12"
+  - "#78"
 ---
 
 # Runtime events for step started / step done
@@ -97,6 +98,15 @@ Provenance of the samples: both were produced by the delivery commit `f04e8a3` c
 | #14 (Claude Code) | Use `PostToolUse` on `TaskCreate|TaskUpdate` plus `TaskCompleted`. Needs the task-tool precondition. Hooks must be silent and exit 0 |
 | #15 (OpenCode) | Use a plugin on `execute.after` for `todowrite`, diff successive lists, key by `content`. Needs `experimental.todo: true`. Child sessions via `session.created.parentID` for the role join |
 
+### 8. Plan source amended by #78: the tower seeds issue and title
+
+| Item | Decision |
+|---|---|
+| Who seeds `plan.json` | The tower, at worker start, through `agent-flow-plan <worktree> <issue> <title>` run from the Agent Flow checkout (`<AGENT_FLOW_HOME>/capture/shared/bin/agent-flow-plan.mjs`), never the copy in the slot. The seed gives `issue` (`#<n>`) and `title`, with no steps |
+| Where role and step title come from | Unchanged: the item name `role: title` the agent creates (§7 rule-driven role source). The seed never carries a role or a step |
+| Plan already there | Same issue: the bytes are kept and the seed succeeds (exit 0). Another issue: refused, exit 3, nothing written. Invalid issue or title: exit 1. Wrong argument count: exit 2 |
+| Install signal | `AGENT_FLOW_HOME` set in the tower's environment; unset or empty means no seed and an unchanged start |
+
 ## Consequences / Constraints
 
 - **MUST**: gate production capture on the two preconditions in section 4 and surface a clear message when the task or todo tool is missing; the agent would otherwise silently produce no plan events.
@@ -118,4 +128,4 @@ Provenance of the samples: both were produced by the delivery commit `f04e8a3` c
 - [ ] Is `experimental.todo` stable across OpenCode 2.x releases? Observed on 2.1.4 only.
 - [ ] Claude Code behavior without `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` is doc-sourced, not run.
 - [ ] `docs/plan.md` Q3 should link `[[capture-events]]` once merged (T4's file, not changed here).
-- [ ] Claude Code step timing (#14) needs an installation follow-up: the registered hook command fails loudly unless `AGENT_FLOW_HOME` is set to the Agent Flow checkout, and nothing seeds a real `.agent-flow/plan.json` yet (only the BDD driver does), so a live run records nothing. In a project with no plan the shared plan writer also leaves an empty `.agent-flow/` directory behind.
+- [ ] Claude Code step timing (#14) needs an installation follow-up: the registered hook command fails loudly unless `AGENT_FLOW_HOME` is set to the Agent Flow checkout, and the tower seeds `.agent-flow/plan.json` at worker start only when `AGENT_FLOW_HOME` is set (§8, #78). In a project with no plan the shared plan writer also leaves an empty `.agent-flow/` directory behind.

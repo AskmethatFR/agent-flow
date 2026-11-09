@@ -1,4 +1,4 @@
-import { seedPlan } from './index'
+import { isExistingPlanRefusal, seedPlan } from './index'
 
 const usage = 'usage: agent-flow-plan <worktree> <issue> <title>\n'
 
@@ -14,5 +14,5 @@ export const runPlanCommand = (
   const result = seedPlan(worktree, issue, title)
   if (result.accepted) return 0
   writeError(`${JSON.stringify({ errors: result.errors })}\n`)
-  return 1
+  return isExistingPlanRefusal(result) ? 3 : 1
 }
