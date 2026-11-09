@@ -5,7 +5,7 @@ owner: "architect"
 status: "current"
 updated: "2026-11-09"
 relations:
-  depends-on: ["real-issue-run", "paseo-agent-state", "snapshot-agent-status-read", "panel-agent-state", "paseo-api-version"]
+  depends-on: ["real-issue-run", "paseo-agent-state", "snapshot-agent-status-read", "snapshot-agent-state", "panel-agent-state", "paseo-api-version"]
 answers:
   - "How is a real issue set up and launched so it can be followed from the Agent Flow panel alone, without a terminal?"
   - "How does QA judge each of the four facts of the Phase 2 exit scenario: current step, time, every decision, agent state?"
@@ -18,7 +18,7 @@ decided_in:
 # Follow-issue run: Paseo launch, per-fact verdicts, evidence
 
 > **One-liner**: The runbook for the manual Phase 2 exit scenario (`features/phase-2/follow-issue.feature` S1): how a real issue is set up and launched as a Paseo agent in the item worktree, what the operator records while watching the panel, and how QA reaches a verdict on each fact.
-> **Links**: [[real-issue-run]] (capture setup and evidence rules, linked never copied), [[paseo-agent-state]] (worktree key, launch rule), [[snapshot-agent-status-read]] (how the agent line is read), [[panel-agent-state]] (what the panel renders), [[paseo-api-version]] (plugin install and panel entry).
+> **Links**: [[real-issue-run]] (capture setup and evidence rules, linked never copied), [[paseo-agent-state]] (worktree key, launch rule), [[snapshot-agent-status-read]] (how the agent line is read), [[snapshot-agent-state]] (raw status to display state), [[panel-agent-state]] (what the panel renders), [[paseo-api-version]] (plugin install and panel entry).
 
 ## Context
 
@@ -30,41 +30,47 @@ Roles: the **operator** is the human at the Paseo desktop app for the whole run 
 
 ## 1. Setup (a terminal is allowed, and recorded)
 
-Everything runs in the target project. `AGENT_FLOW_HOME` is an Agent Flow checkout at a recorded commit with `npm ci` done. Runtime: Claude Code only (OpenCode waits for #81).
+Everything runs in the target project. Runtime: Claude Code only (OpenCode waits for #81).
 
 | Concern | Action | Kept |
 |---|---|---|
-| Versions | `claude --version`, `node --version`, the Paseo daemon and CLI version, the Paseo desktop app version (Settings), the Agent Flow commit | the outputs |
+| Agent Flow checkout | `<AGENT_FLOW_HOME>` is a separate checkout **outside** `<wt>`, at a recorded commit, with `npm ci` done. It is never edited during the run: the capture hook and the decision command run from it outside the permission system, so a followed agent that could edit them could tamper with the evidence. Record `git -C "<AGENT_FLOW_HOME>" rev-parse HEAD` and `git -C "<AGENT_FLOW_HOME>" status --short` before the launch and again at teardown | both outputs, twice |
+| Versions | `claude --version`, `node --version`, the Paseo daemon and CLI version, the Paseo desktop app version (Settings) | the outputs |
 | Issue | any open agent-flow issue triaged `fix-bug` or `new-feature` (parallel review lanes exercise the current-step rule) | the issue number |
 | Panel install | `paseo plugin install "<AGENT_FLOW_HOME>/panel" --json` | output; expect `"status": "running"` (as `api-version.md:126`); else a G10 candidate, stop |
-| Paseo workspace | a workspace whose `cwd` is the item worktree (`<wt>`) | the workspace name |
-| Capture settings (B5) | `<wt>/.claude/settings.local.json`, see below | the file, minus anything secret |
+| Paseo workspace | a workspace whose `cwd` is the item worktree (`<wt>`, an absolute path) | the workspace name |
+| Capture settings (B5) | `<wt>/.claude/settings.local.json`, see below | the file, copied after the scan of section 5 |
 | Rule shim | `CLAUDE.local.md` holding `@<AGENT_FLOW_HOME>/rules/claude-code/CLAUDE.md`, excluded locally (`real-issue-run.md:109`) | the line |
-| First plan | seeded before the launch: `node "$AGENT_FLOW_HOME/capture/shared/bin/agent-flow-plan.mjs" <wt> <issue> "<title>"` (#78; `real-issue-run.md:37`) | command and exit code |
+| First plan | seeded before the launch: `node "<AGENT_FLOW_HOME>/capture/shared/bin/agent-flow-plan.mjs" <wt> <digits> "$(gh issue view <digits> --json title --jq .title)"` (#78; `real-issue-run.md:37`). `<wt>` must be absolute without `.` or `..` segments (`capture/shared/src/plan-seed/plan-seed.ts:25-27`); the issue is digits only, so `22`, never `#22` (`core/src/lifecycle/step-lifecycle.ts:34`, `:175-176`); the title is passed as one quoted word through command substitution, never typed into the command line | command and exit code |
 
-`<wt>/.claude/settings.local.json` replaces the `--settings` and `export` flags of [[real-issue-run]] `:33-35`, because the agent is launched from the Paseo app, which passes none:
+`<wt>/.claude/settings.local.json` replaces what [[real-issue-run]] sets through the shell: the `export` of `AGENT_FLOW_HOME` (`:31`), `--settings` (`:33`), `CLAUDE_CODE_ENABLE_TODO_TOOLS` and the `--tools`/`--allowedTools` of the task tools (`:34`), and the decision-command Bash rule (`:35`), because the agent is launched from the Paseo app, which passes none of them:
 
 | Key | Content |
 |---|---|
 | `hooks` | the `hooks` block of `capture/claude-code/settings.json:2-15`, verbatim (the `PostToolUse` hook on `TaskCreate\|TaskUpdate`) |
-| `env` | `AGENT_FLOW_HOME=<abs>` and `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` |
-| `permissions.allow` | `TaskCreate`, `TaskUpdate`, and the decision-command Bash rule matching `node *agent-flow-decision.mjs*` (`real-issue-run.md:35`; record the exact rule) |
+| `env` | `AGENT_FLOW_HOME=<AGENT_FLOW_HOME>` (absolute) and `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` |
+| `permissions.allow` | `TaskCreate`, `TaskUpdate`, and the one decision-command rule `Bash(node "${AGENT_FLOW_HOME:?}/capture/shared/bin/agent-flow-decision.mjs" *)`. The rule text is the start of the command template of `rules/decision-logging.md:29`, written literally (the shell resolves `${AGENT_FLOW_HOME:?}` from the `env` block at run time). No leading wildcard: `node *agent-flow-decision.mjs*` would match any `node` command containing that name. Record the rule used |
 
-The worktree's `.agent-flow/` is touched by nothing but the seeding step, the hook and the decision command; the no-human-edit protocol of [[real-issue-run]] is not repeated here (out of scope).
+The worktree's `.agent-flow/` is touched by nothing but the seeding step, the hook and the decision command; the no-human-edit protocol of [[real-issue-run]] is not repeated here (out of scope). The settings file persists after the run unless removed: teardown (section 5) deletes it.
 
 ## 2. Launch (no terminal from here on)
 
 | Rule | Detail |
 |---|---|
-| Launch convention (B4) | the item's agent is launched from the Paseo app, inside the Paseo workspace whose `cwd` is `<wt>`. The panel is opened in the same workspace. An agent launched by another agent elsewhere inherits its caller's workspace and maps to no item (`agent-state.md:111-120`), so that launch is excluded |
-| Prompt | adapted from `run-setup.txt:8-17`: keep the issue sentence, the plan-with-task-tools sentence, the "log decisions with the decision command" sentence, the pull-request sentence and the `.agent-flow/` prohibition; drop the headless parts (the `-p` form, `--output-format`, the "no human is available" sentence, since the operator is present). Record the prompt as sent |
+| Launch convention (B4) | the item's agent is launched from the Paseo app, inside the Paseo workspace whose `cwd` is `<wt>`. The panel is opened in the same workspace. An agent launched by another agent elsewhere inherits its caller's workspace and maps to no item (`agent-state.md:111-120`), so that launch is excluded. This is the launch convention that `agent-state.md:164` makes a MUST and `:174` leaves open; #41 deferred it (`snapshot-agent-status-read.md:85`), so this runbook is where it lands |
+| Permission mode | the Paseo app's default mode, or the accept-edits mode (`acceptEdits`, as `run-setup.txt:2` used). `bypassPermissions` and any full-access mode are forbidden. Record the mode used |
+| Prompt | adapted from `run-setup.txt:8-17`: keep the issue sentence, the plan-with-task-tools sentence, the "log decisions with the decision command" sentence, the pull-request sentence and the `.agent-flow/` prohibition; drop the headless parts (the `-p` form, `--output-format`, the "no human is available" sentence, since the operator is present). Record the prompt as sent, with home paths replaced by `<home>` |
 | Open the panel | Ctrl+K, "Open Agent Flow" (`api-version.md:129`) |
 | Follow window | starts at the launch in the Paseo app; ends when the last step of `plan.json` is `done` |
 | Precondition | the first plan step appears on the rail within 5 minutes of the agent's first plan. Otherwise it is a setup defect: stop, file it, and the run does not count |
 
 ## 3. Observation
 
-The operator keeps a **checkpoint** at each of these moments: every move of `Current` to another step; at least every 10 minutes; and once per step, pressing that step after it is done to open its decisions. A checkpoint is a screenshot of the panel plus the UTC time, noted from a wall clock (no terminal is open).
+A **terminal** is any shell session the operator types into, including the terminal of the Paseo app itself. The checkpoint tools are not terminals: the operating system's screenshot tool, whose file carries the capture time, and a graphical text editor for `observations.md`.
+
+The operator keeps a **checkpoint** at each of these moments: every move of `Current` to another step; at least every 10 minutes; and once per step, pressing that step after it is done to open its decisions. A checkpoint is a screenshot, and its time `t` is the capture timestamp of that screenshot (machine clock, converted to UTC, to the second). No time is typed from memory.
+
+The captured region holds the panel and the status indicator of the launched agent in the Paseo app, so AC4 can be judged from the screenshot alone. It holds no other project or agent title (the Paseo sidebar lists them): the operator crops or arranges the windows to leave them out. A step whose detail does not fit one screen gets several numbered screenshots (`<step>-1`, `<step>-2`) that overlap, so that no decision falls between two of them.
 
 One line per checkpoint in `observations.md`:
 
@@ -72,36 +78,41 @@ One line per checkpoint in `observations.md`:
 
 | Column | Source |
 |---|---|
-| time | UTC, to the minute |
+| time | `t`, UTC, to the second |
 | current step | the row carrying `Current` (`plan-rail.tsx:31`), or `none` |
 | time label | the label under that row (`plan-rail.tsx:28-30`), as shown |
 | agent line | the two lines after `Current`: `Agent: <role>` and the state (`plan-rail.tsx:32-37`), or `none` |
-| Paseo agent status | the status of the launched agent in the Paseo app at the same moment |
+| Paseo agent status | the status of the launched agent as the Paseo app shows it in the same screenshot |
 
-Every checkpoint must be judgeable from its screenshot alone: the rail, the `Current` marker, the label and the agent lines are visible in it.
+Every checkpoint must be judgeable from its screenshot alone: the rail, the `Current` marker, the label, the agent lines and the Paseo agent status are visible in it.
 
 ## 4. Verdict rules
 
 QA reads `observations.md` and the screenshots against copies of the final `plan.json` and `decisions.jsonl` (section 5).
 
+**Transition grace.** The panel polls every 2 s (`panel/client/use-snapshot-polling.ts:5`) and shows what the last poll returned, so a screenshot can lag the files by one interval plus the call and the render. QA allows **N = 5 s**: a checkpoint passes AC2 and AC4 if its screenshot matches the expected value at `t` or at any instant in `[t - 5 s, t]`. Beyond that window a mismatch is a fail.
+
 | Fact | Pass when | Fail when |
 |---|---|---|
-| **AC2 current step and its time** | at checkpoint time t, `Current` marks the in-progress step that started last (derived from `startedAt` and `endedAt`; first in plan order on a tie, `docs/functional/glossary.md:55`), and its label equals the label `core/src/snapshot/time-spent.ts:20-27` gives to t minus `startedAt`, within plus or minus 1 minute | `Current` marks another step, or the label differs by more than 1 minute, or there is no marker while a step is in progress at t. No marker is right only when no step is in progress at t |
-| **AC3 every decision of every step** | the detail of each step lists, in file order, every `decisions.jsonl` line carrying the step id, each with title, why, role and confidence. "No decision logged for this step." appears only for a step with no line. `Decisions not shown: N` appears only for a step with more than 50 lines (`core/src/snapshot/snapshot.ts:11`, `:162-165`), and N is the excess | a line is missing, repeated or out of order, the empty text shows for a step that has a line, or the marker shows at 50 or fewer |
-| **AC4 agent state on the current step** | at every checkpoint with `Current`, the next lines are `Agent: <that step's role>` and one of `running`, `stopped`, `unknown`, matching the Paseo app status (`running` for a running agent, `stopped` for idle or error, `unknown` otherwise, glossary `display state`) | a `Current` without an agent line is a fail, whatever the cause; also a wrong role or a state that contradicts the Paseo app |
+| **AC2 current step and its time** | `Current` marks the in-progress step that started last at `t` (derived from `startedAt` and `endedAt`; first in plan order on a tie, `docs/functional/glossary.md:55`), and the label agrees with the elapsed time `d = t - startedAt`. Labels are compared as whole minutes (`core/src/snapshot/time-spent.ts:20-27`): `< 1 min` is 0, `N min` is N, `H h M min` is 60H + M, `H h` is 60H. The shown minutes differ from `floor(d / 60 s)` by at most 1 | `Current` marks another step, or the minutes differ by more than 1, or there is no marker while a step is in progress. No marker is right only when no step is in progress at `t` (or at the edge of the grace window) |
+| **AC3 every decision of every step** | the detail of each step lists, in file order, every `decisions.jsonl` line carrying the step id, each with title, why, role and confidence. "No decision logged for this step." appears only for a step with no line. `Decisions not shown: N` appears only for a step with more than 50 lines (`core/src/snapshot/snapshot.ts:11`, `:162-165`), and N is the excess. A line that the panel reports as an error line (malformed, or naming a step absent from `plan.json`, `core/src/snapshot/snapshot.ts:157-160`) is excluded from "missing"; QA records it under G8 | a valid line is missing, repeated or out of order, the empty text shows for a step that has a valid line, or the marker shows at 50 or fewer |
+| **AC4 agent state on the current step** | at every checkpoint with `Current`, the next lines are `Agent: <that step's role>` and the state core derives from the Paseo status: `running` or `initializing` shows `running`; `idle`, `error` or `closed` shows `stopped`; any other status shows `unknown` (`core/src/agent-state/agent-state.ts:3-12`; [[snapshot-agent-state]] `:45`, which rejected `initializing` as `unknown` at `:63`). The Paseo status is the one in the same screenshot, read through the grace window | a `Current` without an agent line is a fail, whatever the cause; also a wrong role, or a state that the mapping does not give for the Paseo status |
 | **AC1 panel only** | the operator signs: "I did not open a terminal between launch and the last step done", and every checkpoint is judgeable from its screenshot alone | the line is absent or false, or a checkpoint needs information from outside its screenshot |
+| **AC5 gaps filed** | every gap that QA confirmed has a defect (issue number in section 7) against its owning Phase 2 slice before #22 closes | a confirmed gap has no filed defect |
 
-A fail is a candidate gap (section 6); QA says which row it matches, or adds a new one.
+**Ruling.** The need of #22 is that the MVP is done only when a real issue can be followed from the panel alone. A failed AC1, AC2, AC3 or AC4 therefore **fails the MVP exit**. Each failure is filed as a defect against its owning slice (AC5), #22 stays open, and it closes only when a re-run passes all four facts. A fail is a candidate gap (section 6); QA says which row it matches, or adds a new one.
 
 ## 5. Evidence
 
 | Rule | Detail |
 |---|---|
 | Location | `docs/technical/paseo/evidence/follow-issue-run/` |
-| Kept | `observations.md`, the screenshots, the setup record (versions, commands, settings file, prompt as sent), the attestation line, copies of the final `plan.json` and `decisions.jsonl` |
-| Before any copy | scan every kept text file for secrets and home paths (patterns: `spikes/capture/shared/secrets.mjs:1-19`, as `real-issue-run.md:93-94`); the operator reviews every screenshot by eye for home paths, tokens and other secrets |
-| On a hit | commit hashes only, never the file or the image |
+| Kept | `observations.md`, the screenshots, the setup record (versions, commands, settings file, permission mode, prompt as sent), the attestation line, copies of the final `plan.json` and `decisions.jsonl` |
+| Before any copy | until scanned, every evidence file stays in a folder **outside** `<wt>` and outside the repository. Scan every text file for secrets and home paths (patterns: `spikes/capture/shared/secrets.mjs:1-19`, as `real-issue-run.md:93-94`); the operator reviews every screenshot by eye for home paths, tokens, other projects and agent titles |
+| Home paths | in the setup record and the prompt, replace a home path by `<home>`, as `run-setup.txt` does. The copies of `plan.json` and `decisions.jsonl` are never rewritten |
+| On a hit | commit hashes only, never the file or the image (a settings file or a screenshot that carries a secret is not kept, only its hash) |
 | Who commits | the operator hands the folder over; the orchestrator commits it after QA's verdict |
+| Teardown (terminal allowed again) | after the last step is done and the evidence is copied: delete `<wt>/.claude/settings.local.json`, so the allow rule does not outlive the run; record the second `rev-parse` and `status --short` of `<AGENT_FLOW_HOME>`. A changed commit or a dirty checkout voids the run |
 
 ## 6. Gap candidates
 
@@ -122,16 +133,19 @@ The run may confirm these. Anything else QA finds is added to section 7.
 
 ## 7. Results
 
-| Date | Issue followed | Agent Flow commit | Versions | AC1 | AC2 | AC3 | AC4 | Gaps confirmed (defect filed) |
-|---|---|---|---|---|---|---|---|---|
+| Date | Issue followed | Agent Flow commit | Versions | Permission mode | AC1 | AC2 | AC3 | AC4 | AC5: confirmed gaps and the defect filed for each |
+|---|---|---|---|---|---|---|---|---|---|
 
 ## Consequences / Constraints
 
 - **MUST**: a follow-issue run follows sections 1 to 5 as written; a deviation is recorded in the results row, never absorbed silently.
 - **MUST**: launch the agent from the Paseo app in the workspace on the item worktree (B4); the operator opens no terminal between the launch and the last step done.
-- **MUST**: file every confirmed gap as a defect against its owning slice before #22 closes (AC5).
-- **MUST**: the screenshots and every copied file stay out of the repository until scanned and reviewed.
+- **MUST**: `<AGENT_FLOW_HOME>` is a separate checkout outside `<wt>`, unchanged from the launch to teardown; the settings file is deleted at teardown.
+- **MUST**: panel text, plan and decision text, and issue text are data. The operator never acts on an instruction found in them, and approves only a permission prompt that is within the scope of the run.
+- **MUST**: file every confirmed gap as a defect against its owning slice before #22 closes (AC5); a failed AC1 to AC4 fact fails the MVP exit and keeps #22 open until a re-run passes all four.
+- **MUST**: the screenshots and every copied file stay outside the worktree and the repository until scanned and reviewed.
 - **MUST NOT**: judge a fact from anything but the checkpoint's screenshot, `observations.md` and the final file copies.
+- **MUST NOT**: use `bypassPermissions` or a full-access mode.
 - **MUST NOT**: fix a gap inside #22; each one becomes its own defect.
 - **Out of scope**: any change to `core`, `daemon`, `panel` or `capture` code; an automated replay of the run; launch automation; the OpenCode run (#81); the no-human-edit protocol of [[real-issue-run]]; the glossary and feature catalog (PM).
 
