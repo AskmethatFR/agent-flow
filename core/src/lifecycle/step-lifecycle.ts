@@ -18,7 +18,7 @@ type Step = {
   readonly endedAt: string | null
 }
 
-type Plan = { readonly steps: readonly Step[] }
+type Plan = { readonly issue: string; readonly steps: readonly Step[] }
 
 type Transition = {
   readonly atField: 'startedAt' | 'endedAt'
@@ -32,6 +32,7 @@ type Transition = {
 const file = 'plan.json'
 const notInstant = 'must be an ISO-8601 UTC instant'
 const issuePattern = /^[1-9][0-9]{0,9}$/
+const issueRef = (issue: string): string => `#${issue}`
 const roleOfItem = new RegExp(`^(${ROLE_IDS.join('|')}): (.+)$`)
 
 const refused = (
@@ -178,7 +179,16 @@ export function createPlan(issue: string, title: string): StepLifecycleResult {
   if (typeof title !== 'string' || title.trim() === '') {
     return refused(null, 'title', 'must not be blank')
   }
-  return emit({ issue: `#${issue}`, title }, [])
+  return emit({ issue: issueRef(issue), title }, [])
+}
+
+export function planNamesIssue(plan: string, issue: string): boolean {
+  return (
+    typeof plan === 'string' &&
+    issuePattern.test(issue) &&
+    validatePlan(plan).accepted &&
+    (JSON.parse(plan) as Plan).issue === issueRef(issue)
+  )
 }
 
 export function addStep(plan: string, stepId: string, itemTitle: string): StepLifecycleResult {

@@ -3,7 +3,7 @@ id: "real-issue-run"
 type: "technical"
 owner: "architect"
 status: "current"
-updated: "2026-11-05"
+updated: "2026-11-09"
 relations:
   depends-on: ["capture-events", "agent-rules", "plan-writer-confinement"]
 answers:
@@ -13,6 +13,7 @@ answers:
   - "Where does the evidence of a real-issue run live, and what may be committed?"
 decided_in:
   - "#17"
+  - "#78"
 ---
 
 # Real-issue capture run: setup, AC4 evidence, QA procedure
@@ -34,8 +35,10 @@ S1 is tagged `@manual`: no BDD driver can make real agents work a real issue. Th
 | Plan tool | `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` and the task tools named in `--tools`/`--allowedTools` (`capture-events` `:63`) | project `opencode.json` with `experimental.todo: true` (`capture-events` `:64`) |
 | Decision command | a Bash allow rule matching `node *agent-flow-decision.mjs*`; record the exact rule used | allowed by the project permission config; record the exact entry used |
 | Launch | `claude` with the flags above, from the worktree root | `<abs>/rules/opencode/agent-flow-opencode run --standalone` from the worktree root: the standard OpenCode invocation, it checks `AGENT_FLOW_HOME` before OpenCode starts and forwards every argument unchanged (`capture-events` `:85`, `:109`) |
-| First plan | seeded by the mechanism #78 delivers; no run starts before it exists | same |
+| First plan | seeded by the tower at worker start (#78): no hand-seeding step; the operator only checks the seed ran (below) | same |
 | Versions recorded | `claude --version`, `node --version` | `opencode --version`, `node --version` |
+
+**Plan seed (#78).** `AGENT_FLOW_HOME` set in the tower's environment is the install signal: set means the tower seeds `.agent-flow/plan.json` (issue and title, no steps) before it creates the worker's workspace; unset or empty means no seed and an unchanged start. A global export seeds every project the tower starts. The tower runs `<AGENT_FLOW_HOME>/capture/shared/bin/agent-flow-plan.mjs <slot> <n> <title>` from the Agent Flow checkout, never the copy inside the slot, which has no dependencies installed. The tower calls it with an argv list (no shell) and never logs or prints the title. `AGENT_FLOW_HOME` must name a checkout no worker slot can write to: the tower runs its code unsandboxed at every worker start. Exit codes: 0 seeded, or the existing `plan.json` is a valid plan of the same issue (bytes kept); 3 a `plan.json` already exists and is not a valid plan of this issue (another issue's plan, a corrupt plan, a symlink, a directory), so the worker becomes `unknown: seed-failed` and no agent starts; 1 invalid issue or title, bad worktree, a `.agent-flow` that is not a real directory, write failure, or a launcher crash (the tower cannot tell a crash from bad input); 2 wrong argument count. Clearing a finished ticket's `.agent-flow/` before the next one is a follow-up, not part of the seed.
 
 `{env:AGENT_FLOW_HOME}` in the rule shim fails open when the variable is unset, so OpenCode v2 is guarded twice. The rule guard (#79) ends the session when `AGENT_FLOW_HOME` does not name this checkout; its stderr line reaches the console only under `--print-logs`. The launcher `agent-flow-opencode` (#83) runs the same check before OpenCode starts: it prints one stderr line naming `AGENT_FLOW_HOME` and exits non-zero without starting OpenCode. Start OpenCode through the launcher, by its real path (a symlink to the launcher is not supported).
 
@@ -54,7 +57,7 @@ The loop runs from the worktree so the log holds relative names only, never a ho
 
 | Observed change | Explained only when | Otherwise |
 |---|---|---|
-| `.agent-flow/` and `plan.json` first appear | the seeding step (#78) ran in that window, as the operator recorded | AC4 fail |
+| `.agent-flow/` and `plan.json` first appear | the tower's seed at worker start (#78) ran in that window, as the operator recorded | AC4 fail |
 | `plan.json` hash changes | the window contains at least one `startedAt` or `endedAt` value of the final `plan.json`; conversely, every such value falls in a window where the hash changed | AC4 fail |
 | `decisions.jsonl` appears or changes | its size never shrinks, every logged size is the byte length of a whole-line prefix of the final file, and the lines added in the window carry an `at` inside it | AC4 fail |
 | any other entry appears | it is a `.plan.json.<uuid>.tmp` seen in one window and gone in the next ([[plan-writer-confinement]] step 5) | AC4 fail |
@@ -97,7 +100,8 @@ Check command contract, as built: exit 1 with `{"errors":[…]}` on stderr on an
 
 | Gap | Owner |
 |---|---|
-| Nothing seeds `.agent-flow/plan.json` on a real run; it blocks both runs | #78 |
+| Nothing seeded `.agent-flow/plan.json` on a real run; fixed by #78 (the tower seeds at worker start when `AGENT_FLOW_HOME` is set), confirmed by the next real run | #78 |
+| A finished ticket's `.agent-flow/` is not cleared, so the next issue in the same slot is refused (exit 3) | follow-up |
 | The decision template has not run live under zsh or bash 3.2 (`agent-rules` `:79`) | #80, #81: record the shell used; a failure is a defect |
 | Install friction met during a run | a defect per friction, linked here |
 | Parallel review lanes collapse to one timed step (Claude Code run) | #88, fixed by PR #92; confirmed by the re-run |
@@ -112,9 +116,9 @@ Check command contract, as built: exit 1 with `{"errors":[…]}` on stderr on an
 
 - **MUST**: a real-issue run follows sections 1 to 3 as written; a deviation is recorded in the results row, never absorbed silently.
 - **MUST**: the snapshot log and every copied file stay outside the worktree until scanned.
-- **MUST NOT**: any human or script other than the agents' capture path touch `.agent-flow/` during a run, the seeding step excepted.
+- **MUST NOT**: any human or script other than the agents' capture path touch `.agent-flow/` during a run, the tower's seed at worker start excepted.
 - **MUST NOT**: commit a file the scan flagged.
-- **Out of scope**: how `plan.json` is seeded (#78), the OpenCode unset-variable guard (#79), automating this procedure.
+- **Out of scope**: clearing a finished ticket's `.agent-flow/`, the OpenCode unset-variable guard (#79), automating this procedure.
 
 ## Open questions / Gaps
 

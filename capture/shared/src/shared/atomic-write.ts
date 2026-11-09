@@ -15,6 +15,8 @@ export type CreateIo = AtomicWriteIo & Pick<typeof NodeFs, 'linkSync'>
 
 type Publish = (temporary: string) => ValidationResult
 
+export const alreadyExists = 'already exists'
+
 const refuse = refusalFor('plan.json')
 
 const writeAtomically = (
@@ -62,7 +64,7 @@ export const createAtomically = (
     } catch (error) {
       if (codeOf(error) !== 'EEXIST') throw error
       attempt(() => io.unlinkSync(temporary))
-      return refuse('already exists')
+      return refuse(alreadyExists)
     }
     attempt(() => io.unlinkSync(temporary))
     return { accepted: true }
