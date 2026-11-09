@@ -112,6 +112,7 @@ describe('getSnapshot', () => {
             origin: 'planned',
             timeSpent: { label: '1 h', milliseconds: 3_600_000 },
             decisions: [],
+            omittedDecisions: 0,
           },
         ],
         currentStepId: 's1',

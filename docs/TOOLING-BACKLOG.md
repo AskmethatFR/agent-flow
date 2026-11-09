@@ -55,3 +55,17 @@ package instead of the project binary, `tdd-run.sh <file>::<name>` runs from
 in this repo. Fix: a worktree-start step that runs `npm ci` from the lockfile,
 `tdd-run.sh` resolving the vitest root for a JS repo, and the spawn prompts
 naming `npm test` / `npm run bdd` where `deploy/run-tests.sh` is absent.
+
+## 2026-11-09 — a wall-clock perf-ratio test flakes under load, and scoped `tdd-run.sh` still misses the vitest root (observed on #101)
+
+`core/src/snapshot/snapshot.test.ts` ("costs no more than a plan with a short
+start when an early start is huge") compares two timed runs against a fixed
+ratio. It failed in both full runs of the Dev lane under load (553 against a
+limit of 480) and passed alone and in every orchestrator run. A timing ratio
+is not a deterministic oracle. Fix: count the work (calls or iterations)
+instead of the clock, or retry-and-median the timing. Separately, `tdd-run.sh
+<file>::<test>` still resolves to the `core` workspace, which has no `test`
+script, so the Dev lane ran scoped tests with `npx vitest run <file>` and the
+audit read its reds as `unknown`/`unattributed` (`shape-mismatch`). Same
+cause as the entry above: the wrapper does not find the vitest root of this
+repo.

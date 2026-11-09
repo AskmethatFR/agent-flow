@@ -3,7 +3,7 @@ id: "snapshot-decisions"
 type: "technical"
 owner: "architect"
 status: "current"
-updated: "2026-11-02"
+updated: "2026-11-09"
 relations:
   depends-on: ["snapshot-contract", "decisions-jsonl-schema"]
   related: ["snapshot-rpc", "host-adapter-boundary", "glossary"]
@@ -13,9 +13,11 @@ answers:
   - "How does a missing, unreadable or oversize decisions.jsonl show in the snapshot, and why is missing not an error?"
   - "What does the snapshot hold when plan.json is unusable and decisions.jsonl is present?"
   - "In what order are a step's decisions and the snapshot's errors given?"
+  - "How many decisions does a step carry, and how does the snapshot say some were left out?"
   - "What does reading plan.json and decisions.jsonl separately not guarantee?"
 decided_in:
   - "#39"
+  - "#101"
 ---
 
 # Snapshot decisions: per-step grouping, cross-file integrity, decisions-file failures
@@ -38,6 +40,7 @@ Corrected here, not edited there (closed records):
 |---|---|---|
 | Placement | one additive per-step field `decisions`, no top-level field | a step reader needs no lookup; additive under `snapshot-contract.md:38`, and no frozen field moves |
 | Frozen fields | per decision: `title`, `why`, `rejected`, `role`, `confidence`. A `rejected` that the file omits is `[]`, never `null` or omitted. A step with no decision has `[]` | the step-detail fields; an absent and an empty `rejected` mean the same, so there is one representation |
+| Cap per step | a step keeps its first `MAX_DECISIONS_PER_STEP` (50) decisions in file order. The other lines of that step are dropped from `decisions` and counted in one additive per-step field `omittedDecisions` (a number, `0` when nothing was dropped, never omitted or `null`). The cap is per step: an over-cap step never shortens another step | Security S1 of #20 (CWE-770, A04): thousands of records for one step rendered thousands of nodes on every poll. Core counts, so the panel renders one marker and computes nothing. Same idea as `MAX_ERRORS` in `capErrors` |
 | Not exposed | `at`, `kind`, `model`, `step` | no placeholder ships before its slice (`snapshot-contract.md:38`); adding one later is additive |
 | Membership | every schema-valid line is a decision, whatever its `kind` | "one line per decision" (`docs/plan.md:67`); the `decision`/`step_event` boundary is still open in [[glossary]] |
 | Order | file (append) order within a step | `at` is format-free (`decisions-jsonl-schema.md:39`); append order is write order |
@@ -68,11 +71,16 @@ Corrected here, not edited there (closed records):
 | Dropping orphan lines silently | hides an agent's mistake |
 | One cap over the reader's errors and the orphan errors together | buries the reader's cap marker in the middle of the list |
 | A plain object keyed by step id | agent-written ids such as `__proto__` or `constructor` would collide with prototype keys |
+| A sentinel entry at the end of `decisions` | it would break the five-field decision shape and force the panel to tell a marker from a decision |
+| `omittedDecisions` as `null` when nothing was dropped | a count has a natural zero; one type, no null branch for the panel |
+| Reporting dropped decisions as `ContractError`s | they are valid lines, not defects; a flood would fill `errors` and its own cap |
+| A cap in the panel | the panel never computes, and the snapshot would still carry every record over the wire |
 
 ## Consequences / Constraints
 
 - **MUST**: `steps[].decisions` and its five fields fall under the additive-only rule of [[snapshot-contract]]. Exposing `at`, `kind`, `model` or `step` later is additive.
-- **MUST**: every decision line ends up in exactly one step or in exactly one `ContractError`, never neither.
+- **MUST**: `steps[].omittedDecisions` falls under the additive-only rule of [[snapshot-contract]] too.
+- **MUST**: every decision line ends up in exactly one step's `decisions`, in exactly one step's `omittedDecisions` count, or in exactly one `ContractError` or its list's single cap marker, never neither. A step's listed decisions plus its `omittedDecisions` equal the valid lines naming that step.
 - **MUST**: a missing `decisions.jsonl` is never an error; any other read failure of it is exactly one error and keeps the plan steps.
 - **MUST** (every consumer, #20 first): every decision field is agent-written display text; `snapshot-contract.md:66` (Security S2) applies.
 - **Out of scope**: rendering a step's decisions (#20), agent state (#40), an `at` format (still #24, `decisions-jsonl-schema.md:70`).

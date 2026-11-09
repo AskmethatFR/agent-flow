@@ -36,7 +36,9 @@ export const PlanRail = ({ snapshot, textColor, errorColor, accentColor }: PlanR
               </>
             ) : null}
           </Pressable>
-          {step.id === selectedStepId ? <StepDetail decisions={step.decisions} textColor={textColor} /> : null}
+          {step.id === selectedStepId ? (
+            <StepDetail decisions={step.decisions} omittedDecisions={step.omittedDecisions} textColor={textColor} />
+          ) : null}
         </View>
       ))}
       {snapshot.errors.length === 0 ? null : <Text style={{ color: errorColor }}>Snapshot errors</Text>}

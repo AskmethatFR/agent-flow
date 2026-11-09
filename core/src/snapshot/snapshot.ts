@@ -8,6 +8,8 @@ import type { PlanStep, ReadPlanResult } from '../contracts/plan'
 import { instantOf, timeSpentOf } from './time-spent'
 import type { TimeSpent } from './time-spent'
 
+export const MAX_DECISIONS_PER_STEP = 50
+
 export type FileUnavailable = {
   readonly unavailable: 'missing' | 'unreadable' | 'too-large'
 }
@@ -37,6 +39,7 @@ export type SnapshotStep = {
   readonly origin: 'planned' | 'proposed'
   readonly timeSpent: TimeSpent | null
   readonly decisions: readonly SnapshotDecision[]
+  readonly omittedDecisions: number
 }
 
 export type CurrentAgent = {
@@ -56,7 +59,7 @@ export type Snapshot = {
 const toSnapshotStep = (
   step: PlanStep,
   now: Date,
-  decisions: readonly SnapshotDecision[],
+  { decisions, omitted }: StepDecisions,
 ): SnapshotStep => ({
   id: step.id,
   title: step.title,
@@ -65,6 +68,7 @@ const toSnapshotStep = (
   origin: step.origin,
   timeSpent: timeSpentOf(step, now),
   decisions,
+  omittedDecisions: omitted,
 })
 
 const startOf = (step: PlanStep): number => instantOf(step.startedAt) ?? Number.NEGATIVE_INFINITY
@@ -127,8 +131,12 @@ const readPlanFile = (planFile: AgentFlowFile): ReadPlanResult =>
 
 const decisionsFile = 'decisions.jsonl'
 
+type StepDecisions = { readonly decisions: SnapshotDecision[]; omitted: number }
+
+const emptyStepDecisions = (): StepDecisions => ({ decisions: [], omitted: 0 })
+
 type GroupedDecisions = {
-  readonly perStep: readonly { readonly step: PlanStep; readonly decisions: SnapshotDecision[] }[]
+  readonly perStep: readonly { readonly step: PlanStep; readonly bucket: StepDecisions }[]
   readonly errors: readonly ContractError[]
 }
 
@@ -136,8 +144,8 @@ const groupDecisions = (
   steps: readonly PlanStep[],
   file: AgentFlowFile | undefined,
 ): GroupedDecisions => {
-  const buckets = steps.map((step) => ({ step, decisions: [] as SnapshotDecision[] }))
-  const grouped = new Map(buckets.map(({ step, decisions }) => [step.id, decisions] as const))
+  const buckets = steps.map((step) => ({ step, bucket: emptyStepDecisions() }))
+  const grouped = new Map(buckets.map(({ step, bucket }) => [step.id, bucket] as const))
   if (file === undefined) return { perStep: buckets, errors: [] }
   if (typeof file !== 'string') {
     const errors = file.unavailable === 'missing' ? [] : [unavailableError(decisionsFile, file.unavailable)]
@@ -151,7 +159,11 @@ const groupDecisions = (
       orphans.push({ file: decisionsFile, location, field: 'step', message: 'is not a step of plan.json' })
       continue
     }
-    bucket.push({
+    if (bucket.decisions.length === MAX_DECISIONS_PER_STEP) {
+      bucket.omitted += 1
+      continue
+    }
+    bucket.decisions.push({
       title: decision.title,
       why: decision.why,
       rejected: decision.rejected ?? [],
@@ -187,7 +199,7 @@ export const buildSnapshot = (
   return {
     issue: plan.issue,
     title: plan.title,
-    steps: perStep.map(({ step, decisions }) => toSnapshotStep(step, now, decisions)),
+    steps: perStep.map(({ step, bucket }) => toSnapshotStep(step, now, bucket)),
     currentStepId: current?.id ?? null,
     currentAgent: currentAgentOf(current, status),
     errors: [...errors, ...agentErrors],
