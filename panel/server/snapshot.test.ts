@@ -7,7 +7,13 @@ import contribute from '../index.server.ts'
 import { getSnapshotRpc } from '../shared/snapshot-rpc.ts'
 
 type Workspaces = { ref(workspaceId: string): { refresh(): Promise<unknown> } }
-type Handler = (input: unknown, context: { paseo: { workspaces: Workspaces } }) => Promise<unknown>
+type Agents = { list(options: unknown): Promise<{ entries: unknown[] }> }
+type Handler = (
+  input: unknown,
+  context: { paseo: { workspaces: Workspaces; agents: Agents } },
+) => Promise<unknown>
+
+const noAgents: Agents = { list: async () => ({ entries: [] }) }
 
 let root: string
 
@@ -30,7 +36,7 @@ const registeredHandler = (): Handler => {
   return registered[0]!.handler
 }
 
-const worktreeWithPlan = (): string => {
+const worktreeWithPlan = (status: 'todo' | 'in_progress' = 'todo'): string => {
   mkdirSync(join(root, '.agent-flow'))
   writeFileSync(
     join(root, '.agent-flow', 'plan.json'),
@@ -42,9 +48,9 @@ const worktreeWithPlan = (): string => {
           id: 's1',
           title: 'Implementation',
           role: 'dev-a',
-          status: 'todo',
+          status,
           origin: 'planned',
-          startedAt: null,
+          startedAt: status === 'todo' ? null : '2026-11-01T09:00:00.000Z',
           endedAt: null,
         },
       ],
@@ -56,7 +62,10 @@ const worktreeWithPlan = (): string => {
 describe('snapshot registration', () => {
   it('serves getSnapshotRpc and refuses a workspace the host does not know', async () => {
     const workspaces = { ref: () => ({ refresh: async () => null }) }
-    const reply = await registeredHandler()({ workspaceId: 'w1' }, { paseo: { workspaces } })
+    const reply = await registeredHandler()(
+      { workspaceId: 'w1' },
+      { paseo: { workspaces, agents: noAgents } },
+    )
     expect(reply).toEqual({ kind: 'refused', reason: 'unknown-worktree' })
   })
 
@@ -67,7 +76,27 @@ describe('snapshot registration', () => {
         refresh: async () => (workspaceId === 'w1' ? { project: { checkout: { worktreeRoot } } } : null),
       }),
     }
-    const reply = await registeredHandler()({ workspaceId: 'w1' }, { paseo: { workspaces } })
+    const reply = await registeredHandler()(
+      { workspaceId: 'w1' },
+      { paseo: { workspaces, agents: noAgents } },
+    )
     expect(reply).toMatchObject({ kind: 'snapshot', snapshot: { issue: '#18', title: 'Plan 18' } })
+  })
+
+  it('reports the host agent on the worktree through the agents the host provides', async () => {
+    const worktreeRoot = worktreeWithPlan('in_progress')
+    const workspaces = {
+      ref: () => ({ refresh: async () => ({ project: { checkout: { worktreeRoot } } }) }),
+    }
+    const agents: Agents = {
+      list: async () => ({
+        entries: [{ agent: { status: 'running' }, project: { checkout: { worktreeRoot } } }],
+      }),
+    }
+    const reply = await registeredHandler()({ workspaceId: 'w1' }, { paseo: { workspaces, agents } })
+    expect(reply).toMatchObject({
+      kind: 'snapshot',
+      snapshot: { currentAgent: { role: 'dev-a', state: 'running' } },
+    })
   })
 })

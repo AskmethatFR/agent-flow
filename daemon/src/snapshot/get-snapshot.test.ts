@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createGetSnapshot } from './get-snapshot'
+import type { AgentEntry, AgentListOptions, AgentSource } from './agent-status'
 import type { WorkspaceReading, WorkspaceSource } from './get-snapshot'
 import type { ReadIo } from './read-agent-flow-file'
 
@@ -12,6 +13,7 @@ const now = new Date('2026-11-01T10:00:00.000Z')
 let root: string
 let opened: string[]
 let resolved: string[]
+let listed: AgentListOptions[]
 
 const io: ReadIo = {
   ...fs,
@@ -25,12 +27,25 @@ const io: ReadIo = {
   }) as ReadIo['openSync'],
 }
 
-const getSnapshot = createGetSnapshot({ io, now: () => now })
+const handler = createGetSnapshot({ io, now: () => now })
+
+const agentsOf = (entries: readonly AgentEntry[]): AgentSource => ({
+  list: async (options) => {
+    listed.push(options)
+    return { entries }
+  },
+})
+
+const noAgents = agentsOf([])
+
+const getSnapshot = (request: unknown, workspaces: WorkspaceSource, agents: AgentSource = noAgents) =>
+  handler(request, workspaces, agents)
 
 beforeEach(() => {
   root = realpathSync(mkdtempSync(join(tmpdir(), 'get-snapshot-')))
   opened = []
   resolved = []
+  listed = []
 })
 
 afterEach(() => {
@@ -144,7 +159,7 @@ describe('getSnapshot', () => {
   it('uses the clock it is given', async () => {
     const worktree = worktreeWith('a', planWith('#1', 'in_progress'))
     const later = createGetSnapshot({ io, now: () => new Date('2026-11-01T11:00:00.000Z') })
-    const reply = await later({ workspaceId: 'w1' }, sourceOf({ w1: at(worktree) }))
+    const reply = await later({ workspaceId: 'w1' }, sourceOf({ w1: at(worktree) }), noAgents)
     expect(reply).toMatchObject({
       snapshot: { steps: [{ timeSpent: { label: '2 h', milliseconds: 7_200_000 } }] },
     })
@@ -197,6 +212,185 @@ describe('getSnapshot', () => {
     })
   })
 
+  describe('agent state', () => {
+    const agentAt = (
+      worktreeRoot: string | null | undefined,
+      status: string | null | undefined = 'running',
+    ): AgentEntry => ({ agent: { status }, project: { checkout: { worktreeRoot } } })
+
+    const snapshotWith = async (worktree: string, entries: readonly AgentEntry[]) => {
+      const reply = await getSnapshot({ workspaceId: 'w1' }, sourceOf({ w1: at(worktree) }), agentsOf(entries))
+      if (reply.kind !== 'snapshot') throw new Error('expected a snapshot')
+      return reply.snapshot
+    }
+
+    const inProgressWorktree = (name = 'a'): string => worktreeWith(name, planWith('#1', 'in_progress'))
+
+    it('reports a running agent on the worktree as running', async () => {
+      const worktree = inProgressWorktree()
+      const snapshot = await snapshotWith(worktree, [agentAt(worktree, 'running')])
+      expect(snapshot.currentAgent).toEqual({ role: 'dev-a', state: 'running' })
+    })
+
+    it('reports an idle agent on the worktree as stopped', async () => {
+      const worktree = inProgressWorktree()
+      const snapshot = await snapshotWith(worktree, [agentAt(worktree, 'idle')])
+      expect(snapshot.currentAgent).toEqual({ role: 'dev-a', state: 'stopped' })
+    })
+
+    it('reports no agent when the only agent works on another worktree', async () => {
+      const worktree = inProgressWorktree('a')
+      const other = inProgressWorktree('b')
+      const snapshot = await snapshotWith(worktree, [agentAt(other)])
+      expect(snapshot.currentAgent).toBeNull()
+    })
+
+    it('reports no agent when the host lists none', async () => {
+      const snapshot = await snapshotWith(inProgressWorktree(), [])
+      expect(snapshot.currentAgent).toBeNull()
+    })
+
+    it('matches an agent whose worktree root is a symlink to the worktree', async () => {
+      const worktree = inProgressWorktree()
+      const link = join(root, 'link')
+      symlinkSync(worktree, link)
+      const snapshot = await snapshotWith(worktree, [agentAt(link, 'idle')])
+      expect(snapshot.currentAgent).toEqual({ role: 'dev-a', state: 'stopped' })
+    })
+
+    it('does not match a sibling directory sharing the worktree path as a prefix', async () => {
+      const worktree = inProgressWorktree('claude-t3-2')
+      const sibling = inProgressWorktree('claude-t3-26')
+      const child = join(worktree, 'child')
+      mkdirSync(child)
+      const snapshot = await snapshotWith(worktree, [agentAt(sibling), agentAt(child), agentAt(root)])
+      expect(snapshot.currentAgent).toBeNull()
+    })
+
+    it('takes the first matching entry over a later one', async () => {
+      const worktree = inProgressWorktree()
+      const snapshot = await snapshotWith(worktree, [agentAt(worktree, 'idle'), agentAt(worktree, 'running')])
+      expect(snapshot.currentAgent).toEqual({ role: 'dev-a', state: 'stopped' })
+    })
+
+    it('takes the first entry on the worktree even when its status is not mapped', async () => {
+      const worktree = inProgressWorktree()
+      const snapshot = await snapshotWith(worktree, [agentAt(worktree, 'whatever'), agentAt(worktree, 'idle')])
+      expect(snapshot.currentAgent).toEqual({ role: 'dev-a', state: 'unknown' })
+    })
+
+    const unusableEntries: [string, AgentEntry][] = [
+      ['has no project', { agent: { status: 'running' }, project: null }],
+      ['has an absent project', { agent: { status: 'running' } }],
+      ['has a null worktree root', agentAt(null)],
+      ['has a relative worktree root', agentAt('relative/path')],
+      ['has a worktree root that does not exist', agentAt('/nonexistent/af41-worktree')],
+    ]
+    it.each(unusableEntries)('skips an entry that %s and keeps looking', async (_, unusable) => {
+      const worktree = inProgressWorktree()
+      const snapshot = await snapshotWith(worktree, [unusable, agentAt(worktree, 'idle')])
+      expect(snapshot.currentAgent).toEqual({ role: 'dev-a', state: 'stopped' })
+    })
+
+    it.each([
+      ['an empty object', {}],
+      ['a number', 42],
+    ])('reports no agent and no error when the matching entry has %s as its status', async (_, status) => {
+      const worktree = inProgressWorktree()
+      const entry = { agent: { status }, project: { checkout: { worktreeRoot: worktree } } } as unknown as AgentEntry
+      const snapshot = await snapshotWith(worktree, [entry])
+      expect(snapshot.currentAgent).toBeNull()
+      expect(snapshot.errors).toEqual([])
+    })
+
+    it('resolves no path an entry without an absolute worktree root supplies', async () => {
+      const worktree = inProgressWorktree()
+      const noRoots: AgentEntry[] = [
+        agentAt(null),
+        agentAt('relative/path'),
+        { agent: { status: 'running' }, project: null },
+      ]
+      await snapshotWith(worktree, noRoots)
+      expect(resolved.filter((path) => !path.startsWith(worktree))).toEqual([])
+    })
+
+    it.each([
+      ['null', { status: null }],
+      ['missing', {}],
+    ])('reports no agent when the matching entry has a %s status', async (_, agent) => {
+      const worktree = inProgressWorktree()
+      const entry: AgentEntry = { agent, project: { checkout: { worktreeRoot: worktree } } }
+      const snapshot = await snapshotWith(worktree, [entry])
+      expect(snapshot.currentAgent).toBeNull()
+    })
+
+    it('asks the host once, for the most recently updated agents, one page of 100', async () => {
+      const worktree = inProgressWorktree()
+      await snapshotWith(worktree, [agentAt(worktree)])
+      expect(listed).toEqual([{ sort: [{ key: 'updated_at', direction: 'desc' }], page: { limit: 100 } }])
+    })
+
+    it('reports no agent and leaves the plan alone when no step is in progress', async () => {
+      const worktree = worktreeWith('a', planWith('#1', 'todo'))
+      const snapshot = await snapshotWith(worktree, [agentAt(worktree)])
+      expect(snapshot.currentAgent).toBeNull()
+      expect(snapshot.errors).toEqual([])
+    })
+
+    const failures: [string, AgentSource][] = [
+      ['rejects', { list: async () => Promise.reject(new Error('boom /secret/path')) }],
+      [
+        'throws synchronously',
+        {
+          list: () => {
+            throw new Error('boom /secret/path')
+          },
+        },
+      ],
+      ['resolves an empty object', { list: async () => ({}) as { entries: AgentEntry[] } }],
+      ['resolves null entries', { list: async () => ({ entries: null }) as unknown as { entries: AgentEntry[] } }],
+    ]
+    it.each(failures)('keeps the snapshot intact and adds one error when the host list %s', async (_, agents) => {
+      const worktree = inProgressWorktree()
+      const baseline = await snapshotWith(worktree, [])
+      const reply = await getSnapshot({ workspaceId: 'w1' }, sourceOf({ w1: at(worktree) }), agents)
+      expect(reply).toEqual({
+        kind: 'snapshot',
+        snapshot: {
+          ...baseline,
+          currentAgent: null,
+          errors: [{ file: 'agent-state', location: null, field: null, message: 'cannot be read from the host' }],
+        },
+      })
+      expect(JSON.stringify(reply)).not.toContain('secret')
+    })
+
+    it('puts nothing but role and state of the host agent in the reply', async () => {
+      const worktree = inProgressWorktree()
+      const planted = {
+        agent: {
+          status: 'running',
+          title: 'sentinel-title',
+          cwd: '/sentinel/cwd',
+          lastError: 'sentinel-last-error',
+          pendingPermissions: ['sentinel-permission'],
+          labels: { sentinel: 'label' },
+        },
+        project: {
+          checkout: {
+            worktreeRoot: worktree,
+            currentBranch: 'sentinel-branch',
+            cwd: '/sentinel/checkout-cwd',
+            remoteUrl: 'sentinel-remote',
+          },
+        },
+      }
+      const reply = await getSnapshot({ workspaceId: 'w1' }, sourceOf({ w1: at(worktree) }), agentsOf([planted]))
+      expect(JSON.stringify(reply)).not.toContain('sentinel')
+      expect(reply).toMatchObject({ snapshot: { currentAgent: { role: 'dev-a', state: 'running' } } })
+    })
+  })
+
   describe('refusal', () => {
     const cases: [string, Record<string, WorkspaceReading | null | Error>][] = [
       ['the host returns no workspace', { w1: null }],
@@ -212,6 +406,7 @@ describe('getSnapshot', () => {
       const reply = await getSnapshot({ workspaceId: 'w1' }, sourceOf(readings))
       expect(reply).toEqual(refused)
       expect(opened).toEqual([])
+      expect(listed).toEqual([])
       expect(resolved.filter((path) => !path.includes('af18-worktree'))).toEqual([])
     })
 
@@ -253,6 +448,7 @@ describe('getSnapshot', () => {
       }
       expect(await getSnapshot(input, source)).toEqual(refused)
       expect(called).toBe(false)
+      expect(listed).toEqual([])
     })
 
     it('accepts an id of exactly 256 characters', async () => {

@@ -37,6 +37,7 @@
 | `paseo-agent-state` | Reading agent state through the Paseo SDK: calls, statuses, permissions, agent identification (#26) | current | 2026-10-27 | `paseo-api-version`, `capture-events` | `docs/technical/paseo/agent-state.md` |
 | `paseo-messaging` | Messaging an agent via the Paseo SDK, how a blocked agent waits (#27) | current | 2026-10-27 | `paseo-api-version`, `paseo-agent-state`, `host-adapter-boundary` | `docs/technical/paseo/messaging.md` |
 | `paseo-mobile` | Paseo mobile render: desktop/mobile differences, kill-criterion verdict (#31) | current | 2026-10-26 | `paseo-api-version`, `paseo-agent-state` | `docs/technical/paseo/mobile.md` |
+| `snapshot-agent-status-read` | Snapshot agent status read: agents.list page, worktree match, host-error | current | 2026-11-09 | [[snapshot-agent-state]], [[paseo-agent-state]], [[snapshot-rpc]], [[host-adapter-boundary]], [[snapshot-contract]] | `docs/technical/decisions/snapshot-agent-status-read.md` |
 
 - `features/phase-0/host-panel-desktop.feature` — #10 Paseo host spike: empty panel renders on desktop (S1)
 - `features/phase-0/host-agent-state.feature` — #26 Paseo host spike: daemon reads a running agent's state (S1)
@@ -77,5 +78,6 @@
 - `features/phase-2/snapshot-steps.feature` — #38 Core snapshot: steps with time spent and current step (S1-S5)
 - `features/phase-2/snapshot-decisions.feature` — #39 Core snapshot: decisions grouped by step, malformed line reported (S1-S3)
 - `features/phase-2/agent-state-mapping.feature` — #40 Display state of the agent on the current step: running, stopped, unknown, no current agent (S1-S4)
+- `features/phase-2/agent-state-rpc.feature` — #41 Agent state in the snapshot: running, host failure keeps the rest, stopped, other worktree ignored (S1-S4)
 - `features/phase-2/time-spent.feature` — #19 Plan rail: time spent per step and the current step marked (S1-S3)
 - `features/phase-2/decisions-per-step.feature` — #20 Step detail: only the selected step's decisions listed with their reasoning, a step without decision says so (S1-S3)
