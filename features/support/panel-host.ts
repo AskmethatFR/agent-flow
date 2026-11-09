@@ -68,7 +68,7 @@ export const writeDecisions = (world: PanelWorld, lines: readonly Record<string,
   )
 }
 
-const hostInvoke =(world: PanelWorld) => {
+const hostInvoke = (world: PanelWorld) => {
   let handler: Handler | undefined
   const server = {
     handle: (_contract: unknown, registered: Handler) => {

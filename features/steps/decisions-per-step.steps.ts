@@ -3,10 +3,12 @@ import { Given, Then, When } from '@cucumber/cucumber'
 import { decisionOf, openPanel, selectStep, stepOf, writeDecisions, writePlan } from '../support/panel-host.ts'
 import type { PanelWorld } from '../support/panel-host.ts'
 
-const [layers, purity] = ['Use hexagonal layers', 'Keep core pure'] as const
-const [runner, flag] = ['Pick a test runner', 'Ship behind a flag'] as const
-const architectureTitles = [layers, purity]
-const otherTitles = [runner, flag]
+const runner = 'Pick a test runner'
+const decisionTitlesByStep: Record<string, readonly string[]> = {
+  Planning: [runner],
+  Architecture: ['Use hexagonal layers', 'Keep core pure'],
+  Implementation: ['Ship behind a flag'],
+}
 const noDecisionCopy = 'No decision logged for this step.'
 
 const writeFixture = (world: PanelWorld, steps: readonly [string, string][], decisions: Record<string, unknown>[]): void => {
@@ -24,19 +26,15 @@ const selectExpectedStep = async (world: PanelWorld): Promise<void> => {
 }
 
 Given('decisions exist for several steps', function (this: PanelWorld) {
+  const steps: [string, string][] = [
+    ['s1', 'Planning'],
+    ['s2', 'Architecture'],
+    ['s3', 'Implementation'],
+  ]
   writeFixture(
     this,
-    [
-      ['s1', 'Planning'],
-      ['s2', 'Architecture'],
-      ['s3', 'Implementation'],
-    ],
-    [
-      decisionOf('s1', runner),
-      decisionOf('s2', layers),
-      decisionOf('s3', flag),
-      decisionOf('s2', purity),
-    ],
+    steps,
+    steps.flatMap(([id, title]) => (decisionTitlesByStep[title] ?? []).map((decisionTitle) => decisionOf(id, decisionTitle))),
   )
 })
 
@@ -46,11 +44,15 @@ When('I select the step {string}', async function (this: PanelWorld, title: stri
 })
 
 Then('only decisions made during {string} are listed', function (this: PanelWorld, title: string) {
-  assert.equal(title, this.expectedStep)
-  for (const listed of architectureTitles) {
+  const own = decisionTitlesByStep[title]
+  assert.ok(own !== undefined, `no decisions fixture for "${title}"`)
+  const foreignTitles = Object.entries(decisionTitlesByStep)
+    .filter(([stepName]) => stepName !== title)
+    .flatMap(([, titles]) => titles)
+  for (const listed of own) {
     assert.ok(this.texts.includes(listed), `"${listed}" not in ${JSON.stringify(this.texts)}`)
   }
-  for (const foreign of otherTitles) {
+  for (const foreign of foreignTitles) {
     assert.ok(!this.texts.includes(foreign), `"${foreign}" leaked into ${JSON.stringify(this.texts)}`)
   }
   assert.ok(!this.texts.includes(noDecisionCopy), JSON.stringify(this.texts))
@@ -67,7 +69,7 @@ When('I select its step', async function (this: PanelWorld) {
 
 Then('the decision shows its title, why, rejected options and confidence', function (this: PanelWorld) {
   assert.deepEqual(
-    this.texts.slice(this.texts.indexOf('Design (todo)') + 1),
+    this.texts.slice(this.texts.indexOf(`${this.expectedStep} (todo)`) + 1),
     ['Use zod', 'Why: one schema for both sides', 'Rejected: io-ts · yup', 'Role: architect · Confidence: medium'],
   )
 })

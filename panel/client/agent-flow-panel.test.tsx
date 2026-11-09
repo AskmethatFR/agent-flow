@@ -522,6 +522,16 @@ describe('AgentFlowPanel step detail', () => {
     await panel.unmount()
   })
 
+  it.each(['Design (todo)', '38 min', 'Current'])('selects the step when its row part "%s" is pressed', async (part) => {
+    const row = { ...stepWith('s1', 'Design', [decision()]), timeSpent: { milliseconds: 0, label: '38 min' } }
+    const panel = await renderPanel(async () => snapshotReply({ steps: [row], currentStepId: 's1' }))
+
+    await panel.press(part)
+
+    expect(panel.texts()).toContain('Use zod')
+    await panel.unmount()
+  })
+
   it('strips control characters and bounds title, why, role and the joined rejected options', async () => {
     const hostile = decision({
       title: `\u{202E}${'t'.repeat(300)}`,
