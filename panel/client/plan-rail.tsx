@@ -30,7 +30,10 @@ export const PlanRail = ({ snapshot, textColor, errorColor, accentColor }: PlanR
             )}
             {step.id === snapshot.currentStepId ? <Text style={{ color: accentColor }}>Current</Text> : null}
             {step.id === snapshot.currentStepId && snapshot.currentAgent !== null ? (
-              <Text style={{ color: textColor }}>{`Agent: ${toDisplayText(snapshot.currentAgent.role)} (${snapshot.currentAgent.state})`}</Text>
+              <>
+                <Text style={{ color: textColor }}>{`Agent: ${toDisplayText(snapshot.currentAgent.role)}`}</Text>
+                <Text style={{ color: textColor }}>{snapshot.currentAgent.state}</Text>
+              </>
             ) : null}
           </Pressable>
           {step.id === selectedStepId ? <StepDetail decisions={step.decisions} textColor={textColor} /> : null}

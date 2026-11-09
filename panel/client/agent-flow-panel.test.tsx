@@ -522,7 +522,7 @@ describe('AgentFlowPanel step detail', () => {
     await panel.unmount()
   })
 
-  it.each(['Design (todo)', '38 min', 'Current', 'Agent: dev-a (running)'])('selects the step when its row part "%s" is pressed', async (part) => {
+  it.each(['Design (todo)', '38 min', 'Current', 'Agent: dev-a', 'running'])('selects the step when its row part "%s" is pressed', async (part) => {
     const row = { ...stepWith('s1', 'Design', [decision()]), timeSpent: { milliseconds: 0, label: '38 min' } }
     const currentAgent = { role: 'dev-a', state: 'running' }
     const panel = await renderPanel(async () => snapshotReply({ steps: [row], currentStepId: 's1', currentAgent }))
@@ -614,7 +614,7 @@ describe('AgentFlowPanel current agent', () => {
   it.each(['running', 'stopped', 'unknown'])('shows the role and the %s state right after the Current marker', async (state) => {
     const panel = await renderPanel(async () => withAgent(agentOf(state)))
 
-    expect(panel.texts()).toEqual(['#42', 'Add login', 'Implement (in_progress)', '38 min', 'Current', `Agent: dev-a (${state})`])
+    expect(panel.texts()).toEqual(['#42', 'Add login', 'Implement (in_progress)', '38 min', 'Current', 'Agent: dev-a', state])
     await panel.unmount()
   })
 
@@ -632,25 +632,34 @@ describe('AgentFlowPanel current agent', () => {
     )
 
     const texts = panel.texts()
-    expect(texts.filter((text) => text.startsWith('Agent:'))).toEqual(['Agent: dev-a (running)'])
-    expect(texts.indexOf('Agent: dev-a (running)')).toBe(texts.indexOf('Current') + 1)
+    expect(texts.filter((text) => text.startsWith('Agent:'))).toEqual(['Agent: dev-a'])
+    expect(texts.indexOf('Agent: dev-a')).toBe(texts.indexOf('Current') + 1)
     await panel.unmount()
   })
 
   it('strips control characters from the role and keeps the state visible after a long role', async () => {
-    const hostile = await renderPanel(async () => withAgent(agentOf('running', '‮evil\u0007')))
-    expect(hostile.texts()).toContain('Agent: evil (running)')
+    const hostile = await renderPanel(async () => withAgent(agentOf('running', '\u{202E}evil\u0007')))
+    expect(hostile.texts()).toContain('Agent: evil')
     await hostile.unmount()
 
     const long = await renderPanel(async () => withAgent(agentOf('running', 'r'.repeat(300))))
-    expect(long.texts()).toContain(`Agent: ${'r'.repeat(199)}… (running)`)
+    expect(long.texts()).toContain(`Agent: ${'r'.repeat(199)}…`)
+    expect(long.texts()).toContain('running')
     await long.unmount()
   })
 
-  it('draws the agent line in the foreground colour whatever the state', async () => {
+  it('shows the real state as its own text when the role imitates a state', async () => {
+    const panel = await renderPanel(async () => withAgent(agentOf('stopped', 'dev-a (running)')))
+
+    expect(panel.texts().slice(-2)).toEqual(['Agent: dev-a (running)', 'stopped'])
+    await panel.unmount()
+  })
+
+  it('draws the role and the state in the foreground colour whatever the state', async () => {
     for (const state of ['running', 'stopped', 'unknown']) {
       const panel = await renderPanel(async () => withAgent(agentOf(state)))
-      expect(panel.styleOf(`Agent: dev-a (${state})`)).toEqual({ color: '#fff' })
+      expect(panel.styleOf('Agent: dev-a')).toEqual({ color: '#fff' })
+      expect(panel.styleOf(state)).toEqual({ color: '#fff' })
       await panel.unmount()
     }
   })
@@ -667,14 +676,14 @@ describe('AgentFlowPanel current agent', () => {
       let state = 'running'
       const invoke = vi.fn(async () => withAgent(agentOf(state)))
       const panel = await renderPanel(invoke)
-      expect(panel.texts()).toContain('Agent: dev-a (running)')
+      expect(panel.texts()).toContain('running')
 
       state = 'stopped'
       await settle(2_000)
 
       expect(invoke).toHaveBeenCalledTimes(2)
-      expect(panel.texts()).toContain('Agent: dev-a (stopped)')
-      expect(panel.texts()).not.toContain('Agent: dev-a (running)')
+      expect(panel.texts()).toContain('stopped')
+      expect(panel.texts()).not.toContain('running')
       await panel.unmount()
     })
   })

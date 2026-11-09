@@ -16,10 +16,10 @@ const planWithAgentOn = (world: PanelWorld, role: string, status: string): void 
   world.agentStatus = status
 }
 
-const agentLineAfterCurrent = (world: PanelWorld): string => {
+const agentAfterCurrent = (world: PanelWorld): string[] => {
   const marker = world.texts.indexOf('Current')
   assert.ok(marker >= 0, `no current step in ${JSON.stringify(world.texts)}`)
-  return world.texts[marker + 1] ?? ''
+  return world.texts.slice(marker + 1, marker + 3)
 }
 
 Given('the agent {string} is running on the step in progress', function (this: PanelWorld, role: string) {
@@ -43,14 +43,14 @@ When('the agent stops', async function (this: PanelWorld) {
 })
 
 Then('the current step shows {string} as running', function (this: PanelWorld, role: string) {
-  assert.equal(agentLineAfterCurrent(this), `Agent: ${role} (running)`, JSON.stringify(this.texts))
+  assert.deepEqual(agentAfterCurrent(this), [`Agent: ${role}`, 'running'], JSON.stringify(this.texts))
 })
 
 Then('the current step shows the agent as stopped', function (this: PanelWorld) {
-  assert.equal(agentLineAfterCurrent(this), 'Agent: dev-a (stopped)', JSON.stringify(this.texts))
+  assert.deepEqual(agentAfterCurrent(this), ['Agent: dev-a', 'stopped'], JSON.stringify(this.texts))
 })
 
 Then('the current step shows the agent as stopped without reopening the panel', function (this: PanelWorld) {
-  assert.equal(agentLineAfterCurrent(this), 'Agent: dev-a (stopped)', JSON.stringify(this.texts))
-  assert.ok(!this.texts.includes('Agent: dev-a (running)'), JSON.stringify(this.texts))
+  assert.deepEqual(agentAfterCurrent(this), ['Agent: dev-a', 'stopped'], JSON.stringify(this.texts))
+  assert.ok(!this.texts.includes('running'), JSON.stringify(this.texts))
 })
