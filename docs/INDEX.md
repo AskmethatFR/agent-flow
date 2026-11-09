@@ -81,3 +81,4 @@
 - `features/phase-2/agent-state-rpc.feature` — #41 Agent state in the snapshot: running, host failure keeps the rest, stopped, other worktree ignored (S1-S4)
 - `features/phase-2/time-spent.feature` — #19 Plan rail: time spent per step and the current step marked (S1-S3)
 - `features/phase-2/decisions-per-step.feature` — #20 Step detail: only the selected step's decisions listed with their reasoning, a step without decision says so (S1-S3)
+- `features/phase-2/agent-state.feature` — #21 Agent state: the step in progress shows its agent and whether it is running or stopped, refreshed by polling (S1-S3)
