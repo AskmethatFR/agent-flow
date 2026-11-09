@@ -394,3 +394,203 @@ describe('AgentFlowPanel time spent', () => {
     await panel.unmount()
   })
 })
+
+type DecisionOverrides = Partial<{
+  title: string
+  why: string
+  rejected: string[]
+  role: string
+  confidence: string
+}>
+
+const decision = (overrides: DecisionOverrides = {}) => ({
+  title: 'Use zod',
+  why: 'one schema for both sides',
+  rejected: ['io-ts'],
+  role: 'architect',
+  confidence: 'high',
+  ...overrides,
+})
+
+const stepWith = (id: string, title: string, decisions: ReturnType<typeof decision>[]) => ({
+  ...step(id, title),
+  decisions,
+})
+
+describe('AgentFlowPanel step detail', () => {
+  const twoSteps = () => [
+    stepWith('s1', 'Write tests', [decision({ title: 'Use vitest' }), decision({ title: 'Keep fixtures small' })]),
+    stepWith('s2', 'Implement', [decision({ title: 'Use zod' })]),
+  ]
+
+  it('lists only the decisions of the pressed step', async () => {
+    const panel = await renderPanel(async () => snapshotReply({ steps: twoSteps() }))
+
+    await panel.press('Write tests (todo)')
+
+    const texts = panel.texts()
+    expect(texts).toContain('Use vitest')
+    expect(texts).toContain('Keep fixtures small')
+    expect(texts).not.toContain('Use zod')
+    await panel.unmount()
+  })
+
+  it('shows no detail before any step is pressed', async () => {
+    const panel = await renderPanel(async () => snapshotReply({ steps: twoSteps() }))
+
+    expect(panel.texts()).toEqual(['#42', 'Add login', 'Write tests (todo)', 'Implement (todo)'])
+    await panel.unmount()
+  })
+
+  it('shows title, why, rejected options, role and confidence right under the pressed step', async () => {
+    const full = decision({
+      title: 'Use zod',
+      why: 'one schema for both sides',
+      rejected: ['io-ts', 'yup'],
+      role: 'architect',
+      confidence: 'medium',
+    })
+    const steps = [stepWith('s1', 'Design', [full]), stepWith('s2', 'Implement', [])]
+    const panel = await renderPanel(async () => snapshotReply({ steps }))
+
+    await panel.press('Design (todo)')
+
+    expect(panel.texts()).toEqual([
+      '#42',
+      'Add login',
+      'Design (todo)',
+      'Use zod',
+      'Why: one schema for both sides',
+      'Rejected: io-ts · yup',
+      'Role: architect · Confidence: medium',
+      'Implement (todo)',
+    ])
+    await panel.unmount()
+  })
+
+  it('omits the rejected line when no option was rejected', async () => {
+    const steps = [stepWith('s1', 'Design', [decision({ rejected: [] })])]
+    const panel = await renderPanel(async () => snapshotReply({ steps }))
+
+    await panel.press('Design (todo)')
+
+    expect(panel.texts().filter((text) => text.startsWith('Rejected'))).toEqual([])
+    await panel.unmount()
+  })
+
+  it('lists every decision of the step in the order given', async () => {
+    const steps = [stepWith('s1', 'Design', [decision({ title: 'Second thought' }), decision({ title: 'First thought' })])]
+    const panel = await renderPanel(async () => snapshotReply({ steps }))
+
+    await panel.press('Design (todo)')
+
+    const texts = panel.texts()
+    expect(texts.indexOf('Second thought')).toBeGreaterThan(-1)
+    expect(texts.indexOf('Second thought')).toBeLessThan(texts.indexOf('First thought'))
+    await panel.unmount()
+  })
+
+  it('states that no decision was logged for a pressed step without decisions', async () => {
+    const panel = await renderPanel(async () => snapshotReply({ steps: twoSteps().concat(stepWith('s3', 'Open PR', [])) }))
+
+    await panel.press('Open PR (todo)')
+
+    const texts = panel.texts()
+    expect(texts).toContain('No decision logged for this step.')
+    expect(texts).not.toContain('Use vitest')
+    await panel.unmount()
+  })
+
+  it('does not state that no decision was logged for a step that has some', async () => {
+    const panel = await renderPanel(async () => snapshotReply({ steps: twoSteps() }))
+
+    await panel.press('Write tests (todo)')
+
+    expect(panel.texts()).not.toContain('No decision logged for this step.')
+    await panel.unmount()
+  })
+
+  it('shows the decisions of the last pressed step only', async () => {
+    const panel = await renderPanel(async () => snapshotReply({ steps: twoSteps() }))
+
+    await panel.press('Write tests (todo)')
+    await panel.press('Implement (todo)')
+
+    const texts = panel.texts()
+    expect(texts).toContain('Use zod')
+    expect(texts).not.toContain('Use vitest')
+    await panel.unmount()
+  })
+
+  it('strips control characters and bounds title, why, role and the joined rejected options', async () => {
+    const hostile = decision({
+      title: `\u{202E}${'t'.repeat(300)}`,
+      why: `\u{202E}${'w'.repeat(300)}`,
+      rejected: ['a'.repeat(150), `\u{202E}${'b'.repeat(150)}`],
+      role: `\u{202E}${'r'.repeat(300)}`,
+    })
+    const panel = await renderPanel(async () => snapshotReply({ steps: [stepWith('s1', 'Design', [hostile])] }))
+
+    await panel.press('Design (todo)')
+
+    const texts = panel.texts()
+    expect(texts).toContain(`${'t'.repeat(199)}…`)
+    expect(texts).toContain(`Why: ${'w'.repeat(199)}…`)
+    expect(texts).toContain(`Rejected: ${'a'.repeat(150)} · ${'b'.repeat(46)}…`)
+    expect(texts).toContain(`Role: ${'r'.repeat(199)}… · Confidence: high`)
+    await panel.unmount()
+  })
+
+  it('draws every detail line in the foreground colour', async () => {
+    const steps = [stepWith('s1', 'Design', [decision()]), stepWith('s2', 'Open PR', [])]
+    const panel = await renderPanel(async () => snapshotReply({ steps }))
+
+    await panel.press('Design (todo)')
+    await panel.press('Open PR (todo)')
+
+    expect(panel.styleOf('No decision logged for this step.')?.color).toBe('#fff')
+    await panel.press('Design (todo)')
+    for (const line of ['Use zod', 'Why: one schema for both sides', 'Rejected: io-ts', 'Role: architect · Confidence: high']) {
+      expect(panel.styleOf(line)?.color).toBe('#fff')
+    }
+    await panel.unmount()
+  })
+
+  describe('across polls and workspaces', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('keeps the selection and shows the decisions of the next snapshot', async () => {
+      let title = 'Use vitest'
+      const invoke = vi.fn(async () => snapshotReply({ steps: [stepWith('s1', 'Design', [decision({ title })])] }))
+      const panel = await renderPanel(invoke)
+      await panel.press('Design (todo)')
+      expect(panel.texts()).toContain('Use vitest')
+
+      title = 'Use jest'
+      await settle(2_000)
+
+      expect(invoke).toHaveBeenCalledTimes(2)
+      expect(panel.texts()).toContain('Use jest')
+      expect(panel.texts()).not.toContain('Use vitest')
+      await panel.unmount()
+    })
+
+    it('forgets the selection when the workspace changes', async () => {
+      const invoke = vi.fn(async () => snapshotReply({ steps: [stepWith('s1', 'Design', [decision()])] }))
+      const panel = await renderPanel(invoke, { workspaceId: 'w1' })
+      await panel.press('Design (todo)')
+      expect(panel.texts()).toContain('Use zod')
+
+      await panel.update('w2')
+
+      expect(panel.texts()).not.toContain('Use zod')
+      expect(panel.texts()).toContain('Design (todo)')
+      await panel.unmount()
+    })
+  })
+})
