@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { fileURLToPath } from 'node:url'
-import { register } from 'tsx/esm/api'
+
+process.env.TSX_DISABLE_CACHE = '1'
+const { register } = await import('tsx/esm/api')
 
 register({ tsconfig: fileURLToPath(new URL('../../../tsconfig.json', import.meta.url)) })
 

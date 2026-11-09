@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -38,6 +38,26 @@ describe.each(['agent-flow-plan', 'agent-flow-decision', 'agent-flow-check'])(
 
         expect(result.stderr).toMatch(new RegExp(`^usage: ${name} `))
         expect(result.status).toBe(2)
+      },
+    )
+
+    it(
+      'keeps the tsx cache out of the shared temporary directory',
+      { timeout: 30_000 },
+      () => {
+        const scratch = join(hostileCwd, 'scratch-tmp')
+        mkdirSync(scratch)
+
+        const result = spawnSync(process.execPath, [join(binDirectory, `${name}.mjs`)], {
+          cwd: hostileCwd,
+          encoding: 'utf8',
+          timeout: 25_000,
+          env: { ...process.env, TSX_DISABLE_CACHE: undefined, TMPDIR: scratch },
+        })
+
+        expect(result.status).toBe(2)
+        const cached = readdirSync(scratch, { recursive: true, withFileTypes: true }).filter((entry) => entry.isFile())
+        expect(cached.map((entry) => join(entry.parentPath, entry.name))).toEqual([])
       },
     )
   },

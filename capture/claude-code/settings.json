@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${AGENT_FLOW_HOME:?}/node_modules/.bin/tsx\" --tsconfig \"${AGENT_FLOW_HOME:?}/tsconfig.json\" \"${AGENT_FLOW_HOME:?}/capture/claude-code/src/step-timing/hook.ts\"",
+            "command": "\"${AGENT_FLOW_HOME:?}/node_modules/.bin/tsx\" --no-cache --tsconfig \"${AGENT_FLOW_HOME:?}/tsconfig.json\" \"${AGENT_FLOW_HOME:?}/capture/claude-code/src/step-timing/hook.ts\"",
             "timeout": 10
           }
         ]

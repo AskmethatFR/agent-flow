@@ -60,12 +60,15 @@ const run = (
     env: { ...process.env, CLAUDE_PROJECT_DIR: undefined, ...env },
   })
 
-const registeredCommand: string = JSON.parse(readFileSync(settingsPath, 'utf8')).hooks.PostToolUse[0].hooks[0].command
+const registeredHook = JSON.parse(readFileSync(settingsPath, 'utf8')).hooks.PostToolUse[0].hooks[0]
+const registeredCommand: string = registeredHook.command
+const registeredTimeoutSeconds: number = registeredHook.timeout
 
-const runRegistered = (input: string, cwd: string, env: Record<string, string | undefined> = {}) =>
+const runRegistered = (input: string, cwd: string, env: Record<string, string | undefined> = {}, timeout?: number) =>
   spawnSync('sh', ['-c', registeredCommand], {
     cwd,
     input,
+    timeout,
     encoding: 'utf8',
     env: { ...process.env, AGENT_FLOW_HOME: repo, CLAUDE_PROJECT_DIR: worktree, ...env },
   })
@@ -158,7 +161,7 @@ describe('hook registration', () => {
       {
         type: 'command',
         command:
-          '"${AGENT_FLOW_HOME:?}/node_modules/.bin/tsx" --tsconfig "${AGENT_FLOW_HOME:?}/tsconfig.json" "${AGENT_FLOW_HOME:?}/capture/claude-code/src/step-timing/hook.ts"',
+          '"${AGENT_FLOW_HOME:?}/node_modules/.bin/tsx" --no-cache --tsconfig "${AGENT_FLOW_HOME:?}/tsconfig.json" "${AGENT_FLOW_HOME:?}/capture/claude-code/src/step-timing/hook.ts"',
         timeout: 10,
       },
     ])
@@ -195,6 +198,22 @@ describe('registered command hardening', { timeout: 30_000 }, () => {
     expect(result.status).toBe(0)
     expect(result.stdout).toBe('')
     expect(result.stderr).toBe('')
+    expect(JSON.parse(readFileSync(planPath, 'utf8')).steps[1].status).toBe('in_progress')
+  })
+
+  it('keeps the tsx cache out of the shared temporary directory', () => {
+    const scratch = join(root, 'scratch-tmp')
+    mkdirSync(scratch)
+    const result = runRegistered(taskUpdate('2', 'in_progress'), worktree, { TSX_DISABLE_CACHE: undefined, TMPDIR: scratch })
+    expect(result.status).toBe(0)
+    const cached = readdirSync(scratch, { recursive: true, withFileTypes: true }).filter((entry) => entry.isFile())
+    expect(cached.map((entry) => join(entry.parentPath, entry.name))).toEqual([])
+  })
+
+  it('completes a real payload inside the timeout the registration declares', () => {
+    const result = runRegistered(taskUpdate('2', 'in_progress'), worktree, {}, registeredTimeoutSeconds * 1000)
+    expect(result.error).toBeUndefined()
+    expect(result.status).toBe(0)
     expect(JSON.parse(readFileSync(planPath, 'utf8')).steps[1].status).toBe('in_progress')
   })
 
