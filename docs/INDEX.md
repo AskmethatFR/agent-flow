@@ -62,8 +62,8 @@
 
 | ID | Title | Status | Updated | Links | Path |
 |---|---|---|---|---|---|
-| `feature-catalog` | Capabilities: contracts, snapshot, decisions, plan writer, contract check, agent display state | current | 2026-11-07 | `glossary`, `real-issue-run` | `docs/functional/features.md` |
-| `glossary` | Ubiquitous language: decision, snapshot, time spent, plan writer, contract check, current agent | current | 2026-11-07 | `feature-catalog` | `docs/functional/glossary.md` |
+| `feature-catalog` | Capabilities: contracts, snapshot, decisions, plan writer, contract check, agent display state | current | 2026-11-09 | `glossary`, `real-issue-run` | `docs/functional/features.md` |
+| `glossary` | Ubiquitous language: decision, snapshot, time spent, plan writer, contract check, current agent | current | 2026-11-09 | `feature-catalog` | `docs/functional/glossary.md` |
 
 - `features/phase-0/plan-contract.feature` — #23 Frozen data contracts: plan.json schema (S1, S2)
 - `features/phase-0/decisions-contract.feature` — #32 Frozen data contracts: decisions.jsonl schema and reader (S1, S2)
