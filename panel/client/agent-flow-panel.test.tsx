@@ -522,9 +522,10 @@ describe('AgentFlowPanel step detail', () => {
     await panel.unmount()
   })
 
-  it.each(['Design (todo)', '38 min', 'Current'])('selects the step when its row part "%s" is pressed', async (part) => {
+  it.each(['Design (todo)', '38 min', 'Current', 'Agent: dev-a (running)'])('selects the step when its row part "%s" is pressed', async (part) => {
     const row = { ...stepWith('s1', 'Design', [decision()]), timeSpent: { milliseconds: 0, label: '38 min' } }
-    const panel = await renderPanel(async () => snapshotReply({ steps: [row], currentStepId: 's1' }))
+    const currentAgent = { role: 'dev-a', state: 'running' }
+    const panel = await renderPanel(async () => snapshotReply({ steps: [row], currentStepId: 's1', currentAgent }))
 
     await panel.press(part)
 
@@ -600,6 +601,80 @@ describe('AgentFlowPanel step detail', () => {
 
       expect(panel.texts()).not.toContain('Use zod')
       expect(panel.texts()).toContain('Design (todo)')
+      await panel.unmount()
+    })
+  })
+})
+
+describe('AgentFlowPanel current agent', () => {
+  const inProgress = step('s1', 'Implement', 'in_progress', { milliseconds: 38 * 60_000, label: '38 min' })
+  const agentOf = (state: string, role = 'dev-a') => ({ role, state })
+  const withAgent = (currentAgent: unknown) => snapshotReply({ steps: [inProgress], currentStepId: 's1', currentAgent })
+
+  it.each(['running', 'stopped', 'unknown'])('shows the role and the %s state right after the Current marker', async (state) => {
+    const panel = await renderPanel(async () => withAgent(agentOf(state)))
+
+    expect(panel.texts()).toEqual(['#42', 'Add login', 'Implement (in_progress)', '38 min', 'Current', `Agent: dev-a (${state})`])
+    await panel.unmount()
+  })
+
+  it('shows no agent line and keeps the row intact when the snapshot has no current agent', async () => {
+    const panel = await renderPanel(async () => withAgent(null))
+
+    expect(panel.texts()).toEqual(['#42', 'Add login', 'Implement (in_progress)', '38 min', 'Current'])
+    await panel.unmount()
+  })
+
+  it('shows the agent on the current step only', async () => {
+    const steps = [step('s1', 'First', 'done'), step('s2', 'Second', 'in_progress')]
+    const panel = await renderPanel(async () =>
+      snapshotReply({ steps, currentStepId: 's2', currentAgent: agentOf('running') }),
+    )
+
+    const texts = panel.texts()
+    expect(texts.filter((text) => text.startsWith('Agent:'))).toEqual(['Agent: dev-a (running)'])
+    expect(texts.indexOf('Agent: dev-a (running)')).toBe(texts.indexOf('Current') + 1)
+    await panel.unmount()
+  })
+
+  it('strips control characters from the role and keeps the state visible after a long role', async () => {
+    const hostile = await renderPanel(async () => withAgent(agentOf('running', '‮evil\u0007')))
+    expect(hostile.texts()).toContain('Agent: evil (running)')
+    await hostile.unmount()
+
+    const long = await renderPanel(async () => withAgent(agentOf('running', 'r'.repeat(300))))
+    expect(long.texts()).toContain(`Agent: ${'r'.repeat(199)}… (running)`)
+    await long.unmount()
+  })
+
+  it('draws the agent line in the foreground colour whatever the state', async () => {
+    for (const state of ['running', 'stopped', 'unknown']) {
+      const panel = await renderPanel(async () => withAgent(agentOf(state)))
+      expect(panel.styleOf(`Agent: dev-a (${state})`)).toEqual({ color: '#fff' })
+      await panel.unmount()
+    }
+  })
+
+  describe('across polls', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('shows the new state after the next poll without reopening the panel', async () => {
+      let state = 'running'
+      const invoke = vi.fn(async () => withAgent(agentOf(state)))
+      const panel = await renderPanel(invoke)
+      expect(panel.texts()).toContain('Agent: dev-a (running)')
+
+      state = 'stopped'
+      await settle(2_000)
+
+      expect(invoke).toHaveBeenCalledTimes(2)
+      expect(panel.texts()).toContain('Agent: dev-a (stopped)')
+      expect(panel.texts()).not.toContain('Agent: dev-a (running)')
       await panel.unmount()
     })
   })

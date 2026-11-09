@@ -17,6 +17,7 @@ export type PanelWorld = {
   expectedStep: string
   expectedField: string
   now?: Date
+  agentStatus?: string
 }
 
 const workspaceId = 'w1'
@@ -79,7 +80,14 @@ const hostInvoke = (world: PanelWorld) => {
   const workspaces = {
     ref: () => ({ refresh: async () => ({ project: { checkout: { worktreeRoot: world.root } } }) }),
   }
-  const agents = { list: async () => ({ entries: [] }) }
+  const agents = {
+    list: async () => ({
+      entries:
+        world.agentStatus === undefined
+          ? []
+          : [{ agent: { status: world.agentStatus }, project: { checkout: { worktreeRoot: world.root } } }],
+    }),
+  }
   return async (_method: string, input: unknown) => handler!(input, { paseo: { workspaces, agents } })
 }
 
