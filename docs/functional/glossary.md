@@ -18,6 +18,7 @@ answers:
   - "What do current agent and display state mean?"
   - "What is the OpenCode launcher?"
 decided_in:
+  - "#21"
   - "#83"
   - "#40"
   - "#32"
@@ -52,8 +53,8 @@ decided_in:
 | **step decisions** | The records of `decisions.jsonl` whose step is that plan step, in log order; none when no record names it. In the snapshot every record counts, whatever its kind, and the step detail shows each of them as a decision (see Open questions). A record naming a step absent from the plan belongs to no step and is reported. |
 | **time spent** | How long a plan step has taken: in progress, up to now; done, from start to end; to do, none. Also none whenever a timestamp cannot be trusted. Rounded down to the minute. |
 | **current step** | The in-progress plan step that started last (first in plan order on a tie); none when nothing is in progress. |
-| **current agent** | The agent working on the current step, shown as its role and its display state. None when no agent runs on the worktree, no step is in progress, or the plan is unusable. |
-| **display state** | How the panel shows an agent: `running`, `stopped` or `unknown`. Core derives it from the host's raw status; the panel never maps it. |
+| **current agent** | The agent working on the current step, shown on the plan rail under that step as its role and, on its own line, its display state. None, and nothing shown, when no agent runs on the worktree, no step is in progress, or the plan is unusable. |
+| **display state** | How the panel shows an agent: `running`, `stopped` (an idle or errored host agent) or `unknown`. Core derives it from the host's raw status; the panel never maps it, and it follows the panel's polling. |
 | **step event** | The start or the finish of a plan step at a given time, as seen by capture. Not the `step_event` kind of a decision record, which is a log entry. |
 | **plan writer** | The part of capture that applies a step event to a worktree's plan and stores the result in that worktree's `.agent-flow/plan.json`, and nowhere else. It never creates a first plan and never keeps a plan that fails its contract. |
 | **request** | One record, in `requests.jsonl`, of something a role needs from outside the plan: a question, an added step, or work found out of scope or out of spec. Has an id, a request type and a blocking flag. |

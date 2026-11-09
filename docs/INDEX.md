@@ -4,6 +4,7 @@
 
 | ID | Title | Status | Updated | Links | Path |
 |---|---|---|---|---|---|
+| `panel-agent-state` | Panel agent state: role and state as two elements, no mapping, AC4 guard | current | 2026-11-09 | [[snapshot-agent-state]], [[snapshot-agent-status-read]], [[host-adapter-boundary]], [[snapshot-contract]], [[snapshot-rpc]] | `docs/technical/decisions/panel-agent-state.md` |
 | `plan-writer-confinement` | Plan writer: confinement chain, atomic replace, reader contract | current | 2026-10-31 | [[host-adapter-boundary]], [[workspace-layout-core-boundary]], [[capture-events]], [[snapshot-contract]] | `docs/technical/decisions/plan-writer-confinement.md` |
 | `request-scope-contracts` | Frozen requests/responses/scope contracts: id bound, glob dialect, path rules | current | 2026-11-02 | [[decisions-jsonl-schema]], [[scope-origin]], [[paseo-messaging]], [[host-adapter-boundary]], [[workspace-layout-core-boundary]] | `docs/technical/decisions/request-scope-contracts.md` |
 | `snapshot-agent-state` | Snapshot agent state: raw status in, display state and current agent out | current | 2026-11-07 | [[snapshot-contract]], [[host-adapter-boundary]], [[paseo-agent-state]], [[snapshot-rpc]], [[snapshot-decisions]] | `docs/technical/decisions/snapshot-agent-state.md` |
