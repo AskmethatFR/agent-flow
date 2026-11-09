@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
+import { rmSync } from 'node:fs'
 import { Given, Then, When } from '@cucumber/cucumber'
+import { MAX_DECISIONS_PER_STEP } from '@agent-flow/core/snapshot'
 import { decisionOf, openPanel, selectStep, stepOf, writeDecisions, writePlan } from '../support/panel-host.ts'
 import type { PanelWorld } from '../support/panel-host.ts'
 
@@ -93,4 +95,63 @@ When('I select it', async function (this: PanelWorld) {
 Then('the step detail states that no decision was logged', function (this: PanelWorld) {
   assert.ok(this.texts.includes(noDecisionCopy), JSON.stringify(this.texts))
   assert.ok(!this.texts.includes(runner), JSON.stringify(this.texts))
+})
+
+const omittedDecisions = 3
+const busyTitles = Array.from({ length: MAX_DECISIONS_PER_STEP + omittedDecisions }, (_, index) => `Busy ${index}`)
+const quietTitles = Array.from({ length: MAX_DECISIONS_PER_STEP - 1 }, (_, index) => `Quiet ${index}`)
+const omittedMarker = (count: number): string => `Decisions not shown: ${count}`
+
+const decisionsOfStep = (stepId: string, titles: readonly string[]): Record<string, unknown>[] =>
+  titles.map((title) => decisionOf(stepId, title))
+
+const rewriteFixture = (world: PanelWorld, steps: readonly [string, string][], decisions: Record<string, unknown>[]): void => {
+  if (world.root) rmSync(world.root, { recursive: true, force: true })
+  writeFixture(world, steps, decisions)
+}
+
+Given('a step with more decisions than the cap', function (this: PanelWorld) {
+  this.expectedStep = 'Busy'
+  writeFixture(this, [['s1', 'Busy']], decisionsOfStep('s1', busyTitles))
+})
+
+Given('another step with fewer decisions than the cap', function (this: PanelWorld) {
+  rewriteFixture(
+    this,
+    [
+      ['s1', 'Busy'],
+      ['s2', 'Quiet'],
+    ],
+    [...decisionsOfStep('s1', busyTitles), ...decisionsOfStep('s2', quietTitles)],
+  )
+})
+
+When('I select the other step', async function (this: PanelWorld) {
+  this.expectedStep = 'Quiet'
+  await selectExpectedStep(this)
+})
+
+Then('the step detail lists exactly the first decisions up to the cap, in file order', function (this: PanelWorld) {
+  assert.deepEqual(
+    this.texts.filter((text) => /^Busy \d+$/.test(text)),
+    busyTitles.slice(0, MAX_DECISIONS_PER_STEP),
+  )
+})
+
+Then('it shows one marker saying how many decisions were left out', function (this: PanelWorld) {
+  assert.deepEqual(
+    this.texts.filter((text) => text.startsWith('Decisions not shown')),
+    [omittedMarker(busyTitles.length - MAX_DECISIONS_PER_STEP)],
+  )
+})
+
+Then('all of its decisions are listed and no marker is shown', function (this: PanelWorld) {
+  assert.deepEqual(
+    this.texts.filter((text) => /^Quiet \d+$/.test(text)),
+    quietTitles,
+  )
+  assert.deepEqual(
+    this.texts.filter((text) => text.startsWith('Decisions not shown')),
+    [],
+  )
 })

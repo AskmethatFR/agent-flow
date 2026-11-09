@@ -24,6 +24,7 @@ const SnapshotStepSchema = z.object({
   origin: z.enum(['planned', 'proposed']),
   timeSpent: z.object({ milliseconds: z.number(), label: z.string() }).readonly().nullable(),
   decisions: z.array(SnapshotDecisionSchema).readonly(),
+  omittedDecisions: z.number().int().nonnegative(),
 }).readonly()
 
 export const SnapshotSchema = z.object({

@@ -10,6 +10,7 @@ const step = (id: string, title: string, status = 'todo', timeSpent: { milliseco
   origin: 'planned',
   timeSpent,
   decisions: [],
+  omittedDecisions: 0,
 })
 
 const snapshotReply = (overrides: Record<string, unknown> = {}) => ({
@@ -498,6 +499,27 @@ describe('AgentFlowPanel step detail', () => {
     const texts = panel.texts()
     expect(texts).toContain('No decision logged for this step.')
     expect(texts).not.toContain('Use vitest')
+    await panel.unmount()
+  })
+
+  it('shows one marker with the count of omitted decisions under the listed ones', async () => {
+    const capped = { ...stepWith('s1', 'Design', [decision({ title: 'Use zod' })]), omittedDecisions: 7 }
+    const panel = await renderPanel(async () => snapshotReply({ steps: [capped] }))
+
+    await panel.press('Design (todo)')
+
+    const texts = panel.texts()
+    expect(texts.filter((text) => text.startsWith('Decisions not shown'))).toEqual(['Decisions not shown: 7'])
+    expect(texts.indexOf('Decisions not shown: 7')).toBeGreaterThan(texts.indexOf('Use zod'))
+    await panel.unmount()
+  })
+
+  it('shows no omitted-decisions marker when none were omitted', async () => {
+    const panel = await renderPanel(async () => snapshotReply({ steps: twoSteps() }))
+
+    await panel.press('Write tests (todo)')
+
+    expect(panel.texts().some((text) => text.startsWith('Decisions not shown'))).toBe(false)
     await panel.unmount()
   })
 
