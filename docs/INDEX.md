@@ -52,6 +52,9 @@
 | `ci-pull-request-posture` | CI posture on pull requests (`ci`, `bdd`) | current | 2026-10-26 | [[workspace-layout-core-boundary]] | `docs/technical/decisions/ci-pull-request-posture.md` |
 | `host-adapter-boundary` | Host-adapter boundary between core and each host (plan.md Q7) | current | 2026-11-02 | [[workspace-layout-core-boundary]], [[paseo-api-version]], [[paseo-agent-state]], [[paseo-messaging]], [[capture-events]], [[scope-origin]] | `docs/technical/decisions/host-adapter-boundary.md` |
 | `workspace-layout-core-boundary` | Workspace layout and the core import boundary | current | 2026-11-02 | [[capture-events]] | `docs/technical/decisions/workspace-layout-core-boundary.md` |
+| `follow-issue-run` | Follow-issue run: Paseo launch, per-fact verdicts, evidence | current | 2026-11-09 | [[real-issue-run]], [[paseo-agent-state]], [[snapshot-agent-status-read]], [[panel-agent-state]], [[paseo-api-version]] | `docs/technical/paseo/follow-issue-run.md` |
+
+- `features/phase-2/follow-issue.feature` — #22 Follow an issue end to end, run by hand (`@manual`): a real issue is followed from the panel only, with the current step and its time, every decision and the agent state visible (S1)
 
 ## T5
 
