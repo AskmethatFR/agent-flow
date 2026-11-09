@@ -204,7 +204,7 @@ describe('registered command hardening', { timeout: 30_000 }, () => {
   it('keeps the tsx cache out of the shared temporary directory', () => {
     const scratch = join(root, 'scratch-tmp')
     mkdirSync(scratch)
-    const result = runRegistered(taskUpdate('2', 'in_progress'), worktree, { TMPDIR: scratch })
+    const result = runRegistered(taskUpdate('2', 'in_progress'), worktree, { TSX_DISABLE_CACHE: undefined, TMPDIR: scratch })
     expect(result.status).toBe(0)
     const cached = readdirSync(scratch, { recursive: true, withFileTypes: true }).filter((entry) => entry.isFile())
     expect(cached.map((entry) => join(entry.parentPath, entry.name))).toEqual([])

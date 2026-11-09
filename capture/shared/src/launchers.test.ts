@@ -52,7 +52,7 @@ describe.each(['agent-flow-plan', 'agent-flow-decision', 'agent-flow-check'])(
           cwd: hostileCwd,
           encoding: 'utf8',
           timeout: 25_000,
-          env: { ...process.env, TMPDIR: scratch },
+          env: { ...process.env, TSX_DISABLE_CACHE: undefined, TMPDIR: scratch },
         })
 
         expect(result.status).toBe(2)

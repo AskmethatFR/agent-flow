@@ -32,7 +32,13 @@ const hook = (world: ConfinementWorld): SpawnSyncReturns<string> =>
     cwd: world.worktree,
     input: taskUpdate,
     encoding: 'utf8',
-    env: { ...process.env, AGENT_FLOW_HOME: repo, CLAUDE_PROJECT_DIR: world.worktree, TMPDIR: world.sharedTemporaryDirectory },
+    env: {
+      ...process.env,
+      TSX_DISABLE_CACHE: undefined,
+      AGENT_FLOW_HOME: repo,
+      CLAUDE_PROJECT_DIR: world.worktree,
+      TMPDIR: world.sharedTemporaryDirectory,
+    },
   })
 
 const launcher =
@@ -41,7 +47,7 @@ const launcher =
     spawnSync(process.execPath, [join(repo, 'capture/shared/bin', `${name}.mjs`)], {
       cwd: world.worktree,
       encoding: 'utf8',
-      env: { ...process.env, TMPDIR: world.sharedTemporaryDirectory },
+      env: { ...process.env, TSX_DISABLE_CACHE: undefined, TMPDIR: world.sharedTemporaryDirectory },
     })
 
 const entryPoints: Readonly<Record<string, { run: (world: ConfinementWorld) => SpawnSyncReturns<string>; status: number }>> = {
