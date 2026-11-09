@@ -78,3 +78,4 @@
 - `features/phase-2/snapshot-decisions.feature` — #39 Core snapshot: decisions grouped by step, malformed line reported (S1-S3)
 - `features/phase-2/agent-state-mapping.feature` — #40 Display state of the agent on the current step: running, stopped, unknown, no current agent (S1-S4)
 - `features/phase-2/time-spent.feature` — #19 Plan rail: time spent per step and the current step marked (S1-S3)
+- `features/phase-2/decisions-per-step.feature` — #20 Step detail: only the selected step's decisions listed with their reasoning, a step without decision says so (S1-S3)
