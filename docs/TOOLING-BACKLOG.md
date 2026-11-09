@@ -69,3 +69,29 @@ script, so the Dev lane ran scoped tests with `npx vitest run <file>` and the
 audit read its reds as `unknown`/`unattributed` (`shape-mismatch`). Same
 cause as the entry above: the wrapper does not find the vitest root of this
 repo.
+
+## 2026-11-09 — tower seeds `.agent-flow/plan.json` at worker start (needed by #78 AC10-AC14)
+
+The repo side shipped on #78: `agent-flow-plan` exits 3 on another issue's plan,
+leaves a same-issue plan untouched (exit 0), exits 1 on invalid input, 2 on usage.
+The tower side lives in `/home/dev/.claude/lib/tower.py` (with `team_queue.py` and
+`PROTOCOL.md` § "Control tower"), outside this repo, and no scenario here can run it.
+To deliver there:
+
+- Install signal: `AGENT_FLOW_HOME` set and non-empty in the tower's environment;
+  unset or empty means no seed and an unchanged start (AC14). A global export seeds
+  every project the tower starts, and the variable must name a checkout no worker
+  slot can write to.
+- Order: after the slot is ready, before the workspace is created and before the
+  agent's first prompt (AC10). A failed seed starts no agent, counts no worker, and
+  reports the worker as `unknown: seed-failed` (AC12).
+- Call `node <AGENT_FLOW_HOME>/capture/shared/bin/agent-flow-plan.mjs <slot> <n> <title>`
+  from the Agent Flow checkout, never the copy in the slot (no dependencies installed).
+  The title comes from the issue list the tower already reads, goes in as one argv
+  element (no shell) and is never printed or sent.
+- Exit 0 proceeds; exit 3 is "a plan exists": proceed only when it names the same
+  issue (the launcher already returns 0 for that case), so exit 3 means another
+  issue's plan and the worker is `unknown: seed-failed`. The tower never parses stderr.
+  Exit 1 covers invalid input and crashes alike, so it cannot tell them apart.
+- Follow-up: clearing a finished ticket's `.agent-flow/` so a slot can be reused for
+  the next ticket.
