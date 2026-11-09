@@ -24,6 +24,7 @@ type PlanSeedingWorld = {
   before: Map<string, string>
   result: ValidationResult
   exitCode: number | null
+  stderr: string
   runtime: ItemRuntime
   item: string
   taskIds: Map<string, string>
@@ -219,9 +220,13 @@ When(
   'the tower runs agent-flow-plan on the worktree with issue {string} and title {string}',
   function (this: PlanSeedingWorld, issue: string, title: string): void {
     const launcher = fileURLToPath(new URL('../../capture/shared/bin/agent-flow-plan.mjs', import.meta.url))
-    const run = spawnSync(process.execPath, [launcher, this.worktree, issue, title], { cwd: this.root })
+    const run = spawnSync(process.execPath, [launcher, this.worktree, issue, title], {
+      cwd: this.root,
+      encoding: 'utf8',
+    })
     assert.equal(run.error, undefined)
     this.exitCode = run.status
+    this.stderr = run.stderr
   },
 )
 
@@ -234,8 +239,10 @@ Then('the launcher exits with code {int}', function (this: PlanSeedingWorld, cod
 })
 
 Then('the launcher exits with a non-zero code other than 3', function (this: PlanSeedingWorld): void {
-  assert.notEqual(this.exitCode, 0)
-  assert.notEqual(this.exitCode, 3)
+  assert.equal(this.exitCode, 1)
+  const [refusal] = JSON.parse(this.stderr).errors
+  assert.equal(refusal.file, 'plan.json')
+  assert.ok(['issue', 'title'].includes(refusal.field), `unexpected refusal field ${refusal.field}`)
 })
 
 Then('the worktree has no plan.json', function (this: PlanSeedingWorld): void {
@@ -248,6 +255,7 @@ const outsideAgentFlow = (snapshot: Map<string, string>): Map<string, string> =>
 Then(
   "nothing outside the worktree's .agent-flow directory has changed",
   function (this: PlanSeedingWorld): void {
+    assert.deepEqual(this.result, { accepted: true })
     assert.deepEqual(outsideAgentFlow(snapshotOf(this.root)), outsideAgentFlow(this.before))
   },
 )

@@ -241,6 +241,20 @@ describe('seedPlan', () => {
       expect(seederWith({ linkSync: failure })(worktree, issue, title)).toEqual(refused('cannot be written'))
     })
 
+    it('refuses to trust a plan whose .agent-flow was swapped for a link after the plan was found', () => {
+      givenPlan(existing)
+      const moved = join(root, 'moved')
+      const swapAfterFound = ((from: string, to: string) => {
+        renameSync(agentFlow, moved)
+        symlinkSync(moved, agentFlow)
+        linkSync(from, to)
+      }) as typeof linkSync
+
+      const result = seederWith({ linkSync: swapAfterFound })(worktree, issue, title)
+
+      expect(result).toEqual(refused('.agent-flow must be a real directory'))
+    })
+
     it('accepts it when the seed is retried after a first success', () => {
       seedPlan(worktree, issue, title)
 

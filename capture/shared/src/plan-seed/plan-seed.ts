@@ -1,12 +1,12 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { validatePlan } from '@agent-flow/core/contracts'
 import type { ValidationResult } from '@agent-flow/core/contracts'
-import { createPlan } from '@agent-flow/core/lifecycle'
-import { createAtomically } from '../shared/atomic-write'
+import { createPlan, planNamesIssue } from '@agent-flow/core/lifecycle'
+import { alreadyExists, createAtomically } from '../shared/atomic-write'
 import type { CreateIo } from '../shared/atomic-write'
 import {
   attempt,
+  confirmAgentFlowDirectory,
   inspectAgentFlowDirectory,
   isConfinableWorktree,
   readPlan,
@@ -22,15 +22,11 @@ type Seeder = (worktree: string, issue: string, title: string) => ValidationResu
 const refuse = refusalFor('plan.json')
 
 export const isExistingPlanRefusal = (result: ValidationResult): boolean =>
-  !result.accepted && result.errors.map((error) => error.message).includes('already exists')
+  !result.accepted && result.errors.map((error) => error.message).includes(alreadyExists)
 
 const namesIssue = (io: ReadIo, planPath: string, issue: string): boolean => {
   const existing = readPlan(io, planPath)
-  return (
-    'text' in existing &&
-    validatePlan(existing.text).accepted &&
-    JSON.parse(existing.text).issue === issue
-  )
+  return 'text' in existing && planNamesIssue(existing.text, issue)
 }
 
 export function createPlanSeeder(io: PlanSeederIo): Seeder {
@@ -48,8 +44,9 @@ export function createPlanSeeder(io: PlanSeederIo): Seeder {
     if (directoryRefusal !== undefined) return directoryRefusal
     const planPath = join(directory, 'plan.json')
     const created = createAtomically(io, directory, planPath, plan.plan, 0o666)
-    return isExistingPlanRefusal(created) && namesIssue(io, planPath, `#${issue}`)
-      ? { accepted: true }
-      : created
+    if (!isExistingPlanRefusal(created)) return created
+    const unconfirmed = confirmAgentFlowDirectory(directory, refuse)
+    if (unconfirmed !== undefined) return unconfirmed
+    return namesIssue(io, planPath, issue) ? { accepted: true } : created
   }
 }

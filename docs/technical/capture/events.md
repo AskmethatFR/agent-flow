@@ -104,8 +104,10 @@ Provenance of the samples: both were produced by the delivery commit `f04e8a3` c
 |---|---|
 | Who seeds `plan.json` | The tower, at worker start, through `agent-flow-plan <worktree> <issue> <title>` run from the Agent Flow checkout (`<AGENT_FLOW_HOME>/capture/shared/bin/agent-flow-plan.mjs`), never the copy in the slot. The seed gives `issue` (`#<n>`) and `title`, with no steps |
 | Where role and step title come from | Unchanged: the item name `role: title` the agent creates (§7 rule-driven role source). The seed never carries a role or a step |
-| Plan already there | Same issue: the bytes are kept and the seed succeeds (exit 0). Another issue: refused, exit 3, nothing written. Invalid issue or title: exit 1. Wrong argument count: exit 2 |
+| Exit codes | 0: seeded, or the existing plan is a valid plan of the same issue (bytes kept). 3: a `plan.json` already exists and is not a valid plan of this issue (another issue's plan, a corrupt plan, a symlink, a directory); nothing written. 1: invalid issue or title, bad worktree, `.agent-flow` that is not a real directory (also when it stops being one while the seed runs), write failure, and a launcher crash (the tower cannot tell a crash from bad input). 2: wrong argument count |
+| How the tower calls it | With an argv list, no shell; the title is one argv element and is never logged or printed by the tower |
 | Install signal | `AGENT_FLOW_HOME` set in the tower's environment; unset or empty means no seed and an unchanged start |
+| Trust | `AGENT_FLOW_HOME` must name a checkout no worker slot can write to: the tower runs its code unsandboxed at every worker start |
 
 ## Consequences / Constraints
 

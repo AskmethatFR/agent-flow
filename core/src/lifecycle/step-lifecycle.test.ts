@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { validatePlan } from '../contracts/index'
 import type { StepLifecycleResult } from './index'
-import { addStep, createPlan, finishStep, startStep } from './index'
+import { addStep, createPlan, finishStep, planNamesIssue, startStep } from './index'
 import { ROLE_IDS } from './roles'
 
 const todo = {
@@ -562,8 +562,57 @@ describe('createPlan', () => {
   })
 })
 
+describe('planNamesIssue', () => {
+  const planOf = (issue: string): string => {
+    const created = createPlan(issue, 'T')
+    if (!created.accepted) throw new Error('expected an acceptance')
+    return created.plan
+  }
+  const planWithIssue = (issue: string): string => JSON.stringify({ issue, title: 'T', steps: [] })
+
+  it.each(['1', '9', '10', '78', '1234567890'])('is true for a plan created for the issue %s', (issue) => {
+    expect(planNamesIssue(planOf(issue), issue)).toBe(true)
+  })
+
+  it('stays true after a step was added', () => {
+    const added = addStep(planOf('78'), 's1', 'dev-a: Implementation')
+    if (!added.accepted) throw new Error('expected an acceptance')
+
+    expect(planNamesIssue(added.plan, '78')).toBe(true)
+  })
+
+  it.each<[string, string]>([
+    ['78', '7'],
+    ['7', '78'],
+    ['78', '780'],
+    ['78', '34'],
+  ])('is false for a plan of the issue %s asked about the issue %s', (planned, asked) => {
+    expect(planNamesIssue(planOf(planned), asked)).toBe(false)
+  })
+
+  it.each(['#78', '078', '', '78\n'])('is false for the malformed issue %j even when the plan carries it', (issue) => {
+    expect(planNamesIssue(planWithIssue(`#${issue}`), issue)).toBe(false)
+  })
+
+  it.each<[string, string]>([
+    ['an issue without the hash', planWithIssue('78')],
+    ['a plan without steps', JSON.stringify({ issue: '#78', title: 'T' })],
+    ['text that is not JSON', '{'],
+  ])('is false for %s', (_name, plan) => {
+    expect(planNamesIssue(plan, '78')).toBe(false)
+  })
+
+  it.each<[string, unknown]>([
+    ['null', null],
+    ['a number', 78],
+    ['an object', { issue: '#78', title: 'T', steps: [] }],
+  ])('is false for a plan that is %s instead of text', (_name, plan) => {
+    expect(planNamesIssue(plan as string, '78')).toBe(false)
+  })
+})
+
 describe('addStep', () => {
-  const fresh = (id: string, overlays: Record<string, unknown> = {}) => ({
+  const fresh =(id: string, overlays: Record<string, unknown> = {}) => ({
     id,
     title: 'Implementation',
     role: 'dev-a',

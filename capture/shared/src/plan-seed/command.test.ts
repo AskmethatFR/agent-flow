@@ -8,6 +8,7 @@ import { runPlanCommand } from './command'
 
 const title = 'Seed plan.json on real runs'
 const seededText = `${JSON.stringify({ issue: '#78', title, steps: [] }, null, 2)}\n`
+const otherIssueText = seededText.replace('#78', '#34')
 const usage = 'usage: agent-flow-plan <worktree> <issue> <title>\n'
 
 let root: string
@@ -47,7 +48,7 @@ describe('runPlanCommand', () => {
 
   it('reports a plan of another issue as one JSON line and exits 3', () => {
     mkdirSync(join(worktree, '.agent-flow'))
-    writeFileSync(planPath, '{}')
+    writeFileSync(planPath, otherIssueText)
 
     expect(run(worktree, '78', title)).toBe(3)
     expect(errors).toEqual([
@@ -55,7 +56,7 @@ describe('runPlanCommand', () => {
         errors: [{ file: 'plan.json', location: null, field: null, message: 'already exists' }],
       })}\n`,
     ])
-    expect(readFileSync(planPath, 'utf8')).toBe('{}')
+    expect(readFileSync(planPath, 'utf8')).toBe(otherIssueText)
   })
 
   it('exits 0 and stays silent when the plan already names the same issue', () => {
@@ -85,7 +86,7 @@ describe('runPlanCommand', () => {
   })
 })
 
-describe('agent-flow-plan launcher', () => {
+describe('agent-flow-plan launcher', { timeout: 20_000 }, () => {
   const launcher = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'bin', 'agent-flow-plan.mjs')
 
   it('seeds the plan from a shell and exits 0', () => {
@@ -107,7 +108,7 @@ describe('agent-flow-plan launcher', () => {
 
   it('exits 3 when a plan of another issue exists and leaves it untouched', () => {
     mkdirSync(join(worktree, '.agent-flow'))
-    writeFileSync(planPath, seededText.replace('#78', '#34'))
+    writeFileSync(planPath, otherIssueText)
 
     const result = spawnSync(process.execPath, [launcher, worktree, '78', title], {
       cwd: root,
@@ -115,6 +116,6 @@ describe('agent-flow-plan launcher', () => {
     })
 
     expect(result.status).toBe(3)
-    expect(readFileSync(planPath, 'utf8')).toBe(seededText.replace('#78', '#34'))
+    expect(readFileSync(planPath, 'utf8')).toBe(otherIssueText)
   })
 })
