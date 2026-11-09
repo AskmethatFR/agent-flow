@@ -1,5 +1,5 @@
 import { act, create } from 'react-test-renderer'
-import type { ReactTestRendererJSON } from 'react-test-renderer'
+import type { ReactTestInstance, ReactTestRendererJSON } from 'react-test-renderer'
 import { PluginRpcProvider } from '@getpaseo/plugin/client/host'
 import type { PluginWorkspacePanelProps } from '@getpaseo/plugin/client'
 import { AgentFlowPanel } from '../agent-flow-panel.tsx'
@@ -52,6 +52,7 @@ export type RenderedPanel = {
   styleOf(content: string): { color?: string } | undefined
   surface(): unknown
   rootPadding(): unknown
+  press(content: string): Promise<void>
   update(workspaceId: string): Promise<void>
   unmount(): Promise<void>
 }
@@ -83,6 +84,16 @@ export const renderPanel = async (
       const root = renderer.toJSON() as ReactTestRendererJSON
       const style = root.props.contentContainerStyle as { padding?: unknown } | undefined
       return style?.padding
+    },
+    press: async (content) => {
+      const hostType = (node: ReactTestInstance) => node.type as string
+      const holdsContent = (node: ReactTestInstance) =>
+        node.findAll((child) => hostType(child) === 'Text' && child.children.join('') === content).length > 0
+      const pressable = renderer.root.findAll((node) => hostType(node) === 'Pressable' && holdsContent(node))[0]
+      if (pressable === undefined) throw new Error(`no pressable holds "${content}"`)
+      await act(async () => {
+        ;(pressable.props.onPress as () => void)()
+      })
     },
     update: async (workspaceId) => {
       await act(async () => {

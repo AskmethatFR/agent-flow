@@ -26,7 +26,7 @@ decided_in:
 
 - `docs/plan.md:5` makes Agent Flow host-agnostic: Paseo first, the same `core` elsewhere or standalone; `:58` keeps business rules out of `daemon` and `panel`; `:60` and `:228` (open question 7) defer the host-adapter boundary to Phase 0.
 - `.claude/CLAUDE.md:7-9`: `core` is pure TypeScript with no host import; host adapters do file watching, RPCs and SDK calls with no business rule; `panel` displays and takes input only.
-- Core today is one module (`core/src/contracts/index.ts:1-2`) whose function takes raw file text (`core/src/contracts/plan.ts:53`). `daemon` and `panel` are empty (`daemon/src/index.ts:1`, `panel/index.client.tsx:1`).
+- At decision time (#25), core was one module (`core/src/contracts/index.ts:1-2`) whose function takes raw file text (`core/src/contracts/plan.ts:53`), and `daemon` and `panel` were empty. Both now hold code within the roles below: `daemon` is the host's read path behind the snapshot RPC, `panel` the plugin server entry and the display-only client ([[snapshot-rpc]]).
 - Planned core surface, not code yet: step lifecycle (#33), snapshot (#38), decisions by step (#39), agent status mapping (#40), validators (#24, #32).
 
 ## Decision / Specification

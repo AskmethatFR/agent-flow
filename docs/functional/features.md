@@ -3,7 +3,7 @@ id: "feature-catalog"
 type: "functional"
 owner: "pm"
 status: "current"
-updated: "2026-11-07"
+updated: "2026-11-09"
 links:
   - "glossary"
   - "real-issue-run"
@@ -20,6 +20,7 @@ answers:
   - "What does the snapshot give for an invalid or missing plan?"
   - "When capture records a step start or finish, what is written, where, and what is refused?"
   - "How are decisions attached to plan steps in the snapshot, and what happens to a bad or orphan record?"
+  - "What does the step detail show when a plan step is selected, and which records does it list?"
   - "How does anyone check that every file under .agent-flow honours its contract, and what does the check report?"
   - "Which layouts of .agent-flow does the contract check refuse?"
   - "When is Phase 1 accepted on a real issue, and who runs that acceptance?"
@@ -33,6 +34,7 @@ decided_in:
   - "#24"
   - "#34"
   - "#39"
+  - "#20"
   - "#16"
   - "#17"
 ---
@@ -137,7 +139,26 @@ snapshot does not filter by kind.
 
 Acceptance: `snapshot-decisions` S1-S3 (`features/phase-2/snapshot-decisions.feature`).
 Log order, the absent-step row, the missing-file row and the no-filter-by-kind
-rule are pinned by unit tests only. The display of these decisions is #20.
+rule are pinned by unit tests only. The display of these decisions is the next
+capability (#20).
+
+### Capability: the step detail lists the decisions of the selected step
+
+Selecting a plan step in the panel shows that step's [[glossary]] step decisions,
+so a reviewer sees why the step went the way it did. The panel only displays what
+the snapshot attached; it groups and filters nothing.
+
+| Situation | Behaviour | Outcome |
+|---|---|---|
+| Decisions exist for several steps | Only the selected step's decisions are listed. | Decisions of other steps never appear. |
+| A decision is shown | Its title, why, rejected options, role and confidence are displayed. | The reasoning is readable without opening the log. |
+| The selected step has no decision | The detail says no decision was logged for it. | An explicit statement, never a blank area. |
+
+Every record of the step is shown as a decision, whatever its kind: the snapshot
+drops `kind`, so the panel cannot tell a decision from a question or a deviation
+(see Open questions).
+
+Acceptance: `decisions-per-step` S1-S3 (`features/phase-2/decisions-per-step.feature`).
 
 ### Capability: display state of the agent on the current step
 
@@ -269,6 +290,9 @@ Acceptance: `real-issue-capture` S1 (`features/phase-1/real-issue-capture.featur
 
 ## Open questions / Gaps
 
+- [ ] The step detail (#20) lists every record of a step as a decision, whatever
+  its kind, because the snapshot drops `kind` (`core/src/snapshot/snapshot.ts:136-142`).
+  Showing questions and deviations as distinct kinds is Phase 4. Kept open.
 - [ ] Serializer acceptance (valid → one line; invalid → no line and an error)
   has no Gherkin scenario; it is covered by unit tests only.
 - [ ] Schema refusals are not pinned at scenario level: a missing required

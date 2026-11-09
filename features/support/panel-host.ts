@@ -43,6 +43,31 @@ export const writePlan = (world: PanelWorld, plan: Record<string, unknown>): voi
   writeFileSync(join(world.root, '.agent-flow', 'plan.json'), JSON.stringify(plan))
 }
 
+export const decisionOf = (
+  step: string,
+  title: string,
+  why = `because ${title}`,
+  rejected: readonly string[] = [],
+  role = 'dev-a',
+  confidence = 'high',
+): Record<string, unknown> => ({
+  at: '2026-10-22T10:00:00Z',
+  step,
+  role,
+  kind: 'decision',
+  title,
+  why,
+  rejected,
+  confidence,
+})
+
+export const writeDecisions = (world: PanelWorld, lines: readonly Record<string, unknown>[]): void => {
+  writeFileSync(
+    join(world.root, '.agent-flow', 'decisions.jsonl'),
+    lines.map((line) => JSON.stringify(line)).join('\n'),
+  )
+}
+
 const hostInvoke = (world: PanelWorld) => {
   let handler: Handler | undefined
   const server = {
@@ -61,6 +86,11 @@ export const openPanel = async (world: PanelWorld): Promise<void> => {
   if (world.now === undefined) mock.timers.enable({ apis: ['setTimeout'] })
   else mock.timers.enable({ apis: ['setTimeout', 'Date'], now: world.now })
   world.panel = await renderPanel(hostInvoke(world), { workspaceId })
+  world.texts = world.panel.texts()
+}
+
+export const selectStep = async (world: PanelWorld, rowText: string): Promise<void> => {
+  await world.panel.press(rowText)
   world.texts = world.panel.texts()
 }
 

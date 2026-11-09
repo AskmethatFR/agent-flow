@@ -43,3 +43,15 @@ and a `cat` heredoc, which the gate reads as code discovery. The decision is
 lost unless the lane retries after a search. The gate also refuses a plain
 `grep -c` on a named file in the worktree. Fix: exempt commands that invoke
 `agent-flow-decision.mjs`, and lookups in named files, from the gate.
+
+## 2026-11-09 — a fresh worktree has no dependencies and the lane tooling assumes it does (observed on #20)
+
+A new worktree has no `node_modules`, and a Dev lane may not install, so the
+first Dev spawn on #20 ended `blocked` with no code written. Three tools made
+it worse: bare `npx cucumber-js` resolved to a dependency-confusion placeholder
+package instead of the project binary, `tdd-run.sh <file>::<name>` runs from
+`panel/` where no vitest config exists (`Missing script: "test"`), and
+`deploy/run-tests.sh`, named in the QA and Dev-B spawn prompts, does not exist
+in this repo. Fix: a worktree-start step that runs `npm ci` from the lockfile,
+`tdd-run.sh` resolving the vitest root for a JS repo, and the spawn prompts
+naming `npm test` / `npm run bdd` where `deploy/run-tests.sh` is absent.

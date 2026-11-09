@@ -3,7 +3,7 @@ id: "glossary"
 type: "functional"
 owner: "pm"
 status: "current"
-updated: "2026-11-07"
+updated: "2026-11-09"
 links:
   - "feature-catalog"
 answers:
@@ -25,6 +25,7 @@ decided_in:
   - "#24"
   - "#34"
   - "#39"
+  - "#20"
   - "#16"
   - "#17"
 ---
@@ -48,7 +49,7 @@ decided_in:
 | **model** | Optional: the model that produced the record. |
 | **plan step** | One step of the run's plan: it is to do, in progress or done, and carries a start and an end once it has them. Distinct from **step** above, which tags a record. |
 | **snapshot** | The view of a run's plan computed once by core: every plan step with its time spent and its decisions, and the current step. Consumers display it and never recompute it. |
-| **step decisions** | The records of `decisions.jsonl` whose step is that plan step, in log order; none when no record names it. In the snapshot every record counts, whatever its kind. A record naming a step absent from the plan belongs to no step and is reported. |
+| **step decisions** | The records of `decisions.jsonl` whose step is that plan step, in log order; none when no record names it. In the snapshot every record counts, whatever its kind, and the step detail shows each of them as a decision (see Open questions). A record naming a step absent from the plan belongs to no step and is reported. |
 | **time spent** | How long a plan step has taken: in progress, up to now; done, from start to end; to do, none. Also none whenever a timestamp cannot be trusted. Rounded down to the minute. |
 | **current step** | The in-progress plan step that started last (first in plan order on a tie); none when nothing is in progress. |
 | **current agent** | The agent working on the current step, shown as its role and its display state. None when the host reported no status, no step is in progress, or the plan is unusable. |
@@ -77,5 +78,7 @@ decided_in:
 
 - [ ] The exact boundary between `decision` and `step_event` is not yet stated
   by a scenario; the definitions above are the working reading. The snapshot
-  sidesteps it (every kind is attached to its step); whether the panel (#20)
-  shows all kinds or only `decision` is not yet settled.
+  sidesteps it (every kind is attached to its step). The step detail (#20)
+  shows every record of the step as a decision, whatever its kind, because the
+  snapshot drops `kind` (`core/src/snapshot/snapshot.ts:136-142`). Showing
+  questions and deviations as distinct kinds is Phase 4. Kept open.
