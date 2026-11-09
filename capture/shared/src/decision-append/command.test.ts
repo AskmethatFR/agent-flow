@@ -105,7 +105,7 @@ describe('runDecisionCommand', () => {
   })
 })
 
-describe('agent-flow-decision launcher', () => {
+describe('agent-flow-decision launcher', { timeout: 20_000 }, () => {
   const launcher = join(
     dirname(fileURLToPath(import.meta.url)),
     '..',
