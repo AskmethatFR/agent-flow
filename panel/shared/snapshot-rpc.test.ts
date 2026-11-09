@@ -68,6 +68,14 @@ describe('getSnapshotRpc', () => {
   })
 
   it.each([
+    ['a negative count', -1],
+    ['a fractional count', 1.5],
+  ])('rejects %s of omitted decisions', (_, omittedDecisions) => {
+    const bad = { ...snapshot, steps: [{ ...snapshot.steps[0], omittedDecisions }] }
+    expect(getSnapshotRpc.output.safeParse({ kind: 'snapshot', snapshot: bad }).success).toBe(false)
+  })
+
+  it.each([
     ['a running agent', { role: 'dev-a', state: 'running' }],
     ['a stopped agent', { role: 'dev-a', state: 'stopped' }],
     ['an unknown agent state', { role: 'dev-a', state: 'unknown' }],

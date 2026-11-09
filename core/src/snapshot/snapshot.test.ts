@@ -434,6 +434,12 @@ describe('buildSnapshot', () => {
     },
   )
 
+  it('caps a step at 50 decisions and counts the one left out', () => {
+    const snapshot = decisionsOf(manyLines(51).join('\n'))
+    expect(snapshot.steps[0]?.decisions).toHaveLength(50)
+    expect(snapshot.steps[0]?.omittedDecisions).toBe(1)
+  })
+
   it('applies the cap to each step on its own, whatever interleaving', () => {
     const over = manyLines(MAX_DECISIONS_PER_STEP + 2)
     const other = manyLines(3, { step: 's2' })

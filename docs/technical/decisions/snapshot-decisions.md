@@ -80,7 +80,7 @@ Corrected here, not edited there (closed records):
 
 - **MUST**: `steps[].decisions` and its five fields fall under the additive-only rule of [[snapshot-contract]]. Exposing `at`, `kind`, `model` or `step` later is additive.
 - **MUST**: `steps[].omittedDecisions` falls under the additive-only rule of [[snapshot-contract]] too.
-- **MUST**: every decision line ends up in exactly one step's `decisions`, in exactly one step's `omittedDecisions` count, or in exactly one `ContractError`, never neither. A step's listed decisions plus its `omittedDecisions` equal the valid lines naming that step.
+- **MUST**: every decision line ends up in exactly one step's `decisions`, in exactly one step's `omittedDecisions` count, or in exactly one `ContractError` or its list's single cap marker, never neither. A step's listed decisions plus its `omittedDecisions` equal the valid lines naming that step.
 - **MUST**: a missing `decisions.jsonl` is never an error; any other read failure of it is exactly one error and keeps the plan steps.
 - **MUST** (every consumer, #20 first): every decision field is agent-written display text; `snapshot-contract.md:66` (Security S2) applies.
 - **Out of scope**: rendering a step's decisions (#20), agent state (#40), an `at` format (still #24, `decisions-jsonl-schema.md:70`).
