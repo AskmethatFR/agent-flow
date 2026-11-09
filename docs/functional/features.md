@@ -26,8 +26,10 @@ answers:
   - "When is Phase 1 accepted on a real issue, and who runs that acceptance?"
   - "Which host statuses display as running, stopped or unknown, and when is there no current agent?"
   - "What does the snapshot give when the host agent state cannot be read?"
+  - "What does the plan rail show for the agent on the current step, and does it refresh?"
   - "What does the OpenCode launcher do when AGENT_FLOW_HOME does not name this checkout?"
 decided_in:
+  - "#21"
   - "#41"
   - "#83"
   - "#40"
@@ -164,8 +166,9 @@ Acceptance: `decisions-per-step` S1-S3 (`features/phase-2/decisions-per-step.fea
 
 ### Capability: display state of the agent on the current step
 
-Core maps the host's raw agent status to a [[glossary]] display state, so the
-panel (#21) shows the [[glossary]] current agent without mapping anything itself.
+Core maps the host's raw agent status to a [[glossary]] display state, and the
+panel shows the [[glossary]] current agent on the current step without mapping
+anything itself.
 
 | Host status | Display state |
 |---|---|
@@ -183,9 +186,18 @@ panel (#21) shows the [[glossary]] current agent without mapping anything itself
   data and gains exactly one error labelled `agent-state`.
 - Known limit: only the 100 most recently updated host agents are considered.
 
+**On the plan rail** (#21), the current step shows two lines after its
+`Current` marker: `Agent: <role>`, then on its own line the display state
+(`running`, `stopped` or `unknown`). A stopped agent (an idle or errored host
+agent) stays visible as `stopped`. When there is no current agent, nothing is
+shown for it. The state follows the panel's 2-second polling: an agent that
+stops is shown as `stopped` without reopening the panel. The panel only
+displays what the daemon and core computed; the role text is cleaned like a
+step role.
+
 Acceptance: `agent-state-mapping` S1-S4 (`features/phase-2/agent-state-mapping.feature`);
-`agent-state-rpc` S1-S4 (`features/phase-2/agent-state-rpc.feature`).
-Out of scope: the display itself, which cleans the role text like a step role (#21).
+`agent-state-rpc` S1-S4 (`features/phase-2/agent-state-rpc.feature`);
+`agent-state` S1-S3, the panel display (`features/phase-2/agent-state.feature`).
 
 ### Capability: recording a step start or finish in the plan
 
