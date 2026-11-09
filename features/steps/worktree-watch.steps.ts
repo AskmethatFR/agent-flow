@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { After, Given, Then, When } from '@cucumber/cucumber'
 import { applyStepEvent } from '@agent-flow/capture-shared/plan-writer'
 import { createGetSnapshot } from '@agent-flow/daemon/snapshot'
-import type { ReadIo, SnapshotReply, WorkspaceSource } from '@agent-flow/daemon/snapshot'
+import type { AgentSource, ReadIo, SnapshotReply, WorkspaceSource } from '@agent-flow/daemon/snapshot'
 
 type WorktreeWatchWorld = {
   root: string
@@ -21,6 +21,7 @@ const startedAt = '2026-01-01T09:00:00.000Z'
 const finishedAt = '2026-01-01T10:00:00.000Z'
 const clock = () => new Date('2026-01-01T11:00:00.000Z')
 const stepId = 's1'
+const noAgents: AgentSource = { list: async () => ({ entries: [] }) }
 
 const planOf = (issue: string): string =>
   JSON.stringify({
@@ -80,7 +81,11 @@ const worktreeNamed = (world: WorktreeWatchWorld, name: string): string => {
 }
 
 const requestSnapshot = (world: WorktreeWatchWorld, workspaceId: string): Promise<SnapshotReply> =>
-  createGetSnapshot({ io: recordingIo(world.paths), now: clock })({ workspaceId }, world.source)
+  createGetSnapshot({ io: recordingIo(world.paths), now: clock })(
+    { workspaceId },
+    world.source,
+    noAgents,
+  )
 
 const snapshotOf = (reply: SnapshotReply) => {
   assert.equal(reply.kind, 'snapshot')

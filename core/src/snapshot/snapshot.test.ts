@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import { buildSnapshot } from './index'
-import type { Snapshot, SnapshotStep } from './index'
+import type { AgentStatusUnavailable, Snapshot, SnapshotStep } from './index'
 
 const now = new Date('2026-10-22T10:38:00Z')
 
@@ -273,6 +273,55 @@ describe('buildSnapshot', () => {
   it('never carries the raw host status', () => {
     const snapshot = buildSnapshot({ plan: planText(inProgress({})) }, now, 'sentinel-raw-status')
     expect(JSON.stringify(snapshot)).not.toContain('sentinel-raw-status')
+  })
+
+  describe('when the host agent status cannot be read', () => {
+    const hostError = { file: 'agent-state', location: null, field: null, message: 'cannot be read from the host' }
+    const unavailable: AgentStatusUnavailable = { unavailable: 'host-error' }
+
+    it('keeps the steps, drops the current agent and adds the one error last', () => {
+      const text = planText(inProgress({ role: 'dev-a' }))
+      const withoutAgent = buildSnapshot({ plan: text }, now)
+      const snapshot = buildSnapshot({ plan: text }, now, unavailable)
+      expect(snapshot).toEqual({ ...withoutAgent, currentAgent: null, errors: [hostError] })
+      expect(snapshot.currentStepId).toBe('s1')
+    })
+
+    it('puts the error after the decisions errors', () => {
+      const snapshot = buildSnapshot(
+        { plan: planText(inProgress({})), decisions: { unavailable: 'unreadable' } },
+        now,
+        unavailable,
+      )
+      expect(snapshot.errors).toEqual([
+        { file: 'decisions.jsonl', location: null, field: null, message: 'cannot be read' },
+        hostError,
+      ])
+    })
+
+    it('puts the error after the plan error when the plan is unusable', () => {
+      const snapshot = buildSnapshot({ plan: '{' }, now, unavailable)
+      expect(snapshot.errors).toEqual([
+        { file: 'plan.json', location: null, field: null, message: 'is not valid JSON' },
+        hostError,
+      ])
+      expect(snapshot.currentAgent).toBeNull()
+      expect(snapshot.steps).toEqual([])
+    })
+
+    it('puts the error after the error of an unavailable plan file', () => {
+      const snapshot = buildSnapshot({ plan: { unavailable: 'missing' } }, now, unavailable)
+      expect(snapshot.errors).toEqual([
+        { file: 'plan.json', location: null, field: null, message: 'is missing' },
+        hostError,
+      ])
+    })
+
+    it('still maps a runtime null as an unknown host status', () => {
+      const snapshot = buildSnapshot({ plan: planText(inProgress({})) }, now, null as unknown as string)
+      expect(snapshot.currentAgent).toEqual({ role: 'architect', state: 'unknown' })
+      expect(snapshot.errors).toEqual([])
+    })
   })
 
   it.each([

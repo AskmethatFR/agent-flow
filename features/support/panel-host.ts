@@ -8,7 +8,7 @@ import contribute from '../../panel/index.server.ts'
 import { renderPanel } from '../../panel/client/testing/render-panel.tsx'
 import type { RenderedPanel } from '../../panel/client/testing/render-panel.tsx'
 
-type Handler = (input: unknown, context: { paseo: { workspaces: unknown } }) => Promise<unknown>
+type Handler = (input: unknown, context: { paseo: { workspaces: unknown; agents: unknown } }) => Promise<unknown>
 
 export type PanelWorld = {
   root: string
@@ -54,7 +54,8 @@ const hostInvoke = (world: PanelWorld) => {
   const workspaces = {
     ref: () => ({ refresh: async () => ({ project: { checkout: { worktreeRoot: world.root } } }) }),
   }
-  return async (_method: string, input: unknown) => handler!(input, { paseo: { workspaces } })
+  const agents = { list: async () => ({ entries: [] }) }
+  return async (_method: string, input: unknown) => handler!(input, { paseo: { workspaces, agents } })
 }
 
 export const openPanel = async (world: PanelWorld): Promise<void> => {

@@ -1,6 +1,7 @@
 export { buildSnapshot } from './snapshot'
 export type {
   AgentFlowFile,
+  AgentStatusUnavailable,
   CurrentAgent,
   FileUnavailable,
   Snapshot,

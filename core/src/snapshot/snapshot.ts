@@ -14,6 +14,8 @@ export type FileUnavailable = {
 
 export type AgentFlowFile = string | FileUnavailable
 
+export type AgentStatusUnavailable = { readonly unavailable: 'host-error' }
+
 export type SnapshotFiles = {
   readonly plan: AgentFlowFile
   readonly decisions?: AgentFlowFile
@@ -102,7 +104,22 @@ const unavailableError = (file: string, code: FileUnavailable['unavailable']): C
   message: unavailableMessages[code],
 })
 
-const readPlanFile = (planFile: AgentFlowFile): ReadPlanResult =>
+const agentStateMessages: Record<AgentStatusUnavailable['unavailable'], string> = {
+  'host-error': 'cannot be read from the host',
+}
+
+const agentStateError = ({ unavailable }: AgentStatusUnavailable): ContractError => ({
+  file: 'agent-state',
+  location: null,
+  field: null,
+  message: agentStateMessages[unavailable],
+})
+
+const isStatusUnavailable = (
+  agentStatus: string | AgentStatusUnavailable | undefined,
+): agentStatus is AgentStatusUnavailable => typeof agentStatus === 'object' && agentStatus !== null
+
+const readPlanFile =(planFile: AgentFlowFile): ReadPlanResult =>
   typeof planFile === 'string'
     ? readPlan(planFile)
     : { accepted: false, errors: [unavailableError('plan.json', planFile.unavailable)] }
@@ -147,8 +164,11 @@ const groupDecisions = (
 export const buildSnapshot = (
   files: SnapshotFiles,
   now: Date,
-  agentStatus?: string,
+  agentStatus?: string | AgentStatusUnavailable,
 ): Snapshot => {
+  const unavailable = isStatusUnavailable(agentStatus)
+  const agentErrors = unavailable ? [agentStateError(agentStatus)] : []
+  const status = unavailable ? undefined : agentStatus
   const result = readPlanFile(files.plan)
   if (!result.accepted) {
     return {
@@ -157,7 +177,7 @@ export const buildSnapshot = (
       steps: [],
       currentStepId: null,
       currentAgent: null,
-      errors: result.errors,
+      errors: [...result.errors, ...agentErrors],
     }
   }
   const { plan } = result
@@ -168,7 +188,7 @@ export const buildSnapshot = (
     title: plan.title,
     steps: perStep.map(({ step, decisions }) => toSnapshotStep(step, now, decisions)),
     currentStepId: current?.id ?? null,
-    currentAgent: currentAgentOf(current, agentStatus),
-    errors,
+    currentAgent: currentAgentOf(current, status),
+    errors: [...errors, ...agentErrors],
   }
 }
