@@ -21,3 +21,17 @@ Feature: Step detail
     Given a step with no decision
     When I select it
     Then the step detail states that no decision was logged
+
+  @scenario:S4
+  Scenario: A step with more decisions than the cap shows the first ones and how many were left out
+    Given a step with more decisions than the cap
+    When I select it
+    Then the step detail lists exactly the first decisions up to the cap, in file order
+    And it shows one marker saying how many decisions were left out
+
+  @scenario:S5
+  Scenario: The cap applies to each step on its own
+    Given a step with more decisions than the cap
+    And another step with fewer decisions than the cap
+    When I select the other step
+    Then all of its decisions are listed and no marker is shown

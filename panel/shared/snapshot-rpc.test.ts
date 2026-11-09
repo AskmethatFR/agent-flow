@@ -21,6 +21,7 @@ const snapshot: Snapshot = {
       decisions: [
         { title: 'Use a Map', why: 'safe keys', rejected: ['object'], role: 'dev-a', confidence: 'high' },
       ],
+      omittedDecisions: 4,
     },
   ],
   currentStepId: 's1',
@@ -55,6 +56,14 @@ describe('getSnapshotRpc', () => {
     const parsed = getSnapshotRpc.output.parse({ kind: 'snapshot', snapshot })
     expect(parsed).toMatchObject({ snapshot: { steps: [{ decisions: snapshot.steps[0]?.decisions }] } })
     const bad = { ...snapshot, steps: [{ ...snapshot.steps[0], decisions: [{ title: 't', why: 'w', rejected: [], role: 'r', confidence: 'sure' }] }] }
+    expect(getSnapshotRpc.output.safeParse({ kind: 'snapshot', snapshot: bad }).success).toBe(false)
+  })
+
+  it('keeps the omitted decisions count of a step and rejects a step without it', () => {
+    const parsed = getSnapshotRpc.output.parse({ kind: 'snapshot', snapshot })
+    expect(parsed).toMatchObject({ snapshot: { steps: [{ omittedDecisions: 4 }] } })
+    const { omittedDecisions: _, ...withoutCount } = snapshot.steps[0] as Snapshot['steps'][number]
+    const bad = { ...snapshot, steps: [withoutCount] }
     expect(getSnapshotRpc.output.safeParse({ kind: 'snapshot', snapshot: bad }).success).toBe(false)
   })
 

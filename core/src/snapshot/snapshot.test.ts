@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
-import { buildSnapshot } from './index'
+import { MAX_DECISIONS_PER_STEP, buildSnapshot } from './index'
 import type { AgentStatusUnavailable, Snapshot, SnapshotStep } from './index'
 
 const now = new Date('2026-10-22T10:38:00Z')
@@ -25,8 +25,8 @@ describe('buildSnapshot', () => {
       issue: '#38',
       title: 'Core snapshot',
       steps: [
-        { id: 's1', title: 'Design', role: 'architect', status: 'todo', origin: 'planned', timeSpent: null, decisions: [] },
-        { id: 's2', title: 'Build', role: 'dev-a', status: 'todo', origin: 'proposed', timeSpent: null, decisions: [] },
+        { id: 's1', title: 'Design', role: 'architect', status: 'todo', origin: 'planned', timeSpent: null, decisions: [], omittedDecisions: 0 },
+        { id: 's2', title: 'Build', role: 'dev-a', status: 'todo', origin: 'proposed', timeSpent: null, decisions: [], omittedDecisions: 0 },
       ],
       currentStepId: null,
       currentAgent: null,
@@ -352,7 +352,7 @@ describe('buildSnapshot', () => {
       'issue' | 'title' | 'steps' | 'currentStepId' | 'currentAgent' | 'errors'
     >()
     expectTypeOf<keyof SnapshotStep>().toEqualTypeOf<
-      'id' | 'title' | 'role' | 'status' | 'origin' | 'timeSpent' | 'decisions'
+      'id' | 'title' | 'role' | 'status' | 'origin' | 'timeSpent' | 'decisions' | 'omittedDecisions'
     >()
   })
 
@@ -406,6 +406,54 @@ describe('buildSnapshot', () => {
   it('gives a step without any decision an empty list', () => {
     const snapshot = decisionsOf(line(), step(), step({ id: 's2' }))
     expect(snapshot.steps[1]?.decisions).toEqual([])
+  })
+
+  const manyLines = (count: number, overlay: Record<string, unknown> = {}): string[] =>
+    Array.from({ length: count }, (_, index) => line({ title: `d${index}`, ...overlay }))
+
+  const titlesOf = (snapshot: Snapshot, index = 0): string[] =>
+    snapshot.steps[index]?.decisions.map(({ title }) => title) ?? []
+
+  it.each([0, 1, MAX_DECISIONS_PER_STEP - 1, MAX_DECISIONS_PER_STEP])(
+    'lists all %i decisions of a step at or under the cap and omits none',
+    (count) => {
+      const snapshot = decisionsOf(manyLines(count).join('\n'))
+      expect(titlesOf(snapshot)).toEqual(manyLines(count).map((_, index) => `d${index}`))
+      expect(snapshot.steps[0]?.omittedDecisions).toBe(0)
+      expect(snapshot.errors).toEqual([])
+    },
+  )
+
+  it.each([1, 2, MAX_DECISIONS_PER_STEP])(
+    'keeps the first decisions up to the cap in file order and counts the %i left out',
+    (extra) => {
+      const snapshot = decisionsOf(manyLines(MAX_DECISIONS_PER_STEP + extra).join('\n'))
+      expect(titlesOf(snapshot)).toEqual(Array.from({ length: MAX_DECISIONS_PER_STEP }, (_, index) => `d${index}`))
+      expect(snapshot.steps[0]?.omittedDecisions).toBe(extra)
+      expect(snapshot.errors).toEqual([])
+    },
+  )
+
+  it('applies the cap to each step on its own, whatever interleaving', () => {
+    const over = manyLines(MAX_DECISIONS_PER_STEP + 2)
+    const other = manyLines(3, { step: 's2' })
+    const text = [...over.slice(0, 10), ...other.slice(0, 1), ...over.slice(10), ...other.slice(1)].join('\n')
+    const snapshot = decisionsOf(text, step(), step({ id: 's2' }))
+    expect(snapshot.steps[0]?.decisions).toHaveLength(MAX_DECISIONS_PER_STEP)
+    expect(snapshot.steps[0]?.omittedDecisions).toBe(2)
+    expect(titlesOf(snapshot, 1)).toEqual(['d0', 'd1', 'd2'])
+    expect(snapshot.steps[1]?.omittedDecisions).toBe(0)
+  })
+
+  it('counts omitted decisions per step when several steps overflow', () => {
+    const text = [...manyLines(MAX_DECISIONS_PER_STEP + 1), ...manyLines(MAX_DECISIONS_PER_STEP + 4, { step: 's2' })].join('\n')
+    const snapshot = decisionsOf(text, step(), step({ id: 's2' }))
+    expect(snapshot.steps.map(({ omittedDecisions }) => omittedDecisions)).toEqual([1, 4])
+  })
+
+  it('reports no omitted decisions when the decisions file is unavailable', () => {
+    const snapshot = buildSnapshot({ plan: planText(step()), decisions: { unavailable: 'unreadable' } }, now)
+    expect(snapshot.steps[0]?.omittedDecisions).toBe(0)
   })
 
   it('groups the valid lines and reports the malformed one with its line number', () => {

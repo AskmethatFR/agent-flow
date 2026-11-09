@@ -1,4 +1,4 @@
-export { buildSnapshot } from './snapshot'
+export { MAX_DECISIONS_PER_STEP, buildSnapshot } from './snapshot'
 export type {
   AgentFlowFile,
   AgentStatusUnavailable,
