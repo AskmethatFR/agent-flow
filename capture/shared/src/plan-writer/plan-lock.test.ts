@@ -240,6 +240,7 @@ describe('plan.json read-modify-write lock', () => {
       const result = addPlanStep(worktree, { stepId: 's1', title: 'dev-a: Implementation' })
 
       expect(result).toEqual(refusal(staleMessage))
+      expect(lockOpens.count).toBeGreaterThanOrEqual(1)
       expect(lockOpens.count).toBeLessThan(10)
       expect(readFileSync(planPath, 'utf8')).toBe(plan)
       expect(existsSync(lockPath)).toBe(true)
@@ -286,6 +287,7 @@ describe('plan.json read-modify-write lock', () => {
     const result = withLock(lockPath, { waitMs, staleAfterMs: 60_000 }, refuseLock, () => ({ accepted: true }))
 
     expect(result).toEqual(refusal(busyMessage))
+    expect(lockOpens.count).toBeGreaterThan(1)
     expect(lockOpens.count).toBeLessThanOrEqual(waitMs / quietestPollMs + 1)
   })
 
@@ -412,7 +414,7 @@ describe('lock clock boundaries', () => {
 })
 
 describe('a batch of plan operations under one lock', () => {
-  const additions = Array.from({ length: 10 }, (_unused, index) => ({
+  const additions = Array.from({ length: 30 }, (_unused, index) => ({
     kind: 'add' as const,
     stepId: `s${index}`,
     title: `s${index}`,
@@ -422,11 +424,12 @@ describe('a batch of plan operations under one lock', () => {
     const plan = planWith([])
     givenPlan(plan)
     writeFileSync(lockPath, '')
-    const waitMs = 200
+    const waitMs = 100
     const batch = createPlanBatchWriter(io, { waitMs, staleAfterMs: 60_000 })
 
     const results = batch(worktree, additions)
 
+    expect(lockOpens.count).toBeGreaterThan(1)
     expect(lockOpens.count).toBeLessThanOrEqual(waitMs / quietestPollMs + 1)
     expect(results).toEqual(additions.map(() => refusal(busyMessage)))
     expect(readFileSync(planPath, 'utf8')).toBe(plan)
