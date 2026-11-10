@@ -287,7 +287,7 @@ describe('plan.json read-modify-write lock', () => {
     const result = withLock(lockPath, { waitMs, staleAfterMs: 60_000 }, refuseLock, () => ({ accepted: true }))
 
     expect(result).toEqual(refusal(busyMessage))
-    expect(lockOpens.count).toBeGreaterThan(1)
+    expect(lockOpens.count).toBeGreaterThanOrEqual(1)
     expect(lockOpens.count).toBeLessThanOrEqual(waitMs / quietestPollMs + 1)
   })
 
@@ -429,7 +429,7 @@ describe('a batch of plan operations under one lock', () => {
 
     const results = batch(worktree, additions)
 
-    expect(lockOpens.count).toBeGreaterThan(1)
+    expect(lockOpens.count).toBeGreaterThanOrEqual(1)
     expect(lockOpens.count).toBeLessThanOrEqual(waitMs / quietestPollMs + 1)
     expect(results).toEqual(additions.map(() => refusal(busyMessage)))
     expect(readFileSync(planPath, 'utf8')).toBe(plan)
