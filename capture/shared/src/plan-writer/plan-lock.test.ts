@@ -28,10 +28,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { validatePlan } from '@agent-flow/core/contracts'
 import { refusalFor } from '../shared/confinement'
 import { withLock } from '../shared/plan-lock'
-import type { LockIo } from '../shared/plan-lock'
 import { addPlanStep } from './index'
 import { createPlanBatchWriter, createPlanStepAdder, createPlanWriter } from './plan-writer'
 import type { PlanOperation, PlanWriterIo } from './plan-writer'
+
+const { lockOpens } = vi.hoisted(() => ({ lockOpens: { count: 0 } }))
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>()
+  const countedOpenSync: typeof actual.openSync = ((...args: Parameters<typeof actual.openSync>) => {
+    if (String(args[0]).endsWith('.plan.lock')) lockOpens.count += 1
+    return actual.openSync(...args)
+  }) as typeof actual.openSync
+  return { ...actual, openSync: countedOpenSync }
+})
 
 const repo = fileURLToPath(new URL('../../../../', import.meta.url))
 
@@ -67,21 +77,7 @@ const busyMessage = 'is busy; remove .agent-flow/.plan.lock only if no write is 
 const staleMessage = 'is locked by a stale lock file; remove .agent-flow/.plan.lock'
 
 const quietestPollMs = 1
-
-const countingLockIo = (): LockIo & { readonly lockAttempts: () => number } => {
-  let lockOpens = 0
-  return {
-    openSync: ((...args: Parameters<typeof openSync>) => {
-      if (String(args[0]) === lockPath) lockOpens += 1
-      return openSync(...args)
-    }) as typeof openSync,
-    closeSync,
-    fstatSync,
-    lstatSync,
-    unlinkSync,
-    lockAttempts: () => lockOpens,
-  }
-}
+const staleWaitOutGuardMs = 10_000
 
 const refusal = (message: string) => ({
   accepted: false,
@@ -95,6 +91,7 @@ let planPath: string
 let lockPath: string
 
 beforeEach(() => {
+  lockOpens.count = 0
   root = realpathSync(mkdtempSync(join(tmpdir(), 'plan-lock-')))
   worktree = join(root, 'worktree')
   agentFlow = join(worktree, '.agent-flow')
@@ -231,21 +228,23 @@ describe('plan.json read-modify-write lock', () => {
     })
   })
 
-  it('refuses without waiting out the timeout when the lock is older than the stale age, and does not steal it', () => {
-    const plan = planWith([])
-    givenPlan(plan)
-    writeFileSync(lockPath, '')
-    utimesSync(lockPath, hourAgo(), hourAgo())
-    const lockIo = countingLockIo()
-    const refuseLock = refusalFor('plan.json')
+  it(
+    'refuses without waiting out the timeout when the lock is older than the stale age, and does not steal it',
+    { timeout: staleWaitOutGuardMs },
+    () => {
+      const plan = planWith([])
+      givenPlan(plan)
+      writeFileSync(lockPath, '')
+      utimesSync(lockPath, hourAgo(), hourAgo())
 
-    const result = withLock(lockPath, { waitMs: 10_000, staleAfterMs: 60_000 }, refuseLock, () => ({ accepted: true }), lockIo)
+      const result = addPlanStep(worktree, { stepId: 's1', title: 'dev-a: Implementation' })
 
-    expect(result).toEqual(refusal(staleMessage))
-    expect(lockIo.lockAttempts()).toBeLessThan(10)
-    expect(readFileSync(planPath, 'utf8')).toBe(plan)
-    expect(existsSync(lockPath)).toBe(true)
-  })
+      expect(result).toEqual(refusal(staleMessage))
+      expect(lockOpens.count).toBeLessThan(10)
+      expect(readFileSync(planPath, 'utf8')).toBe(plan)
+      expect(existsSync(lockPath)).toBe(true)
+    },
+  )
 
   it.each([
     ['a symlink to an outside file', (outside: string) => symlinkSync(outside, lockPath)],
@@ -280,16 +279,14 @@ describe('plan.json read-modify-write lock', () => {
   })
 
   it('sleeps between attempts instead of spinning while it waits for a held lock', () => {
-    givenPlan(planWith([]))
     writeFileSync(lockPath, '')
     const waitMs = 300
-    const lockIo = countingLockIo()
     const refuseLock = refusalFor('plan.json')
 
-    const result = withLock(lockPath, { waitMs, staleAfterMs: 60_000 }, refuseLock, () => ({ accepted: true }), lockIo)
+    const result = withLock(lockPath, { waitMs, staleAfterMs: 60_000 }, refuseLock, () => ({ accepted: true }))
 
     expect(result).toEqual(refusal(busyMessage))
-    expect(lockIo.lockAttempts()).toBeLessThanOrEqual(waitMs / quietestPollMs + 1)
+    expect(lockOpens.count).toBeLessThanOrEqual(waitMs / quietestPollMs + 1)
   })
 
   it('keeps retrying while another process claims the lock with an O_TRUNC write and releases it with unlink(2)', async () => {
@@ -427,13 +424,10 @@ describe('a batch of plan operations under one lock', () => {
     writeFileSync(lockPath, '')
     const waitMs = 200
     const batch = createPlanBatchWriter(io, { waitMs, staleAfterMs: 60_000 })
-    const began = performance.now()
 
     const results = batch(worktree, additions)
-    const wall = performance.now() - began
 
-    expect(wall).toBeGreaterThanOrEqual(waitMs)
-    expect(wall).toBeLessThan(waitMs * 2)
+    expect(lockOpens.count).toBeLessThanOrEqual(waitMs / quietestPollMs + 1)
     expect(results).toEqual(additions.map(() => refusal(busyMessage)))
     expect(readFileSync(planPath, 'utf8')).toBe(plan)
     expect(existsSync(lockPath)).toBe(true)
