@@ -3,6 +3,7 @@ import { MAX_DECISIONS_PER_STEP, buildSnapshot } from './index'
 import type { AgentStatusUnavailable, Snapshot, SnapshotStep } from './index'
 
 const now = new Date('2026-10-22T10:38:00Z')
+const saturatedWorkerGuardMs = 20_000
 
 const step = (overlay: Record<string, unknown> = {}): Record<string, unknown> => ({
   id: 's1',
@@ -148,11 +149,18 @@ describe('buildSnapshot', () => {
     expect(spentOf(planText(inProgress({ startedAt })))).toBeNull()
   })
 
-  const manyStepsAfter = (bigStart: string): string =>
-    planText(
-      inProgress({ id: 'big', startedAt: bigStart }),
-      ...Array.from({ length: 4000 }, (_, index) => inProgress({ id: `s${index}`, startedAt: null })),
-    )
+  const shortStart = '2026-10-22T10:00:00Z'
+  const adversarialStart = `${'a'.repeat(450_000)}Z`
+
+  const manyStepsAfter = (bigStart: string, titlePadding: string): string =>
+    JSON.stringify({
+      issue: '#38',
+      title: `Core snapshot${titlePadding}`,
+      steps: [
+        inProgress({ id: 'big', startedAt: bigStart }),
+        ...Array.from({ length: 4000 }, (_, index) => inProgress({ id: `s${index}`, startedAt: null })),
+      ],
+    })
 
   const millisecondsToBuild = (text: string): number => {
     const began = performance.now()
@@ -160,17 +168,33 @@ describe('buildSnapshot', () => {
     return performance.now() - began
   }
 
-  it('costs no more than a plan with a short start when an early start is huge and many steps follow', () => {
-    const adversarial = manyStepsAfter(`${'a'.repeat(450_000)}Z`)
-    const baseline = manyStepsAfter('2026-10-22T10:00:00Z')
-    expect(adversarial.length).toBeLessThan(1_048_576)
+  const interleavedMinimums = (adversarial: string, baseline: string) => {
     millisecondsToBuild(baseline)
-    const reference = millisecondsToBuild(baseline)
-    expect(millisecondsToBuild(adversarial)).toBeLessThan(reference * 5 + 50)
-    const snapshot = buildSnapshot({ plan: adversarial }, now)
-    expect(snapshot.errors).toEqual([])
-    expect(snapshot.currentStepId).toBe('big')
-  })
+    millisecondsToBuild(adversarial)
+    let quickestAdversarial = Infinity
+    let quickestBaseline = Infinity
+    for (let round = 0; round < 3; round += 1) {
+      quickestAdversarial = Math.min(quickestAdversarial, millisecondsToBuild(adversarial))
+      quickestBaseline = Math.min(quickestBaseline, millisecondsToBuild(baseline))
+    }
+    return { adversarial: quickestAdversarial, baseline: quickestBaseline }
+  }
+
+  it(
+    'costs no more than a same-size plan with a short start when an early start is huge and many steps follow',
+    { timeout: saturatedWorkerGuardMs },
+    () => {
+      const adversarial = manyStepsAfter(adversarialStart, '')
+      const baseline = manyStepsAfter(shortStart, 'a'.repeat(adversarialStart.length - shortStart.length))
+      expect(adversarial.length).toBe(baseline.length)
+      expect(adversarial.length).toBeLessThan(1_048_576)
+      const quickest = interleavedMinimums(adversarial, baseline)
+      expect(quickest.adversarial).toBeLessThan(quickest.baseline * 5)
+      const snapshot = buildSnapshot({ plan: adversarial }, now)
+      expect(snapshot.errors).toEqual([])
+      expect(snapshot.currentStepId).toBe('big')
+    },
+  )
 
   it.each([
     ['no start', { startedAt: null }],

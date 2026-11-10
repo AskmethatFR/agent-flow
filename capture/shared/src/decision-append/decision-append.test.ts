@@ -113,6 +113,8 @@ const failure = (): never => {
   throw new Error('injected fault')
 }
 
+const saturatedSpawnGuardMs = 20_000
+
 const sevenBytesAtATime = ((fd: number, buffer: Uint8Array, offset: number) =>
   writeSync(fd, buffer, offset, Math.min(7, buffer.length - offset))) as typeof writeSync
 
@@ -572,7 +574,7 @@ describe('appendDecision', () => {
       expect(result).toEqual(refused('cannot be written'))
     })
 
-    it('refuses a decisions.jsonl that is a FIFO without blocking', () => {
+    it('refuses a decisions.jsonl that is a FIFO without blocking', { timeout: saturatedSpawnGuardMs }, () => {
       execFileSync('mkfifo', [decisionsPath])
 
       const result = appendDecision(worktree, decisionOf())

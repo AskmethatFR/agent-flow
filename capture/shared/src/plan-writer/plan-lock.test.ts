@@ -28,6 +28,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { validatePlan } from '@agent-flow/core/contracts'
 import { refusalFor } from '../shared/confinement'
 import { withLock } from '../shared/plan-lock'
+import type { LockIo } from '../shared/plan-lock'
 import { addPlanStep } from './index'
 import { createPlanBatchWriter, createPlanStepAdder, createPlanWriter } from './plan-writer'
 import type { PlanOperation, PlanWriterIo } from './plan-writer'
@@ -64,6 +65,23 @@ const stepOf = (id: string, overlays: Record<string, unknown> = {}) => ({
 
 const busyMessage = 'is busy; remove .agent-flow/.plan.lock only if no write is running'
 const staleMessage = 'is locked by a stale lock file; remove .agent-flow/.plan.lock'
+
+const quietestPollMs = 1
+
+const countingLockIo = (): LockIo & { readonly lockAttempts: () => number } => {
+  let lockOpens = 0
+  return {
+    openSync: ((...args: Parameters<typeof openSync>) => {
+      if (String(args[0]) === lockPath) lockOpens += 1
+      return openSync(...args)
+    }) as typeof openSync,
+    closeSync,
+    fstatSync,
+    lstatSync,
+    unlinkSync,
+    lockAttempts: () => lockOpens,
+  }
+}
 
 const refusal = (message: string) => ({
   accepted: false,
@@ -218,12 +236,13 @@ describe('plan.json read-modify-write lock', () => {
     givenPlan(plan)
     writeFileSync(lockPath, '')
     utimesSync(lockPath, hourAgo(), hourAgo())
-    const began = Date.now()
+    const lockIo = countingLockIo()
+    const refuseLock = refusalFor('plan.json')
 
-    const result = addPlanStep(worktree, { stepId: 's1', title: 'dev-a: Implementation' })
+    const result = withLock(lockPath, { waitMs: 10_000, staleAfterMs: 60_000 }, refuseLock, () => ({ accepted: true }), lockIo)
 
     expect(result).toEqual(refusal(staleMessage))
-    expect(Date.now() - began).toBeLessThan(2_000)
+    expect(lockIo.lockAttempts()).toBeLessThan(10)
     expect(readFileSync(planPath, 'utf8')).toBe(plan)
     expect(existsSync(lockPath)).toBe(true)
   })
@@ -263,13 +282,14 @@ describe('plan.json read-modify-write lock', () => {
   it('sleeps between attempts instead of spinning while it waits for a held lock', () => {
     givenPlan(planWith([]))
     writeFileSync(lockPath, '')
-    const adder = createPlanStepAdder(io, { waitMs: 300, staleAfterMs: 60_000 })
-    const before = process.cpuUsage()
+    const waitMs = 300
+    const lockIo = countingLockIo()
+    const refuseLock = refusalFor('plan.json')
 
-    adder(worktree, { stepId: 's1', title: 'dev-a: Implementation' })
+    const result = withLock(lockPath, { waitMs, staleAfterMs: 60_000 }, refuseLock, () => ({ accepted: true }), lockIo)
 
-    const used = process.cpuUsage(before)
-    expect((used.user + used.system) / 1000).toBeLessThan(150)
+    expect(result).toEqual(refusal(busyMessage))
+    expect(lockIo.lockAttempts()).toBeLessThanOrEqual(waitMs / quietestPollMs + 1)
   })
 
   it('keeps retrying while another process claims the lock with an O_TRUNC write and releases it with unlink(2)', async () => {
@@ -405,12 +425,15 @@ describe('a batch of plan operations under one lock', () => {
     const plan = planWith([])
     givenPlan(plan)
     writeFileSync(lockPath, '')
-    const batch = createPlanBatchWriter(io, { waitMs: 200, staleAfterMs: 60_000 })
+    const waitMs = 200
+    const batch = createPlanBatchWriter(io, { waitMs, staleAfterMs: 60_000 })
     const began = performance.now()
 
     const results = batch(worktree, additions)
+    const wall = performance.now() - began
 
-    expect(performance.now() - began).toBeLessThan(1_000)
+    expect(wall).toBeGreaterThanOrEqual(waitMs)
+    expect(wall).toBeLessThan(waitMs * 2)
     expect(results).toEqual(additions.map(() => refusal(busyMessage)))
     expect(readFileSync(planPath, 'utf8')).toBe(plan)
     expect(existsSync(lockPath)).toBe(true)
