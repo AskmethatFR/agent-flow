@@ -59,11 +59,15 @@ Tool runs, in order. Each full report is not committed: its sha256 and size are 
      size 92266 bytes, sha256 e7bc10f6c13f8973a17a526b4b091fa40fd2f07fe64999eaf7433b4d912dde58
      (differs from run 1; only the file of run 2 remained at the path)
 
-Resolution (real decisionStepOf from core/src/lifecycle/index.ts:2, on the plan.json snapshot taken before each run)
+Resolution (real decisionStepOf from core/src/lifecycle/index.ts:2)
+  The step was resolved on the plan.json snapshot taken just before each run; the rule says run end.
+  The result is identical here because no plan event falls inside any run (the plan events at 21:06:46.600,
+  21:06:49.918, 21:08:55.691 and 21:09:23.347, plan.json:11-21, against the run windows above, lines 32-60).
+  No run spanned a step transition, so the run-end case is untested.
   R1 vitest     role dev-a  -> {"accepted":true,"stepId":"1"}
   R2 cucumber   role qa     -> {"accepted":true,"stepId":"2"}
   R3 stryker-1  no role     -> {"accepted":false, field "role", message "has no step in progress"}
-  R4 stryker-2  no role     -> {"accepted":true,"stepId":"1"}   (the only step in progress)
+  R4 stryker-2  no role     -> {"accepted":true,"stepId":"1"}   (only-step branch, decision-step.ts:39-42: the mechanism is shown, the correctness is not; it returns step 1 whatever the run measured)
   final plan, no role       -> {"accepted":false, field "step", message "no step is in progress"}
   All five match the expectation written before the run.
 
@@ -77,6 +81,12 @@ CI (read-only)
   #40 re-run plan (docs/technical/capture/evidence/real-issue-run/claude-code-rerun/plan.json:86-94):
   the only step in progress at those instants is step 8, architect, "Documentation capture" (20:37:58.416Z-20:40:51.811Z);
   step 9 ended 20:39:02.477Z, the implementation steps 3, 3.rework-1 and 3.rework-2 ended by 20:32:36.880Z.
+  head commit (git log -1 --format=%cI|%s a8ec9b5): "docs(capture): agent display state and current agent (#40)",
+  committed 2026-11-07T20:39:56Z, inside step 8. The only-step branch therefore lands on the step that made the tested
+  commit: this run does not show a wrong step. CI stays untied on another ground: a check covers the whole tree at the
+  head commit and plan.json carries no commit field (plan.schema.json:16-25).
+  No step is in progress in the #40 plan from 20:11:29.631Z to 20:17:42.277Z (plan.json:30, :38): decisionStepOf would
+  refuse there with 'no step is in progress'.
   gh pr checks 107 --json name,workflow,state,startedAt,completedAt,bucket
   -> bdd pass 17:19:40Z-17:20:19Z, test pass 17:19:40Z-17:20:29Z (2026-11-10): same fields as PR 93, no step id.
 
