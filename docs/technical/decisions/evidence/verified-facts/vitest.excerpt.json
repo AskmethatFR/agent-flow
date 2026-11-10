@@ -1,0 +1,56 @@
+{
+  "reporter": "json",
+  "topLevelKeys": [
+    "numTotalTestSuites",
+    "numPassedTestSuites",
+    "numFailedTestSuites",
+    "numPendingTestSuites",
+    "numTotalTests",
+    "numPassedTests",
+    "numFailedTests",
+    "numPendingTests",
+    "numTodoTests",
+    "snapshot",
+    "startTime",
+    "success",
+    "testResults"
+  ],
+  "startTime": 1794344818260,
+  "startTimeIso": "2026-11-10T21:06:58.260Z",
+  "success": true,
+  "numTotalTests": 885,
+  "numPassedTests": 885,
+  "numFailedTests": 0,
+  "numTotalTestSuites": 64,
+  "suiteKeys": [
+    "assertionResults",
+    "startTime",
+    "endTime",
+    "status",
+    "message",
+    "name"
+  ],
+  "firstSuite": {
+    "name": "core/test/ci-workflows.test.ts",
+    "startTime": 1794344820250,
+    "endTime": 1794344820263.4434,
+    "status": "passed"
+  },
+  "assertionKeys": [
+    "ancestorTitles",
+    "fullName",
+    "status",
+    "title",
+    "duration",
+    "failureMessages",
+    "meta",
+    "tags",
+    "benchmarks"
+  ],
+  "firstAssertion": {
+    "fullName": "ci workflow starts on pull requests and on pushes to main",
+    "status": "passed",
+    "title": "starts on pull requests and on pushes to main"
+  },
+  "fieldsThatCouldCarryAStepIdOrRole": "none"
+}

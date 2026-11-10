@@ -1,0 +1,84 @@
+Verified-facts spike (#108): controlled run in a scratch clone, 2026-11-10
+=========================================================================
+
+Setup
+  clone of the worktree at e154c12 (git clone), then: npm ci --ignore-scripts
+  node v22.22.1
+  @cucumber/cucumber 13.3.0, @stryker-mutator/core 10.1.1, @stryker-mutator/vitest-runner 10.1.1,
+  vitest 5.0.5, tsx 4.23.15, typescript 6.0.3 (package.json:24-30, exact pins)
+  <run> = the scratch clone; <scratch> = its parent directory
+
+Seed (real command)
+  node <run>/capture/shared/bin/agent-flow-plan.mjs <run> '#108' '...'   -> exit 1, "issue: must be a number of 1 to 10 digits without leading zero"
+  node <run>/capture/shared/bin/agent-flow-plan.mjs <run> 108 'Verified facts spike run'   -> ok, plan.json issue "#108"
+  (the command takes the bare number; it writes the "#")
+
+Steps (real Claude Code step hook, PostToolUse payloads as step-timing.ts:22-41 reads them)
+  CLAUDE_PROJECT_DIR=<run> <run>/node_modules/.bin/tsx --tsconfig <run>/tsconfig.json \
+      <run>/capture/claude-code/src/step-timing/hook.ts < payload.json
+  1  TaskCreate id 1 "dev-a: Implementation"          -> step 1, role dev-a
+  2  TaskCreate id 2 "qa: Functional verification"    -> step 2, role qa
+  3  TaskUpdate 1 -> in_progress                      21:06:46.600Z
+  4  TaskUpdate 2 -> in_progress                      21:06:49.918Z   (two steps in progress together)
+  5  TaskUpdate 2 -> completed                        21:08:55.691Z   (after Stryker run 1, before Stryker run 2)
+  6  TaskUpdate 1 -> completed                        21:09:23.347Z   (after Stryker run 2)
+  final plan: plan.json beside this file
+
+Tool runs, in order. Each full report is not committed: its sha256 and size are below.
+  role = the role the operator names for the run; Stryker is run by the orchestrator, so no role.
+
+  R1 vitest, role dev-a, plan snapshot taken just before (both steps in progress)
+     <run>/node_modules/.bin/vitest run --root <run> --project core --reporter=json --outputFile=<scratch>/vitest.json
+     report startTime 1794344818260 = 2026-11-10T21:06:58.260Z; last suite endTime 21:07:01.076Z
+     885 tests passed, 64 suites
+     size 263204 bytes (25% of MAX_TEXT_LENGTH 1048576)
+     sha256 f3ec9cde2995562488de6e40018f6780331730079a428b8a8fdb70376dc4ef23
+
+  R2 cucumber-js, role qa, both steps in progress
+     npm run bdd --prefix <run> -- --format json:<scratch>/cucumber.json --format message:<scratch>/cucumber.ndjson
+     (run from <run>: cucumber-js loads the step files of its working directory; a first call made from another
+      directory failed with "calling functions on an instance of Cucumber that isn't running" and wrote no report)
+     123 scenarios and 1735 steps passed
+     json   size 507745 bytes (48%)    sha256 bb56a11ec17d038da4cf8546b807886a1ff01a0ab0aa28a6f76ee9db7c437576
+     message size 1535377 bytes (146%, over MAX_TEXT_LENGTH)  sha256 9150dceadbee4ef8ab440e34255a03a373f4f79af0826387a88cc96b7b5e0c02
+     message testRunStarted 21:07:16.762Z, testRunFinished 21:08:26.766Z
+     json: no instant
+
+  R3 Stryker run 1, no role, both steps in progress
+     npm run mutation --prefix <run> -- --mutate core/src/lifecycle/decision-step.ts --reporters json,clear-text
+     started 21:08:35Z, ended 21:08:50Z (Stryker log, local time shifted by one hour)
+     51 mutants, 51 killed, score 100
+     report lands at the default reports/mutation/mutation.json (jsonReporter.fileName not set), copied aside before run 2
+     size 93560 bytes (9%), sha256 95910ff38dd7a4d9bf72f6830270c34d68ff91c40a5e30e3cd13e59e71eceda9
+     the report carries no instant
+
+  R4 Stryker run 2, no role, step 2 done, step 1 in progress
+     same command, --reporters json
+     started 21:09:03Z, ended 21:09:18Z
+     the report was written to the same default path and replaced run 1:
+     size 92266 bytes, sha256 e7bc10f6c13f8973a17a526b4b091fa40fd2f07fe64999eaf7433b4d912dde58
+     (differs from run 1; only the file of run 2 remained at the path)
+
+Resolution (real decisionStepOf from core/src/lifecycle/index.ts:2, on the plan.json snapshot taken before each run)
+  R1 vitest     role dev-a  -> {"accepted":true,"stepId":"1"}
+  R2 cucumber   role qa     -> {"accepted":true,"stepId":"2"}
+  R3 stryker-1  no role     -> {"accepted":false, field "role", message "has no step in progress"}
+  R4 stryker-2  no role     -> {"accepted":true,"stepId":"1"}   (the only step in progress)
+  final plan, no role       -> {"accepted":false, field "step", message "no step is in progress"}
+  All five match the expectation written before the run.
+
+Parallel-lane contrast (current-step rule of snapshot.ts:76-88: the latest-started in-progress step)
+  at R1 and R2 the latest-started step in progress is step 2 (qa, 21:06:49.918Z):
+  R1 vitest, run by dev-a, would be attached to step 2 by the current-step rule, and to step 1 by decisionStepOf.
+
+CI (read-only)
+  gh pr view 93 --json headRefOid,statusCheckRollup  -> gh-checks-pr93.json beside this file
+  head a8ec9b5; bdd 20:40:05Z-20:40:32Z, test 20:40:06Z-20:40:37Z (2026-11-07)
+  #40 re-run plan (docs/technical/capture/evidence/real-issue-run/claude-code-rerun/plan.json:86-94):
+  the only step in progress at those instants is step 8, architect, "Documentation capture" (20:37:58.416Z-20:40:51.811Z);
+  step 9 ended 20:39:02.477Z, the implementation steps 3, 3.rework-1 and 3.rework-2 ended by 20:32:36.880Z.
+  gh pr checks 107 --json name,workflow,state,startedAt,completedAt,bucket
+  -> bdd pass 17:19:40Z-17:20:19Z, test pass 17:19:40Z-17:20:29Z (2026-11-10): same fields as PR 93, no step id.
+
+Scan
+  every file in this directory was scanned with spikes/capture/shared/secrets.mjs findLeaks: no leak.
