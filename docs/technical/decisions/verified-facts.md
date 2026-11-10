@@ -55,7 +55,7 @@ Corrected here, not edited there (closed records and plan):
 | gh CI status | `gh pr view --json headRefOid,statusCheckRollup`, or `gh pr checks --json ...` | GitHub Actions (workflow `ci` job `test`, workflow `bdd` job `bdd`, `ci-pull-request-posture.md:41`), read with `gh` | the GitHub API, no file; nothing reads it today | `startedAt`, `completedAt` per check | about 0.9 KB for two checks |
 
 - **Parsed sources** (v1 candidates settled here): vitest JSON, cucumber-js JSON, Stryker mutation JSON, gh CI status. The cucumber message stream is not a parsed source: it is over the bound and the JSON format carries the pass/fail results the detector needs. Whether the JSON format needs an instant is for #110 (it carries none; the run-end instant is the capture instant).
-- **Failure-message field** the loop detector keys on (`loop-threshold.md:48`): vitest `assertionResults[].failureMessages` (`vitest.excerpt.json:45`) and cucumber JSON `result.error_message` (`node_modules/@cucumber/cucumber/lib/formatter/json_formatter.js:162`). The committed excerpts come from green runs, so they show the keys and no failure value.
+- **Failure-message field** the loop detector keys on (`loop-threshold.md:48`): vitest `assertionResults[].failureMessages` (`vitest.excerpt.json:45`) and cucumber JSON `result.error_message` (`node_modules/@cucumber/cucumber/lib/formatter/json_formatter.js:162`). The committed excerpts come from green runs, so they show the keys and no failure value. The detector's input is a fixed-length fingerprint of that message (a hash taken after the normalisation that Phase 5 story 5 defines), never the message text; this holds for both fields.
 - **TRX**: dropped, as AC2 states. **Pending (b)**: held as written, the human has not ruled. Recommendation: confirm the drop and open a follow-up ticket for `docs/plan.md:126` and the scenario at `docs/plan.md:163`. This record does not edit `plan.md`.
 - No report names a plan step, a role or an agent: the vitest keys, the cucumber JSON keys and the Stryker keys were listed and none could carry one (`vitest.excerpt.json`, `cucumber.excerpt.json`, `mutation.excerpt.json`).
 
@@ -63,7 +63,7 @@ Corrected here, not edited there (closed records and plan):
 
 "Tied" means the report content itself names a plan step. By that test **every source is untied by content**. The rule below attaches a fact by the run's capture instant and the role that ran the tool: untied by content, attached by the capture rule.
 
-**Rule (decided)**: a verified fact attaches when the tool run ends (capture time), never when a report is read later, with `decisionStepOf(plan, role)`. The role is the role that ran the tool; when that role has no step, the only step in progress is used; otherwise the fact is unattached.
+**Rule (decided)**: a verified fact attaches when the tool run ends (capture time), never when a report is read later, with `decisionStepOf(plan, role)`. The role is the role that ran the tool; when that role has no step, the only step in progress is used and the attachment records that it came from the only-step fallback, because no step of the role was in progress; otherwise the fact is unattached.
 
 | Run (evidence) | Role | Report carries a step id | Plan at capture | `decisionStepOf` result | Verdict |
 |---|---|---|---|---|---|
@@ -94,9 +94,9 @@ A fact that `decisionStepOf` refuses is **kept, counted at issue level and repor
 
 Both inputs to a verified fact are agent-reachable: the report file is written by a tool into the worktree the agent controls, and the role is supplied by the operator or the agent.
 - **MUST**: "verified" means parsed from a tool run whose end the capture host observed. It is not proof against an agent that forges output; it keeps tool facts apart from agent claims (`docs/plan.md:18`), nothing more.
-- **MUST**: take a fact only from a tool run the host observed (a runtime PostToolUse event or a transcript tool result), never from a report file merely found in the worktree.
-- **MUST**: take the role from identity the host observed (hook `agent_type`, or the session) where it exists; an agent-supplied role is marked declared.
-- **Owner**: #112 (capture side). The Security-lane review of the sixth file checks it.
+- **MUST**: take a fact only from a tool run the host observed (a runtime PostToolUse event or a transcript tool result), never from a report file merely found in the worktree. A Bash `echo` into a report path is also a tool run the host observes, so the capture side must check that the observed command is the tool itself and prefer the tool result's own stdout over a file in the worktree.
+- **MUST**: take the role from identity the host observed (hook `agent_type`, or the session) where it exists. When the role is agent-supplied (not host-observed), the attachment is marked as agent-supplied and the fact's `origin` stays `verified`, consistent with "the separator is the source".
+- **Owner**: #112 or the capture-side slice cut from it. The Security-lane review of the sixth file checks it.
 
 ### S5 Steps that ran no tool (AC5)
 
@@ -128,7 +128,7 @@ Per slice:
 - **#112**: its title assumes the daemon reads report files on poll. Capture-time attachment means the fact-file writer is capture-side and runs when a tool run ends; #112 stays the reader of that file and needs re-slicing (its Touches are `daemon/**` and its AC4 says no parsing in `daemon/`). It also owns how the role reaches the writer. The PM re-slices; this record does not edit #112.
 - **#113**: display only; shows verified and declared apart, unattached and CI apart from the steps; a no-tools step shows per (a).
 - **#116**: "every completed step shows at least one verified fact" holds only for steps that ran tests or mutation, until (a) is ruled.
-- **Phase 5 loop detector**: input is vitest and cucumber-js reports only (`loop-threshold.md:50`, `:69`). Stryker and CI are excluded: neither is a per-test pass/fail run.
+- **Phase 5 loop detector**: input is the stored fingerprint of the failure message (never its text) of vitest and cucumber-js test runs only (`loop-threshold.md:50`, `:69`); the normalisation behind the fingerprint is owed to #110 and to Phase 5 story 5. Stryker and CI are excluded: neither is a per-test pass/fail run.
 
 ### Considered options
 
@@ -149,17 +149,18 @@ Per slice:
 - **MUST**: attach a verified fact at capture time, with `decisionStepOf(plan, role)` and the role that ran the tool.
 - **MUST**: report an unmatched fact unattached; never drop it, never attach it to the current step.
 - **MUST NOT**: write a verified fact into `decisions.jsonl`.
-- **MUST NOT**: persist a tool report as it is; the bound is 1 MiB and the cucumber message stream alone is 146% of it. The capture rule already persists an allowlist of fields only and never tool output text (`docs/technical/capture/events.md:118-119`), so a stored fact is a bounded extract of a report, never the report. The extract never includes `failureMessages`, `source` or stdout.
+- **MUST NOT**: persist a tool report as it is; the bound is 1 MiB and the cucumber message stream alone is 146% of it. The capture rule already persists an allowlist of fields only and never tool output text (`docs/technical/capture/events.md:118-119`), so a stored fact is a bounded extract of a report, never the report. The extract never includes the failure message text (vitest `failureMessages`, cucumber `error_message`), `source` or stdout. For a failing test it carries a fixed-length fingerprint of the failure message, a hash taken after the normalisation that Phase 5 story 5 defines, because the loop counter needs "the same failure message" across consecutive runs (`loop-threshold.md:48-49`) and the report itself is not kept. The normalisation is owed to #110 and to the loop-detector story 5; this keeps `events.md:119`.
 - **MUST** (owed to #110 and #111): refuse an over-bound report whole (a size error and no fact, never a truncation or a partial parse); stop the read at the bound before buffering. The bound is checked on UTF-16 length (`text.length`, `core/src/contracts/jsonl.ts:45`, `core/src/contracts/plan.ts:74`) while this record measures bytes, so the two differ for non-ASCII text.
-- **MUST** (owed to #112, and #109 where it applies): the trust rules of S4 hold for every fact.
-- **MUST** (owed to #112): a role-less or wrong-role run attached through the only-step fallback is recorded as attached-by-fallback, or treated as unattached.
-- **MUST** (owed to #112): report reads are confined. Open the file with `O_RDONLY|O_NOFOLLOW|O_NONBLOCK`, require an `fstat` regular file, read at most `MAX_TEXT_LENGTH`+1 bytes, derive the path from the worktree realpath. The fact-file writer follows `plan-writer-confinement.md:86`. #112 AC1 still says "at the paths from #108" on poll, which this record rejects (Considered options): its body needs updating.
+- **MUST** (owed to #112 or the capture-side slice cut from it, and #109 where it applies): the trust rules of S4 hold for every fact.
+- **MUST** (owed to #112 or the capture-side slice cut from it): an attachment made through the only-step fallback (no step of the role was in progress) carries the marker that says so (rule in S2). Whether such a fact stays attached or becomes unattached is an open question below.
+- **MUST** (owed to #112 or the capture-side slice cut from it): report reads are confined. Open the file with `O_RDONLY|O_NOFOLLOW|O_NONBLOCK`, require an `fstat` regular file, read at most `MAX_TEXT_LENGTH`+1 bytes, derive the path from the worktree realpath. The fact-file writer follows `plan-writer-confinement.md:86`. #112 AC1 still says "at the paths from #108" on poll, which this record rejects (Considered options): its body needs updating.
 - **Out of scope**: the name and shape of the new `.agent-flow` fact file (#112 and Security), snapshot facts (#109), the role-delivery mechanism (#112), glossary terms "verified fact", "declared fact", "unattached fact" (PM gap, `docs/functional/glossary.md:43-58`), the Security-lane routing of the sixth file (carried by #109 and #112, which do not carry it today; the orchestrator adds it there), ruling on (a) and (b).
 
 ## Open questions / Gaps
 
 - [ ] **Pending (a)**: steps that run no tools. Recommendation: exempt them and amend epic #4's outcome. Human decision.
 - [ ] **Pending (b)**: drop TRX and fix `docs/plan.md:126` and the scenario at `docs/plan.md:163`. Recommendation: confirm the drop, open a follow-up ticket for the `plan.md` fixes. Human decision.
+- [ ] Does a fact attached through the only-step fallback stay attached (with its marker) or become unattached? Not decided here.
 - [ ] Is a role-less orchestrator mutation run unattached, or an issue-level fact like CI? Not decided here; the run showed only that the only-step fallback attaches it by luck (R4) and refuses it with no step in progress.
 - [ ] How the role reaches the capture step when an agent runs a tool (#112). The run used an operator-supplied role.
 - [ ] Whether capture reads the agent transcript for steps and tool runs; the transcript could carry the role and the tool result. This record does not decide the direction; #112 settles it with the capture design.
