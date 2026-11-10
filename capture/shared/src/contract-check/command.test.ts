@@ -92,7 +92,9 @@ describe('runContractCheckCommand', () => {
   })
 })
 
-describe('agent-flow-check launcher', { timeout: 20_000 }, () => {
+const saturatedSpawnGuardMs = 20_000
+
+describe('agent-flow-check launcher', { timeout: saturatedSpawnGuardMs }, () => {
   const launcher = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'bin', 'agent-flow-check.mjs')
   const launch = (...args: string[]) => spawnSync(process.execPath, [launcher, ...args], { cwd: root, encoding: 'utf8' })
 
