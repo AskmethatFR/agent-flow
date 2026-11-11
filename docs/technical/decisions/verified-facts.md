@@ -3,7 +3,7 @@ id: "verified-facts"
 type: "technical"
 owner: "architect"
 status: "current"
-updated: "2026-11-10"
+updated: "2026-11-11"
 relations:
   depends-on: ["snapshot-decisions", "decisions-jsonl-schema"]
   related: ["loop-threshold", "capture-events", "real-issue-run"]
@@ -23,7 +23,7 @@ decided_in:
 
 > **One-liner**: No tool report names a plan step, so a verified fact is attached when the tool run ends, through `decisionStepOf(plan, role)` and the role that ran the tool. A report that finds no step is shown unattached, never dropped and never pushed onto the current step. The separator is the source, not a `decisions.jsonl` field. CI is an issue-level fact keyed by commit. The spike ends with a decision and a redesigned split, not "inconclusive".
 > **Links**: [[snapshot-decisions]] (orphan rule `:48`), [[decisions-jsonl-schema]] (frozen fields), [[loop-threshold]] (counter key `:48-49`, input `:50`), [[capture-events]] (step events), [[real-issue-run]] (evidence and scan rule `:94-96`). Consumers: epic #4 slices #109 to #116, epic #6 (Phase 5 loop detector).
-> Pending human decisions: (a) steps that run no tools, (b) drop TRX and fix `plan.md:126` and `plan.md:163`. Both are recorded below as pending; this record rules neither.
+> Human decisions: (a) steps that run no tools: ruled by the human on 2026-11-11, exempt (S5). Still pending: (b) drop TRX and fix `plan.md:126` and `plan.md:163`; this record does not rule it.
 
 ## Context
 
@@ -101,7 +101,7 @@ Both inputs to a verified fact are agent-reachable: the report file is written b
 ### S5 Steps that ran no tool (AC5)
 
 - The rule above is **scoped to steps that ran tools**. A step that ran no vitest, cucumber-js or Stryker run has no verified fact, and none is invented for it.
-- **Pending (a)**: not ruled by the human. Recommendation: exempt such steps from the verified-fact rule and amend epic #4's outcome ("every completed step shows at least one verified fact") accordingly. Until ruled, the record only scopes the rule.
+- **Decision (a), ruled by the human on 2026-11-11**: a step that ran no tool is exempt from the verified-fact rule and shows no verified fact, and says so. The rule is scoped to steps that ran a test or mutation tool. Epic #4's outcome ("every completed step shows at least one verified fact") is amended accordingly (the orchestrator amends the epic). AC5 is no longer held pending.
 - **File-diff fact: out of Phase 3.** Cost reason: a per-step diff needs a per-step baseline commit, and `plan.json` carries none (`core/schemas/plan.schema.json:16-25`); parallel lanes share one worktree (`plan.json:32-57`), so one diff cannot be split by step. The diff stays an issue-level input for the Phase 5 scope check (`docs/plan.md:128`).
 
 ### S6 Timebox result (AC7)
@@ -109,7 +109,7 @@ Both inputs to a verified fact are agent-reachable: the report file is written b
 Timebox: 80 tool-call turns of the executing lane, under the 200 warning ceiling. The run finished inside it, at about 75 of 80 turns, with a result: **decision plus redesigned split**, not "inconclusive". The kill criterion fired in part: no source is tied by content, and CI cannot be tied to a step at all (a check covers a commit), so the split is redesigned as follows.
 - **Step-level verified facts**: vitest and cucumber-js test reports, and Stryker mutation reports run by a role that has a step, each attached at capture time.
 - **Issue-level verified fact**: CI status, keyed by head commit, shown apart from the steps.
-- Epic #4's outcome therefore holds only for steps that ran tests or mutation. Steps with no tool fall under pending (a).
+- Epic #4's outcome now reads: every completed step that ran a test or mutation tool shows at least one verified fact with its source; a step that ran no tool shows none and says so (decision (a), ruled by the human on 2026-11-11).
 
 What the run did not show: how a live agent's tool run delivers its role to the capture step. Today no hook sees a tool run (`capture/claude-code/settings.json:5` matches `TaskCreate|TaskUpdate` only). The rule is proven with a role the operator supplies, not with an automatic one. The decision would change only if that delivery proves impossible, and then the ticket would reopen as "inconclusive + what blocks".
 
@@ -126,8 +126,8 @@ What the run did not show: how a live agent's tool run delivers its role to the 
 Per slice:
 - **#109**: facts per step plus an issue-level place for unattached facts and CI, additive; per fact `origin: verified|declared`; declared first. Lists the sixth `.agent-flow` file as the frozen-contract change for the Security lane.
 - **#112**: its title assumes the daemon reads report files on poll. Capture-time attachment means the fact-file writer is capture-side and runs when a tool run ends; #112 stays the reader of that file and needs re-slicing (its Touches are `daemon/**` and its AC4 says no parsing in `daemon/`). It also owns how the role reaches the writer. The PM re-slices; this record does not edit #112.
-- **#113**: display only; shows verified and declared apart, unattached and CI apart from the steps; a no-tools step shows per (a).
-- **#116**: "every completed step shows at least one verified fact" holds only for steps that ran tests or mutation, until (a) is ruled.
+- **#113**: display only; shows verified and declared apart, unattached and CI apart from the steps; a step that ran no tool shows the exemption (it shows no verified fact and says so, decision (a)).
+- **#116**: asserts the amended outcome, not "every completed step": every completed step that ran a test or mutation tool shows at least one verified fact with its source, and a step that ran no tool shows none and says so.
 - **Phase 5 loop detector**: input is the stored fingerprint of the failure message (never its text) of vitest and cucumber-js test runs only (`loop-threshold.md:50`, `:69`); the normalisation behind the fingerprint is owed to #110 and to Phase 5 story 5. Stryker and CI are excluded: neither is a per-test pass/fail run.
 
 ### Considered options
@@ -154,11 +154,11 @@ Per slice:
 - **MUST** (owed to #112 or the capture-side slice cut from it, and #109 where it applies): the trust rules of S4 hold for every fact.
 - **MUST** (owed to #112 or the capture-side slice cut from it): an attachment made through the only-step fallback (no step of the role was in progress) carries the marker that says so (rule in S2). Whether such a fact stays attached or becomes unattached is an open question below.
 - **MUST** (owed to #112 or the capture-side slice cut from it): report reads are confined. Open the file with `O_RDONLY|O_NOFOLLOW|O_NONBLOCK`, require an `fstat` regular file, read at most `MAX_TEXT_LENGTH`+1 bytes, derive the path from the worktree realpath. The fact-file writer follows `plan-writer-confinement.md:86`. #112 AC1 still says "at the paths from #108" on poll, which this record rejects (Considered options): its body needs updating.
-- **Out of scope**: the name and shape of the new `.agent-flow` fact file (#112 and Security), snapshot facts (#109), the role-delivery mechanism (#112), glossary terms "verified fact", "declared fact", "unattached fact" (PM gap, `docs/functional/glossary.md:43-58`), the Security-lane routing of the sixth file (carried by #109 and #112, which do not carry it today; the orchestrator adds it there), ruling on (a) and (b).
+- **Out of scope**: the name and shape of the new `.agent-flow` fact file (#112 and Security), snapshot facts (#109), the role-delivery mechanism (#112), glossary terms "verified fact", "declared fact", "unattached fact" (PM gap, `docs/functional/glossary.md:43-58`), the Security-lane routing of the sixth file (carried by #109 and #112, which do not carry it today; the orchestrator adds it there), ruling on (b).
 
 ## Open questions / Gaps
 
-- [ ] **Pending (a)**: steps that run no tools. Recommendation: exempt them and amend epic #4's outcome. Human decision.
+- [x] **(a)** steps that run no tools: ruled by the human, 2026-11-11 (exempt; epic #4's outcome amended).
 - [ ] **Pending (b)**: drop TRX and fix `docs/plan.md:126` and the scenario at `docs/plan.md:163`. Recommendation: confirm the drop, open a follow-up ticket for the `plan.md` fixes. Human decision.
 - [ ] Does a fact attached through the only-step fallback stay attached (with its marker) or become unattached? Not decided here.
 - [ ] Is a role-less orchestrator mutation run unattached, or an issue-level fact like CI? Not decided here; the run showed only that the only-step fallback attaches it by luck (R4) and refuses it with no step in progress.

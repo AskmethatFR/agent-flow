@@ -26,7 +26,7 @@
 | `loop-threshold` | Loop threshold (plan.md Q6) | current | 2026-10-26 | `capture-events` | `docs/technical/decisions/loop-threshold.md` |
 | `real-issue-run` | Real-issue capture run: setup, AC4 evidence, QA procedure | current | 2026-11-05 | [[capture-events]], [[agent-rules]], [[plan-writer-confinement]] | `docs/technical/capture/real-issue-run.md` |
 | `scope-origin` | Origin of scope.json (plan.md Q5) | current | 2026-10-26 | `capture-events` | `docs/technical/decisions/scope-origin.md` |
-| `verified-facts` | Verified facts: sources, capture-time step attachment, separator | current | 2026-11-10 | [[loop-threshold]], [[snapshot-decisions]], [[decisions-jsonl-schema]], [[capture-events]], [[real-issue-run]] | `docs/technical/decisions/verified-facts.md` |
+| `verified-facts` | Verified facts: sources, capture-time step attachment, separator | current | 2026-11-11 | [[loop-threshold]], [[snapshot-decisions]], [[decisions-jsonl-schema]], [[capture-events]], [[real-issue-run]] | `docs/technical/decisions/verified-facts.md` |
 
 - `features/phase-1/contract-check.feature` — #17 Contract check: every file under .agent-flow reported checked, violation reported with file and line, unsafe layout refused (S1-S3)
 - `features/phase-1/real-issue-capture.feature` — #17 Real-issue capture, run by hand per runtime (`@manual`): a real issue produces correct .agent-flow files (S1)
