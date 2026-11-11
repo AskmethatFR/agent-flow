@@ -629,6 +629,96 @@ describe('AgentFlowPanel step detail', () => {
   })
 })
 
+const fact = (origin: 'verified' | 'declared', source: string, label: string) => ({ origin, source, label })
+
+const stepWithFacts = (id: string, title: string, facts: ReturnType<typeof fact>[]) => ({
+  ...step(id, title),
+  facts,
+})
+
+describe('AgentFlowPanel step facts', () => {
+  const testsPassing = fact('verified', 'vitest', '3 of 5 passing')
+  const almostDone = fact('declared', 'decisions.jsonl', 'scenario 4 is almost done')
+
+  it('lists each fact with its badge, its label and its source right after the decisions', async () => {
+    const decided = { ...stepWith('s1', 'Design', [decision()]), facts: [testsPassing, almostDone] }
+    const panel = await renderPanel(async () => snapshotReply({ steps: [decided] }))
+
+    await panel.press('Design (todo)')
+
+    expect(panel.texts()).toEqual([
+      '#42',
+      'Add login',
+      'Design (todo)',
+      'Use zod',
+      'Why: one schema for both sides',
+      'Rejected: io-ts',
+      'Role: architect · Confidence: high',
+      'Verified',
+      '3 of 5 passing',
+      'Source: vitest',
+      'Declared',
+      'scenario 4 is almost done',
+      'Source: decisions.jsonl',
+    ])
+    await panel.unmount()
+  })
+
+  it('keeps the order of the snapshot rather than putting verified facts first', async () => {
+    const steps = [stepWithFacts('s1', 'Design', [almostDone, testsPassing])]
+    const panel = await renderPanel(async () => snapshotReply({ steps }))
+
+    await panel.press('Design (todo)')
+
+    expect(panel.texts().filter((text) => text === 'Verified' || text === 'Declared')).toEqual(['Declared', 'Verified'])
+    await panel.unmount()
+  })
+
+  it('shows no badge, no source line and no placeholder for a step without facts', async () => {
+    const panel = await renderPanel(async () => snapshotReply({ steps: [stepWithFacts('s1', 'Design', [])] }))
+
+    await panel.press('Design (todo)')
+
+    expect(panel.texts()).toEqual(['#42', 'Add login', 'Design (todo)', 'No decision logged for this step.'])
+    await panel.unmount()
+  })
+
+  it('shows the facts of the pressed step only', async () => {
+    const steps = [stepWithFacts('s1', 'Design', [testsPassing]), stepWithFacts('s2', 'Implement', [almostDone])]
+    const panel = await renderPanel(async () => snapshotReply({ steps }))
+
+    await panel.press('Implement (todo)')
+
+    const texts = panel.texts()
+    expect(texts).toContain('scenario 4 is almost done')
+    expect(texts).not.toContain('3 of 5 passing')
+    await panel.unmount()
+  })
+
+  it('strips control characters and bounds the label and the source', async () => {
+    const hostile = fact('declared', `\u{202E}${'s'.repeat(300)}`, `\u{202E}${'l'.repeat(300)}`)
+    const panel = await renderPanel(async () => snapshotReply({ steps: [stepWithFacts('s1', 'Design', [hostile])] }))
+
+    await panel.press('Design (todo)')
+
+    const texts = panel.texts()
+    expect(texts).toContain(`${'l'.repeat(199)}…`)
+    expect(texts).toContain(`Source: ${'s'.repeat(199)}…`)
+    await panel.unmount()
+  })
+
+  it('draws every fact line in the foreground colour', async () => {
+    const panel = await renderPanel(async () => snapshotReply({ steps: [stepWithFacts('s1', 'Design', [testsPassing])] }))
+
+    await panel.press('Design (todo)')
+
+    for (const line of ['Verified', '3 of 5 passing', 'Source: vitest']) {
+      expect(panel.styleOf(line)?.color).toBe('#fff')
+    }
+    await panel.unmount()
+  })
+})
+
 describe('AgentFlowPanel current agent', () => {
   const inProgress = step('s1', 'Implement', 'in_progress', { milliseconds: 38 * 60_000, label: '38 min' })
   const agentOf = (state: string, role = 'dev-a') => ({ role, state })

@@ -13,6 +13,11 @@ const decisionTitlesByStep: Record<string, readonly string[]> = {
 }
 const noDecisionCopy = 'No decision logged for this step.'
 
+const decisionsBlock = (texts: readonly string[]): string[] => {
+  const factsStart = texts.findIndex((text) => text === 'Verified' || text === 'Declared')
+  return factsStart < 0 ? [...texts] : texts.slice(0, factsStart)
+}
+
 const writeFixture = (world: PanelWorld, steps: readonly [string, string][], decisions: Record<string, unknown>[]): void => {
   writePlan(world, {
     issue: '#20',
@@ -71,7 +76,7 @@ When('I select its step', async function (this: PanelWorld) {
 
 Then('the decision shows its title, why, rejected options and confidence', function (this: PanelWorld) {
   assert.deepEqual(
-    this.texts.slice(this.texts.indexOf(`${this.expectedStep} (todo)`) + 1),
+    decisionsBlock(this.texts).slice(this.texts.indexOf(`${this.expectedStep} (todo)`) + 1),
     ['Use zod', 'Why: one schema for both sides', 'Rejected: io-ts · yup', 'Role: architect · Confidence: medium'],
   )
 })
@@ -133,7 +138,7 @@ When('I select the other step', async function (this: PanelWorld) {
 
 Then('the step detail lists exactly the first decisions up to the cap, in file order', function (this: PanelWorld) {
   assert.deepEqual(
-    this.texts.filter((text) => /^Busy \d+$/.test(text)),
+    decisionsBlock(this.texts).filter((text) => /^Busy \d+$/.test(text)),
     busyTitles.slice(0, MAX_DECISIONS_PER_STEP),
   )
 })
@@ -147,7 +152,7 @@ Then('it shows one marker saying how many decisions were left out', function (th
 
 Then('all of its decisions are listed and no marker is shown', function (this: PanelWorld) {
   assert.deepEqual(
-    this.texts.filter((text) => /^Quiet \d+$/.test(text)),
+    decisionsBlock(this.texts).filter((text) => /^Quiet \d+$/.test(text)),
     quietTitles,
   )
   assert.deepEqual(

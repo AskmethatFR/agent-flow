@@ -10,6 +10,7 @@
 | `snapshot-agent-state` | Snapshot agent state: raw status in, display state and current agent out | current | 2026-11-07 | [[snapshot-contract]], [[host-adapter-boundary]], [[paseo-agent-state]], [[snapshot-rpc]], [[snapshot-decisions]] | `docs/technical/decisions/snapshot-agent-state.md` |
 | `snapshot-contract` | Core snapshot contract: shape, failure codes, instant rule | current | 2026-11-02 | [[host-adapter-boundary]], [[workspace-layout-core-boundary]], [[decisions-jsonl-schema]], [[feature-catalog]] | `docs/technical/decisions/snapshot-contract.md` |
 | `snapshot-decisions` | Snapshot decisions: per-step grouping, orphans, decisions-file failures | current | 2026-11-02 | [[snapshot-contract]], [[decisions-jsonl-schema]], [[snapshot-rpc]], [[host-adapter-boundary]], [[glossary]] | `docs/technical/decisions/snapshot-decisions.md` |
+| `snapshot-facts` | Snapshot facts: per-step shape, declared facts first, deferrals | current | 2026-11-11 | [[snapshot-contract]], [[snapshot-decisions]], [[verified-facts]], [[snapshot-rpc]], [[decisions-jsonl-schema]] | `docs/technical/decisions/snapshot-facts.md` |
 | `snapshot-rpc` | Snapshot RPC: workspaceId addressing, wire, reader chain, packaging | current | 2026-11-02 | [[host-adapter-boundary]], [[snapshot-contract]], [[paseo-api-version]], [[plan-writer-confinement]], [[workspace-layout-core-boundary]], [[paseo-agent-state]] | `docs/technical/decisions/snapshot-rpc.md` |
 
 - `features/phase-0/plan-contract.feature` — #23 Frozen contract: plan.json accepts a valid sample, rejects an unknown step status (S1, S2)
@@ -68,8 +69,8 @@
 
 | ID | Title | Status | Updated | Links | Path |
 |---|---|---|---|---|---|
-| `feature-catalog` | Capabilities: contracts, snapshot, decisions, plan writer, contract check, agent display state | current | 2026-11-09 | `glossary`, `real-issue-run` | `docs/functional/features.md` |
-| `glossary` | Ubiquitous language: decision, snapshot, time spent, plan writer, contract check, current agent | current | 2026-11-09 | `feature-catalog` | `docs/functional/glossary.md` |
+| `feature-catalog` | Capabilities: contracts, snapshot, decisions, facts, capture, agent state | current | 2026-11-11 | `glossary`, `real-issue-run`, `verified-facts` | `docs/functional/features.md` |
+| `glossary` | Ubiquitous language: run records, snapshot, facts, capture, contracts | current | 2026-11-11 | `feature-catalog`, `verified-facts` | `docs/functional/glossary.md` |
 
 - `features/phase-0/plan-contract.feature` — #23 Frozen data contracts: plan.json schema (S1, S2)
 - `features/phase-0/decisions-contract.feature` — #32 Frozen data contracts: decisions.jsonl schema and reader (S1, S2)
@@ -89,5 +90,6 @@
 - `features/phase-2/decisions-per-step.feature` — #20 Step detail: only the selected step's decisions listed with their reasoning, a step without decision says so, a step over the cap shows the first decisions and one overflow marker (S1-S5)
 - `features/phase-2/agent-state.feature` — #21 Agent state: the step in progress shows its agent and whether it is running or stopped, refreshed by polling (S1-S3)
 - `features/phase-3/verified-facts-spike.feature` — #108 Verified facts spike, read against the decision record (`@manual`): each source's format, writer and location, attachment on a real run, unmatched report, separator, no-tools step, timebox result (S1-S6)
-- `features/phase-3/snapshot-facts.feature` — #109 Snapshot facts: a step carries one declared fact per decision in logged order, an empty list without decisions, a malformed line yields errors and no throw, frozen step fields keep their shape (S1-S5); decision record [[verified-facts]]
+- `features/phase-3/facts-display.feature` — #113 Step detail: the selected step's verified and declared facts shown apart, each with its badge, its label as the snapshot carries it and its source, a step without facts shows nothing (S1-S3)
+- `features/phase-3/snapshot-facts.feature` — #109 Core snapshot: facts per step, one declared fact per decision, empty list when none, frozen step fields kept (S1-S5)
 - `features/phase-3/test-report-fact.feature` — #110 Test report as a verified fact: a vitest or cucumber-js report becomes a fact on its step with passed out of total, an unmatched step, a malformed or oversize report adds an error and no fact, a vitest run failed outside its tests is not shown as all passed (S1-S7); decision record [[verified-facts]]
