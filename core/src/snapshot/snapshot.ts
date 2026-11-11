@@ -71,6 +71,7 @@ export type SnapshotStep = {
   readonly decisions: readonly SnapshotDecision[]
   readonly omittedDecisions: number
   readonly facts: readonly SnapshotFact[]
+  readonly omittedFacts: number
 }
 
 export type CurrentAgent = {
@@ -103,25 +104,35 @@ const verifiedFactOf = (report: ParsedTestReport): SnapshotFact => ({
   label: `${report.passed} of ${report.total} passed${runFailedSuffixOf(report)}`,
 })
 
+const latestVerifiedFacts = (
+  stepId: string,
+  verified: readonly VerifiedFact[],
+): { readonly kept: readonly SnapshotFact[]; readonly omitted: number } => {
+  const facts = verified.filter((entry) => entry.step === stepId).map(({ fact }) => fact)
+  const omitted = Math.max(0, facts.length - MAX_DECISIONS_PER_STEP)
+  return { kept: facts.slice(omitted), omitted }
+}
+
 const toSnapshotStep = (
   step: PlanStep,
   now: Date,
   { decisions, omitted }: StepDecisions,
   verified: readonly VerifiedFact[],
-): SnapshotStep => ({
-  id: step.id,
-  title: step.title,
-  role: step.role,
-  status: step.status,
-  origin: step.origin,
-  timeSpent: timeSpentOf(step, now),
-  decisions,
-  omittedDecisions: omitted,
-  facts: [
-    ...decisions.map(declaredFactOf),
-    ...verified.filter((entry) => entry.step === step.id).map(({ fact }) => fact),
-  ],
-})
+): SnapshotStep => {
+  const { kept, omitted: omittedFacts } = latestVerifiedFacts(step.id, verified)
+  return {
+    id: step.id,
+    title: step.title,
+    role: step.role,
+    status: step.status,
+    origin: step.origin,
+    timeSpent: timeSpentOf(step, now),
+    decisions,
+    omittedDecisions: omitted,
+    facts: [...decisions.map(declaredFactOf), ...kept],
+    omittedFacts,
+  }
+}
 
 const startOf = (step: PlanStep): number => instantOf(step.startedAt) ?? Number.NEGATIVE_INFINITY
 

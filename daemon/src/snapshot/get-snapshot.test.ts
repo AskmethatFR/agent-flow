@@ -114,6 +114,7 @@ describe('getSnapshot', () => {
             decisions: [],
             omittedDecisions: 0,
             facts: [],
+            omittedFacts: 0,
           },
         ],
         currentStepId: 's1',

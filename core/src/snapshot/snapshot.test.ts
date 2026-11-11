@@ -47,8 +47,8 @@ describe('buildSnapshot', () => {
       issue: '#38',
       title: 'Core snapshot',
       steps: [
-        { id: 's1', title: 'Design', role: 'architect', status: 'todo', origin: 'planned', timeSpent: null, decisions: [], omittedDecisions: 0, facts: [] },
-        { id: 's2', title: 'Build', role: 'dev-a', status: 'todo', origin: 'proposed', timeSpent: null, decisions: [], omittedDecisions: 0, facts: [] },
+        { id: 's1', title: 'Design', role: 'architect', status: 'todo', origin: 'planned', timeSpent: null, decisions: [], omittedDecisions: 0, facts: [], omittedFacts: 0 },
+        { id: 's2', title: 'Build', role: 'dev-a', status: 'todo', origin: 'proposed', timeSpent: null, decisions: [], omittedDecisions: 0, facts: [], omittedFacts: 0 },
       ],
       currentStepId: null,
       currentAgent: null,
@@ -399,7 +399,7 @@ describe('buildSnapshot', () => {
       'issue' | 'title' | 'steps' | 'currentStepId' | 'currentAgent' | 'ci' | 'errors'
     >()
     expectTypeOf<keyof SnapshotStep>().toEqualTypeOf<
-      'id' | 'title' | 'role' | 'status' | 'origin' | 'timeSpent' | 'decisions' | 'omittedDecisions' | 'facts'
+      'id' | 'title' | 'role' | 'status' | 'origin' | 'timeSpent' | 'decisions' | 'omittedDecisions' | 'facts' | 'omittedFacts'
     >()
   })
 
@@ -1391,5 +1391,95 @@ describe('buildSnapshot with a CI status', () => {
       'ci-status',
       'agent-state',
     ])
+  })
+})
+
+describe('buildSnapshot with a cap on verified facts per step', () => {
+  const numberedReport = (stepId: string, number: number) => ({
+    step: stepId,
+    text: JSON.stringify({ numTotalTests: number, numPassedTests: number, numFailedTestSuites: 0 }),
+  })
+
+  const numberedReports = (stepId: string, count: number) =>
+    Array.from({ length: count }, (_, index) => numberedReport(stepId, index + 1))
+
+  const labelsOfNumbers = (from: number, to: number): string[] =>
+    Array.from({ length: to - from + 1 }, (_, index) => `${from + index} of ${from + index} passed`)
+
+  const verifiedLabelsOf = (snapshot: Snapshot, index = 0): string[] =>
+    snapshot.steps[index]?.facts.filter(({ origin }) => origin === 'verified').map(({ label }) => label) ?? []
+
+  const strykerReport = (stepId: string) => ({
+    step: stepId,
+    text: JSON.stringify({
+      schemaVersion: '1.0',
+      files: { 'src/a.ts': { language: 'typescript', mutants: [{ status: 'Killed' }, { status: 'Survived' }] } },
+    }),
+  })
+
+  it.each([0, 1, MAX_DECISIONS_PER_STEP - 1, MAX_DECISIONS_PER_STEP])(
+    'keeps all %i verified facts of a step at or under the cap and omits none',
+    (count) => {
+      const snapshot = buildSnapshot({ plan: planOf('s1'), testReports: numberedReports('s1', count) }, now)
+      expect(verifiedLabelsOf(snapshot)).toEqual(labelsOfNumbers(1, count))
+      expect(snapshot.steps[0]?.omittedFacts).toBe(0)
+      expect(snapshot.errors).toEqual([])
+    },
+  )
+
+  it.each([1, 2, MAX_DECISIONS_PER_STEP])(
+    'keeps the last verified facts up to the cap in input order and counts the %i left out',
+    (extra) => {
+      const total = MAX_DECISIONS_PER_STEP + extra
+      const snapshot = buildSnapshot({ plan: planOf('s1'), testReports: numberedReports('s1', total) }, now)
+      expect(verifiedLabelsOf(snapshot)).toEqual(labelsOfNumbers(extra + 1, total))
+      expect(snapshot.steps[0]?.omittedFacts).toBe(extra)
+      expect(snapshot.errors).toEqual([])
+    },
+  )
+
+  it('never counts or drops the declared facts of a step against the cap', () => {
+    const snapshot = buildSnapshot(
+      {
+        plan: planOf('s1'),
+        decisions: [decisionLine('s1', 'a'), decisionLine('s1', 'b')].join('\n'),
+        testReports: numberedReports('s1', MAX_DECISIONS_PER_STEP + 1),
+      },
+      now,
+    )
+    const facts = snapshot.steps[0]?.facts ?? []
+    expect(facts).toHaveLength(MAX_DECISIONS_PER_STEP + 2)
+    expect(facts.slice(0, 2)).toEqual([
+      { origin: 'declared', source: 'decisions.jsonl', label: 'a' },
+      { origin: 'declared', source: 'decisions.jsonl', label: 'b' },
+    ])
+    expect(verifiedLabelsOf(snapshot)).toEqual(labelsOfNumbers(2, MAX_DECISIONS_PER_STEP + 1))
+    expect(snapshot.steps[0]?.omittedFacts).toBe(1)
+    expect(snapshot.steps[0]?.omittedDecisions).toBe(0)
+  })
+
+  it('caps the test and mutation facts of a step together, dropping the earliest test facts first', () => {
+    const snapshot = buildSnapshot(
+      {
+        plan: planOf('s1'),
+        testReports: numberedReports('s1', 45),
+        mutationReports: Array.from({ length: 10 }, () => strykerReport('s1')),
+      },
+      now,
+    )
+    const labels = verifiedLabelsOf(snapshot)
+    expect(labels).toEqual([...labelsOfNumbers(6, 45), ...Array.from({ length: 10 }, () => '50.00% mutation score, 1 surviving')])
+    expect(snapshot.steps[0]?.omittedFacts).toBe(5)
+  })
+
+  it('applies the cap to each step on its own, whatever interleaving', () => {
+    const over = numberedReports('s1', MAX_DECISIONS_PER_STEP + 2)
+    const other = numberedReports('s2', 3)
+    const testReports = [...over.slice(0, 10), ...other.slice(0, 1), ...over.slice(10), ...other.slice(1)]
+    const snapshot = buildSnapshot({ plan: planOf('s1', 's2'), testReports }, now)
+    expect(verifiedLabelsOf(snapshot, 0)).toEqual(labelsOfNumbers(3, MAX_DECISIONS_PER_STEP + 2))
+    expect(snapshot.steps[0]?.omittedFacts).toBe(2)
+    expect(verifiedLabelsOf(snapshot, 1)).toEqual(labelsOfNumbers(1, 3))
+    expect(snapshot.steps[1]?.omittedFacts).toBe(0)
   })
 })
