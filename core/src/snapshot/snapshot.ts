@@ -296,7 +296,7 @@ type ReadCi = {
 }
 
 const readCi = (text: string | undefined): ReadCi => {
-  if (text === undefined) return { ci: null, errors: [] }
+  if (typeof text !== 'string') return { ci: null, errors: [] }
   const result = readCiStatus(text)
   return result.accepted
     ? { ci: { origin: 'verified', ...result.status }, errors: [] }

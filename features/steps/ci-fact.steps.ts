@@ -44,8 +44,9 @@ const withCiStatus = (world: CiWorld, text: string): void => {
 }
 
 const onlyCiFact = (world: CiWorld): CiFact => {
-  assert.notEqual(world.snapshot.ci, null)
-  return world.snapshot.ci as CiFact
+  const { ci } = world.snapshot
+  assert.ok(ci !== null)
+  return ci
 }
 
 Given('a CI status for head commit {string} whose checks all passed', function (this: CiWorld, commit: string): void {
@@ -95,8 +96,8 @@ Then(
 Then(
   'step {string} carries the same facts as in a snapshot built without the CI status',
   function (this: CiWorld, id: string): void {
-    assert.notEqual(this.planText, undefined)
-    const withoutCi = buildSnapshot({ plan: this.planText as string, decisions: this.decisionsText }, builtAt)
+    assert.ok(this.planText !== undefined)
+    const withoutCi = buildSnapshot({ plan: this.planText, decisions: this.decisionsText }, builtAt)
     const facts = (snapshot: Snapshot) => snapshot.steps.find((candidate) => candidate.id === id)?.facts
     assert.notEqual(facts(this.snapshot), undefined)
     assert.deepEqual(facts(this.snapshot), facts(withoutCi))

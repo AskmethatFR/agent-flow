@@ -1311,6 +1311,7 @@ describe('buildSnapshot with a CI status', () => {
     ['an entry that is null', rollupText([checkRun(), null]), rollupMessage],
     ['an entry that is an array', rollupText([checkRun(), []]), rollupMessage],
     ['a legacy status context', rollupText([checkRun(), { __typename: 'StatusContext', state: 'SUCCESS' }]), rollupMessage],
+    ['an otherwise valid check run typed as a status context', rollupText([checkRun({ __typename: 'StatusContext' })]), rollupMessage],
     ['a type name that is not a string', rollupText([checkRun({ __typename: 7 })]), rollupMessage],
     ['a check without a status', rollupText([checkRun({ status: undefined })]), rollupMessage],
     ['a check with an unknown status', rollupText([checkRun({ status: 'DONE' })]), rollupMessage],
@@ -1325,6 +1326,12 @@ describe('buildSnapshot with a CI status', () => {
     expect(snapshot.ci).toBeNull()
     expect(snapshot.errors).toEqual(refusal(message))
     expect(snapshot.steps[0]?.facts).toEqual([{ origin: 'declared', source: 'decisions.jsonl', label: 'a' }])
+  })
+
+  it('treats a runtime null CI status as no CI status and does not throw', () => {
+    const snapshot = buildSnapshot({ plan: planOf('s1'), ciStatus: null as unknown as string }, now)
+    expect(snapshot.ci).toBeNull()
+    expect(snapshot.errors).toEqual([])
   })
 
   it('accepts a text of exactly the size bound and refuses one unit more', () => {
