@@ -19,12 +19,14 @@ answers:
   - "How does core turn a Stryker mutation report text into a verified fact, how is the score computed, and what does it refuse?"
   - "How does core turn a gh CI status text into the issue-level CI fact, and what does it refuse?"
   - "What do the gh read (#115) and the CI display (#113) owe before they show a CI state?"
+  - "How many verified facts does a step keep, how many reports does one build read, and what does the host owe before passing them?"
 decided_in:
   - "#108"
   - "#110"
   - "#111"
   - "#113"
   - "#114"
+  - "#124"
 ---
 
 # Verified facts: sources, capture-time step attachment, separator
@@ -139,7 +141,7 @@ Core takes the report as text and the step as an id. It opens no file and does n
 | Failure text | never read: neither `failureMessages` nor `error_message` reaches a fact or an error. No fingerprint is built (story 5) | `test-report.ts:21-45` |
 | Instant | none on the fact; the run-end instant is the capture instant (#112) | |
 
-Frozen surface of #110: 4 elements declared, 4 `required_by_hypothesis: false`, none frozen. Numeric counts on `SnapshotFact`: dropped (the label carries them). The sixth `.agent-flow` file: deferred to #112. The fingerprint field: deferred to Phase 5 story 5. The per-step omitted-facts field: deferred to #112 (Consequences).
+Frozen surface of #110: 4 elements declared, 4 `required_by_hypothesis: false`, none frozen. Numeric counts on `SnapshotFact`: dropped (the label carries them). The sixth `.agent-flow` file: deferred to #112. The fingerprint field: deferred to Phase 5 story 5. The per-step omitted-facts field: deferred to #112 (Consequences), delivered by #124 (S10).
 
 ### S8 Mutation report into a verified fact (#111)
 
@@ -174,6 +176,22 @@ Core takes the raw stdout of `gh pr view --json headRefOid,statusCheckRollup` as
 | Report text | only `headRefOid`, `__typename`, `status` and `conclusion` are read; check names, URLs, workflow names and instants never reach the snapshot. `headRefOid` is the one copied string, as `headCommit` | `:70` |
 
 Frozen surface of #114: the top-level `ci` and the four `CiFact` fields, required by the hypothesis; the wire mirror, kept now because [[snapshot-rpc]] `:114` and the type pin require it; per-check detail, dropped (an additive `checks` field later). `SnapshotFiles.ciStatus`, the error label and the messages are not frozen.
+
+### S10 Caps on verified facts and reports (#124)
+
+Two bounds, both in `core/src/snapshot/snapshot.ts` and observed through `buildSnapshot`. No host passes reports before #112.
+
+| Concern | Rule | Anchor |
+|---|---|---|
+| Per-step cap | a step keeps at most `MAX_DECISIONS_PER_STEP` (50) verified facts; no second constant. Kept: the last 50 of the step's joined list `[...test, ...mutation]`, in input order, after the declared facts; the earliest are dropped | `latestVerifiedFacts` `:108-115`; join `:361` |
+| Omitted count | `omittedFacts: number` after `facts`, required, no default, `0` when none, never `null`. It counts verified facts only; dropped decisions stay in `omittedDecisions`. The wire mirror is a required non-negative integer with no `.default` | `SnapshotStep` `:65-76`; `panel/shared/snapshot-rpc.ts:42` |
+| Asymmetry | decisions keep the FIRST 50 of a step (`:226-227`); verified facts keep the LAST 50, because a later run supersedes an earlier one. Deliberate; "as decisions do" holds for the count only | |
+| Build bound | `MAX_REPORTS_PER_BUILD` = 200 per kind (test reports, mutation reports), so at most 400 reports per build. Applied once in `readReports`, never in a parser. Reports before the last 200 are not read at all: no parse, no fact, no unmatched-step error, nothing added to `omittedFacts`. A kept report keeps its original 1-based location | `:17`; `readReports` `:298-319` |
+| Bound error | one per kind that lost reports: `{file: 'test-report' \| 'mutation-report', location: null, field: null, message: 'too many reports, only the last 200 are read'}`. First in its kind's errors, outside `capErrors` (never cut); test-report before mutation-report. No step id, no report text, no skipped count. None when the plan is unusable (no report is read there) | `boundErrorsOf` `:286-296` |
+| Why 200 | above `MAX_ERRORS` (100), so the error cap of S7 and S8 still applies under the bound | `core/src/contracts/contract-error.ts:9` |
+| Limit | the build bound limits parsing CPU only: every report the host passes is already buffered. Bounding the read is the host's (MUST below) | |
+
+Frozen surface of #124: `SnapshotStep.omittedFacts`, required by the hypothesis; the wire mirror, kept now because the type pin fails without it. `MAX_REPORTS_PER_BUILD`'s name and value, the bound-error message and the location numbering are not frozen.
 
 ### Consequences per fact kind (AC6)
 
@@ -215,8 +233,10 @@ Per slice:
 - **MUST NOT**: persist a tool report as it is; the bound is 1 MiB and the cucumber message stream alone is 146% of it. The capture rule already persists an allowlist of fields only and never tool output text (`docs/technical/capture/events.md:118-119`), so a stored fact is a bounded extract of a report, never the report. The extract never includes the failure message text (vitest `failureMessages`, cucumber `error_message`), `source` or stdout. For a failing test it carries a fixed-length fingerprint of the failure message, a hash taken after the normalisation that Phase 5 story 5 defines, because the loop counter needs "the same failure message" across consecutive runs (`loop-threshold.md:48-49`) and the report itself is not kept. The normalisation is owed to the loop-detector story 5 (`loop-threshold.md:71`, `:84`), its first reader; #110 reads no failure text and builds no fingerprint (S7). This keeps `events.md:119`.
 - **MUST**, met by #110 (S7) and #111 (S8): refuse an over-bound report whole (a size error and no fact, never a truncation or a partial parse), checked before `JSON.parse`. The bound is checked on UTF-16 length (`text.length`, `core/src/contracts/jsonl.ts:45`, `core/src/contracts/plan.ts:74`) while this record measures bytes, so the two differ for non-ASCII text.
 - **MUST** (owed to #112): stop the read at the bound before buffering; core only ever sees text already read (confined read below).
-- **MUST** (owed to #112, before any host passes `testReports` or `mutationReports` to `buildSnapshot`): bound the verified facts per step and the reports per build. Cap verified facts per step at `MAX_DECISIONS_PER_STEP` (50), keep the latest-captured ones and count the rest in an additive per-step omitted count, as decisions do (`snapshot-decisions.md:43`). Bound the number of reports the host hands core in one build: core caps report errors but not report count, so today it parses as many reports as it is given (#110, #111). Security lane reviews both (CWE-770).
-- **MUST** (owed to #112, its host adapter): hand `buildSnapshot` only well-typed reports, a `{step: string, text: string}` per entry in an array. A failed read is an error the adapter reports, never an entry with a `null` text. Today `buildSnapshot` throws on a `null` text, a `null` entry, or a non-array `testReports`/`mutationReports`; no host passes these and TypeScript forbids them (Security S1, low, on #111, inherited from #110). If #112 cannot guarantee the shape at the boundary, core hardens `outcomeOfReport` and `readReports` instead, in #112. The omitted count is a new additive snapshot field, deferred from #110 to #112 (#110 frozen surface: 4 elements declared, 4 `required_by_hypothesis: false`, S7).
+- **MUST**, met by #124 (S10): bound the verified facts per step and the reports per build. A step keeps the last `MAX_DECISIONS_PER_STEP` (50) verified facts and counts the rest in `omittedFacts`; decisions keep the first 50 instead, so "as decisions do" (`snapshot-decisions.md:43`) holds for the count only. Core reads at most the last `MAX_REPORTS_PER_BUILD` (200) reports per kind and reports the rest with one bound error per kind. Reviewed by the Security lane on #124 (CWE-770).
+- **MUST** (owed to #112, its host adapter; Security S1 on #124): read at most the latest `MAX_REPORTS_PER_BUILD` reports per kind, each at most `MAX_TEXT_LENGTH`+1 bytes, before buffering them. The core bound (S10) limits parsing CPU only; without the host bound the worst case is 400 parses of up to 1 MiB per poll (CWE-770, CWE-400). This adds a count to the stop-at-the-bound read above and the confined read below.
+- **MUST** (owed to #112, its host adapter; Security S2 on #124): pass reports oldest first, in capture order. "Latest" in S10 means last in the passed order: core reads no instant, so any other order keeps and drops the wrong reports and facts.
+- **MUST** (owed to #112, its host adapter): hand `buildSnapshot` only well-typed reports, a `{step: string, text: string}` per entry in an array. A failed read is an error the adapter reports, never an entry with a `null` text. Today `buildSnapshot` throws on a `null` text, a `null` entry, or a non-array `testReports`/`mutationReports`; no host passes these and TypeScript forbids them (Security S1, low, on #111, inherited from #110). If #112 cannot guarantee the shape at the boundary, core hardens `outcomeOfReport` and `readReports` instead, in #112. The omitted count, deferred from #110 (frozen surface: 4 elements declared, 4 `required_by_hypothesis: false`, S7), is delivered by #124 as `omittedFacts` (S10).
 - **MUST** (owed to #112 or the capture-side slice cut from it, and #109 where it applies): the trust rules of S4 hold for every fact.
 - **MUST** (owed to #112 or the capture-side slice cut from it): an attachment made through the only-step fallback (no step of the role was in progress) carries the marker that says so (rule in S2). Whether such a fact stays attached or becomes unattached is an open question below.
 - **MUST** (whoever shows a CI state as the state of the current work, #113 or #115): `headCommit` is the PR head commit on GitHub, not the local `HEAD`. Compare the two before showing `passed` for the current work, or a stale green shows for unpushed commits (Security observation on #114).
