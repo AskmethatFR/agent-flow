@@ -3,9 +3,10 @@ id: "glossary"
 type: "functional"
 owner: "pm"
 status: "current"
-updated: "2026-11-09"
+updated: "2026-11-11"
 links:
   - "feature-catalog"
+  - "verified-facts"
 answers:
   - "Which role ids can write a decision?"
   - "What does a decision record mean in the business?"
@@ -17,6 +18,8 @@ answers:
   - "What does contract check mean, and what is an unsafe layout?"
   - "What do current agent and display state mean?"
   - "What is the OpenCode launcher?"
+  - "What is a fact, and what do a fact's origin, source and label mean?"
+  - "What do declared fact, verified fact and unattached fact mean?"
 decided_in:
   - "#21"
   - "#83"
@@ -29,6 +32,7 @@ decided_in:
   - "#20"
   - "#16"
   - "#17"
+  - "#109"
 ---
 
 # Glossary — ubiquitous language
@@ -68,6 +72,18 @@ decided_in:
 | **OpenCode launcher** | The wrapper, `rules/opencode/agent-flow-opencode`, through which OpenCode users start OpenCode. It checks `AGENT_FLOW_HOME` before OpenCode starts: unless it names this checkout, it refuses with one line on stderr and OpenCode does not start. |
 | **path entry** | One element of a scope's paths. Safe means repo-relative and specific; an entry that is absolute, climbs out of the repository, matches everything or looks like a command is unsafe and refused. |
 
+### Facts
+
+| Term | Business meaning |
+|---|---|
+| **fact** | One piece of evidence attached to a plan step in the snapshot, so that the panel and the daemon read it and compute nothing. It has an origin, a source and a label; every step carries its facts as a list, empty when it has none. |
+| **fact origin** | Where a fact comes from: `declared` (a role wrote it down) or `verified` (a tool run produced it). Distinct from the plan step's own `origin`, which says whether the step was planned or proposed. |
+| **declared fact** | A fact a role wrote down: one per decision kept for that step, labelled with the decision's title and sourced to the decisions file. Every logged decision of the step becomes one, whatever its kind. |
+| **verified fact** | A fact a tool run produced: read from the run's report rather than taken from a role's word, and sourced to the tool that ran. It means the capture host observed the run; it is not proof against a forged report. |
+| **unattached fact** | A fact whose run cannot be tied to a plan step. It is kept and reported apart from the steps, never dropped and never pushed onto the current step. A declared record naming a step absent from the plan is not an unattached fact: it belongs to no step and is reported as an error. |
+| **fact source** | Where a fact comes from: the decisions file for a declared fact, the tool that ran for a verified fact. It is what separates verified from declared, not a field of the decisions log. |
+| **fact label** | The short text identifying a fact; for a declared fact, the title of the decision behind it. |
+
 ## Consequences / Constraints
 
 - **MUST**: a term keeps this meaning in every scenario, report and code path
@@ -83,3 +99,8 @@ decided_in:
   shows every record of the step as a decision, whatever its kind, because the
   snapshot drops `kind` (`core/src/snapshot/snapshot.ts:136-142`). Showing
   questions and deviations as distinct kinds is Phase 4. Kept open.
+- [ ] Only declared facts exist yet: the snapshot carries no verified fact and
+  no issue-level list of unattached facts until the tool-report slices land
+  (#110, #111, #112, #114). The terms above are settled
+  (`docs/technical/decisions/verified-facts.md`); the behaviour is not
+  observable yet.
