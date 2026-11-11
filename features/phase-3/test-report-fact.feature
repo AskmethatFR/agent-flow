@@ -53,3 +53,10 @@ Feature: Core snapshot: a test report becomes a verified fact on its step
     When the snapshot is built
     Then the snapshot carries a size error for the report
     And step "s1" carries no verified fact
+
+  @scenario:S7
+  Scenario: A vitest run that failed outside its tests is not shown as all passed
+    Given the plan has a step "s1"
+    And a vitest report for step "s1" with 5 tests of which 5 passed and 1 failed suite
+    When the snapshot is built
+    Then the verified fact of step "s1" is labeled "5 of 5 passed, run failed"
