@@ -90,4 +90,5 @@
 - `features/phase-2/decisions-per-step.feature` — #20 Step detail: only the selected step's decisions listed with their reasoning, a step without decision says so, a step over the cap shows the first decisions and one overflow marker (S1-S5)
 - `features/phase-2/agent-state.feature` — #21 Agent state: the step in progress shows its agent and whether it is running or stopped, refreshed by polling (S1-S3)
 - `features/phase-3/verified-facts-spike.feature` — #108 Verified facts spike, read against the decision record (`@manual`): each source's format, writer and location, attachment on a real run, unmatched report, separator, no-tools step, timebox result (S1-S6)
+- `features/phase-3/facts-display.feature` — #113 Step detail: the selected step's verified and declared facts shown apart, each with its badge, its label as the snapshot carries it and its source, a step without facts shows nothing (S1-S3)
 - `features/phase-3/snapshot-facts.feature` — #109 Core snapshot: facts per step, one declared fact per decision, empty list when none, frozen step fields kept (S1-S5)
