@@ -5,6 +5,7 @@ import { mock } from 'node:test'
 import { After } from '@cucumber/cucumber'
 import type { PluginServerContext } from '@getpaseo/plugin/server'
 import contribute from '../../panel/index.server.ts'
+import { getSnapshotRpc } from '../../panel/shared/snapshot-rpc.ts'
 import { renderPanel } from '../../panel/client/testing/render-panel.tsx'
 import type { RenderedPanel } from '../../panel/client/testing/render-panel.tsx'
 
@@ -18,6 +19,7 @@ export type PanelWorld = {
   expectedField: string
   now?: Date
   agentStatus?: string
+  snapshotReply?: unknown
 }
 
 const workspaceId = 'w1'
@@ -91,11 +93,20 @@ const hostInvoke = (world: PanelWorld) => {
   return async (_method: string, input: unknown) => handler!(input, { paseo: { workspaces, agents } })
 }
 
-export const openPanel = async (world: PanelWorld): Promise<void> => {
+type Invoke = (method: string, input: unknown) => Promise<unknown>
+
+const openWith = async (world: PanelWorld, invoke: Invoke): Promise<void> => {
   if (world.now === undefined) mock.timers.enable({ apis: ['setTimeout'] })
   else mock.timers.enable({ apis: ['setTimeout', 'Date'], now: world.now })
-  world.panel = await renderPanel(hostInvoke(world), { workspaceId })
+  world.panel = await renderPanel(invoke, { workspaceId })
   world.texts = world.panel.texts()
+}
+
+export const openPanel = (world: PanelWorld): Promise<void> => openWith(world, hostInvoke(world))
+
+export const openPanelOnReply = (world: PanelWorld, reply: unknown): Promise<void> => {
+  const parsed = getSnapshotRpc.output.parse(reply)
+  return openWith(world, async () => parsed)
 }
 
 export const selectStep = async (world: PanelWorld, rowText: string): Promise<void> => {

@@ -37,7 +37,12 @@ export const PlanRail = ({ snapshot, textColor, errorColor, accentColor }: PlanR
             ) : null}
           </Pressable>
           {step.id === selectedStepId ? (
-            <StepDetail decisions={step.decisions} omittedDecisions={step.omittedDecisions} textColor={textColor} />
+            <StepDetail
+              decisions={step.decisions}
+              omittedDecisions={step.omittedDecisions}
+              facts={step.facts}
+              textColor={textColor}
+            />
           ) : null}
         </View>
       ))}
