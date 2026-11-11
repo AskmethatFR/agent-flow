@@ -5,6 +5,8 @@ import type { ContractError } from '../contracts/contract-error'
 import { readLocatedDecisions } from '../contracts/decisions'
 import { readPlan } from '../contracts/plan'
 import type { PlanStep, ReadPlanResult } from '../contracts/plan'
+import { readTestReport } from './test-report'
+import type { ParsedTestReport } from './test-report'
 import { instantOf, timeSpentOf } from './time-spent'
 import type { TimeSpent } from './time-spent'
 
@@ -18,9 +20,15 @@ export type AgentFlowFile = string | FileUnavailable
 
 export type AgentStatusUnavailable = { readonly unavailable: 'host-error' }
 
+export type TestReport = {
+  readonly step: string
+  readonly text: string
+}
+
 export type SnapshotFiles = {
   readonly plan: AgentFlowFile
   readonly decisions?: AgentFlowFile
+  readonly testReports?: readonly TestReport[]
 }
 
 export type SnapshotDecision = {
@@ -69,10 +77,20 @@ const declaredFactOf = (decision: SnapshotDecision): SnapshotFact => ({
   label: decision.title,
 })
 
+const runFailedSuffixOf = ({ passed, total, failedSuites }: ParsedTestReport): string =>
+  passed === total && failedSuites > 0 ? ', run failed' : ''
+
+const verifiedFactOf = (report: ParsedTestReport): SnapshotFact => ({
+  origin: 'verified',
+  source: report.source,
+  label: `${report.passed} of ${report.total} passed${runFailedSuffixOf(report)}`,
+})
+
 const toSnapshotStep = (
   step: PlanStep,
   now: Date,
   { decisions, omitted }: StepDecisions,
+  verified: readonly VerifiedFact[],
 ): SnapshotStep => ({
   id: step.id,
   title: step.title,
@@ -82,7 +100,10 @@ const toSnapshotStep = (
   timeSpent: timeSpentOf(step, now),
   decisions,
   omittedDecisions: omitted,
-  facts: decisions.map(declaredFactOf),
+  facts: [
+    ...decisions.map(declaredFactOf),
+    ...verified.filter((entry) => entry.step === step.id).map(({ fact }) => fact),
+  ],
 })
 
 const startOf = (step: PlanStep): number => instantOf(step.startedAt) ?? Number.NEGATIVE_INFINITY
@@ -188,6 +209,40 @@ const groupDecisions = (
   return { perStep: buckets, errors: [...errors, ...capErrors(decisionsFile, orphans)] }
 }
 
+const testReportFile = 'test-report'
+
+type VerifiedFact = { readonly step: string; readonly fact: SnapshotFact }
+
+type ReadReports = {
+  readonly verified: readonly VerifiedFact[]
+  readonly errors: readonly ContractError[]
+}
+
+type ReportOutcome = { readonly verified: VerifiedFact } | { readonly error: ContractError }
+
+const outcomeOfReport = (stepIds: ReadonlySet<string>, { step, text }: TestReport, location: number): ReportOutcome => {
+  if (!stepIds.has(step)) {
+    return { error: { file: testReportFile, location, field: 'step', message: 'is not a step of plan.json' } }
+  }
+  const result = readTestReport(text)
+  if (!result.accepted) {
+    return { error: { file: testReportFile, location, field: null, message: result.message } }
+  }
+  return { verified: { step, fact: verifiedFactOf(result.report) } }
+}
+
+const readTestReports = (steps: readonly PlanStep[], reports: readonly TestReport[]): ReadReports => {
+  const stepIds = new Set(steps.map((step) => step.id))
+  const outcomes = reports.map((report, index) => outcomeOfReport(stepIds, report, index + 1))
+  return {
+    verified: outcomes.filter((outcome) => 'verified' in outcome).map((outcome) => outcome.verified),
+    errors: capErrors(
+      testReportFile,
+      outcomes.filter((outcome) => 'error' in outcome).map((outcome) => outcome.error),
+    ),
+  }
+}
+
 export const buildSnapshot = (
   files: SnapshotFiles,
   now: Date,
@@ -209,13 +264,14 @@ export const buildSnapshot = (
   }
   const { plan } = result
   const { perStep, errors } = groupDecisions(plan.steps, files.decisions)
+  const { verified, errors: reportErrors } = readTestReports(plan.steps, files.testReports ?? [])
   const current = currentStepOf(plan.steps)
   return {
     issue: plan.issue,
     title: plan.title,
-    steps: perStep.map(({ step, bucket }) => toSnapshotStep(step, now, bucket)),
+    steps: perStep.map(({ step, bucket }) => toSnapshotStep(step, now, bucket, verified)),
     currentStepId: current?.id ?? null,
     currentAgent: currentAgentOf(current, status),
-    errors: [...errors, ...agentErrors],
+    errors: [...errors, ...reportErrors, ...agentErrors],
   }
 }
