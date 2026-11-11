@@ -26,6 +26,7 @@
 | `loop-threshold` | Loop threshold (plan.md Q6) | current | 2026-10-26 | `capture-events` | `docs/technical/decisions/loop-threshold.md` |
 | `real-issue-run` | Real-issue capture run: setup, AC4 evidence, QA procedure | current | 2026-11-05 | [[capture-events]], [[agent-rules]], [[plan-writer-confinement]] | `docs/technical/capture/real-issue-run.md` |
 | `scope-origin` | Origin of scope.json (plan.md Q5) | current | 2026-10-26 | `capture-events` | `docs/technical/decisions/scope-origin.md` |
+| `verified-facts` | Verified facts: sources, capture-time step attachment, separator | current | 2026-11-11 | [[loop-threshold]], [[snapshot-decisions]], [[decisions-jsonl-schema]], [[capture-events]], [[real-issue-run]] | `docs/technical/decisions/verified-facts.md` |
 
 - `features/phase-1/contract-check.feature` — #17 Contract check: every file under .agent-flow reported checked, violation reported with file and line, unsafe layout refused (S1-S3)
 - `features/phase-1/real-issue-capture.feature` — #17 Real-issue capture, run by hand per runtime (`@manual`): a real issue produces correct .agent-flow files (S1)
@@ -87,3 +88,4 @@
 - `features/phase-2/time-spent.feature` — #19 Plan rail: time spent per step and the current step marked (S1-S3)
 - `features/phase-2/decisions-per-step.feature` — #20 Step detail: only the selected step's decisions listed with their reasoning, a step without decision says so, a step over the cap shows the first decisions and one overflow marker (S1-S5)
 - `features/phase-2/agent-state.feature` — #21 Agent state: the step in progress shows its agent and whether it is running or stopped, refreshed by polling (S1-S3)
+- `features/phase-3/verified-facts-spike.feature` — #108 Verified facts spike, read against the decision record (`@manual`): each source's format, writer and location, attachment on a real run, unmatched report, separator, no-tools step, timebox result (S1-S6)

@@ -1,0 +1,39 @@
+{
+  "command": "gh pr view 93 --json headRefOid,statusCheckRollup",
+  "headRefOid": "a8ec9b504f2564a4a9aacd45eb71207b4c8c859a",
+  "headCommit": {
+    "command": "git log -1 --format=%cI|%s a8ec9b5",
+    "subject": "docs(capture): agent display state and current agent (#40)",
+    "committedAt": "2026-11-07T20:39:56Z",
+    "insideStep": "8 (architect, 20:37:58.416Z to 20:40:51.811Z)"
+  },
+  "checks": [
+    {
+      "workflowName": "bdd",
+      "name": "bdd",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "startedAt": "2026-11-07T20:40:05Z",
+      "completedAt": "2026-11-07T20:40:32Z"
+    },
+    {
+      "workflowName": "ci",
+      "name": "test",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "startedAt": "2026-11-07T20:40:06Z",
+      "completedAt": "2026-11-07T20:40:37Z"
+    }
+  ],
+  "carriesPlanStepId": false,
+  "keyedBy": "head commit (headRefOid)",
+  "planStepsInProgressAtThoseInstants": [
+    {
+      "plan": "docs/technical/capture/evidence/real-issue-run/claude-code-rerun/plan.json",
+      "id": "8",
+      "role": "architect",
+      "title": "Documentation capture"
+    }
+  ],
+  "reading": "the only-step branch lands on the step that made the head commit, so this run does not show a wrong step; the check stays untied because it covers the whole tree at the head commit and plan.json carries no commit field"
+}

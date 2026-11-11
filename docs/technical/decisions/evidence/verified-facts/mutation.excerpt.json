@@ -1,0 +1,68 @@
+{
+  "reporter": "json",
+  "defaultLocation": "reports/mutation/mutation.json",
+  "configuredLocationKey": "jsonReporter.fileName",
+  "topLevelKeys": [
+    "files",
+    "schemaVersion",
+    "thresholds",
+    "testFiles",
+    "projectRoot",
+    "config",
+    "framework"
+  ],
+  "schemaVersion": "1.0",
+  "thresholds": {
+    "high": 100,
+    "low": 100,
+    "break": 100
+  },
+  "framework": {
+    "name": "StrykerJS",
+    "version": "10.1.1"
+  },
+  "projectRoot": "scratch clone root (absolute path dropped)",
+  "fileKeys": [
+    "language",
+    "mutants",
+    "source"
+  ],
+  "files": [
+    "core/src/lifecycle/decision-step.ts"
+  ],
+  "mutants": 51,
+  "mutantsByStatus": {
+    "Killed": 51
+  },
+  "mutantKeys": [
+    "id",
+    "mutatorName",
+    "replacement",
+    "statusReason",
+    "status",
+    "static",
+    "testsCompleted",
+    "duration",
+    "killedBy",
+    "coveredBy",
+    "location"
+  ],
+  "sampleMutant": {
+    "id": "3",
+    "mutatorName": "ArrayDeclaration",
+    "status": "Killed",
+    "location": {
+      "end": {
+        "column": 72,
+        "line": 12
+      },
+      "start": {
+        "column": 11,
+        "line": 12
+      }
+    }
+  },
+  "instantCarried": "none",
+  "fieldsThatCouldCarryAStepIdOrRole": "none",
+  "overwrittenByNextRun": true
+}

@@ -1,0 +1,97 @@
+{
+  "jsonFormat": {
+    "topLevelShape": "array of features",
+    "features": 21,
+    "featureKeys": [
+      "description",
+      "elements",
+      "id",
+      "line",
+      "keyword",
+      "name",
+      "tags",
+      "uri"
+    ],
+    "elementKeys": [
+      "description",
+      "id",
+      "keyword",
+      "line",
+      "name",
+      "steps",
+      "tags",
+      "type"
+    ],
+    "stepKeys": [
+      "result",
+      "arguments",
+      "keyword",
+      "line",
+      "name",
+      "match"
+    ],
+    "resultKeys": [
+      "status",
+      "duration"
+    ],
+    "firstFeature": {
+      "uri": "features/phase-0/decisions-contract.feature",
+      "name": "Frozen data contracts",
+      "tags": [
+        "@feature:decisions-contract"
+      ]
+    },
+    "instantCarried": "none"
+  },
+  "messageFormat": {
+    "messageKinds": {
+      "meta": 1,
+      "source": 27,
+      "gherkinDocument": 27,
+      "pickle": 130,
+      "stepDefinition": 225,
+      "hook": 10,
+      "testRunStarted": 1,
+      "testCase": 123,
+      "testCaseStarted": 123,
+      "testStepStarted": 1735,
+      "testStepFinished": 1735,
+      "testCaseFinished": 123,
+      "testRunFinished": 1
+    },
+    "testRunStarted": {
+      "timestamp": {
+        "seconds": 1794344836,
+        "nanos": 762000000
+      },
+      "iso": "2026-11-10T21:07:16.762Z"
+    },
+    "testRunFinished": {
+      "timestamp": {
+        "seconds": 1794344906,
+        "nanos": 766000000
+      },
+      "iso": "2026-11-10T21:08:26.766Z",
+      "success": true
+    },
+    "meta": {
+      "protocolVersion": "34.2.1",
+      "implementation": {
+        "version": "13.3.0",
+        "name": "cucumber-js"
+      },
+      "cpu": {
+        "name": "x64"
+      },
+      "os": {
+        "name": "linux",
+        "version": "7.0.0-38-generic"
+      },
+      "runtime": {
+        "name": "node.js",
+        "version": "22.22.1"
+      }
+    }
+  },
+  "fieldsThatCouldCarryAStepIdOrRole": "none (feature uri and @feature/@scenario tags only)"
+}
