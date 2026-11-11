@@ -3,10 +3,11 @@ id: "feature-catalog"
 type: "functional"
 owner: "pm"
 status: "current"
-updated: "2026-11-09"
+updated: "2026-11-11"
 links:
   - "glossary"
   - "real-issue-run"
+  - "verified-facts"
 answers:
   - "Which roles log decisions, in which runtimes, and what does each logged line carry?"
   - "Which data contracts under .agent-flow/ are frozen and validated?"
@@ -28,6 +29,7 @@ answers:
   - "What does the snapshot give when the host agent state cannot be read?"
   - "What does the plan rail show for the agent on the current step, and does it refresh?"
   - "What does the OpenCode launcher do when AGENT_FLOW_HOME does not name this checkout?"
+  - "What does each snapshot step carry as facts, and what does a fact's origin, source and label mean?"
 decided_in:
   - "#21"
   - "#41"
@@ -41,6 +43,7 @@ decided_in:
   - "#20"
   - "#16"
   - "#17"
+  - "#109"
 ---
 
 # Feature catalog
@@ -145,6 +148,30 @@ Acceptance: `snapshot-decisions` S1-S3 (`features/phase-2/snapshot-decisions.fea
 Log order, the absent-step row, the missing-file row and the no-filter-by-kind
 rule are pinned by unit tests only. The display of these decisions is the next
 capability (#20).
+
+### Capability: facts per step in the snapshot
+
+Every [[glossary]] plan step in the snapshot carries its [[glossary]] facts, so
+the panel and the daemon read them and compute nothing. A step with no fact
+carries an empty list, never an absent one.
+
+| Situation | Behaviour | Outcome |
+|---|---|---|
+| A step with decisions logged | One [[glossary]] declared fact per kept decision, in log order. | Each fact has origin `declared`, the decisions file as its [[glossary]] fact source and the decision's title as its [[glossary]] fact label. |
+| A step with no decision | Nothing attached. | An empty fact list. |
+| A malformed line in `decisions.jsonl` | Skipped on its own. | The valid decisions are still facts; one error names the line number. |
+| A step that already carried decisions | The facts are added to it. | No frozen step field is removed, renamed or re-typed: `id`, `title`, `role`, `status`, `origin` and time spent stay as they were. |
+
+- A step's declared facts follow its decisions exactly: the same order, and no
+  fact for a decision the snapshot already counts as omitted.
+- Only declared facts are produced today. No verified fact exists yet: test
+  reports (#110), mutation reports (#111) and CI status (#114), the last of
+  which is never attached to a step, all come later. Until they land the
+  [[glossary]] fact origin `verified` is unexercised, and the issue-level list
+  that will hold [[glossary]] unattached facts and CI status (#112, #114) does
+  not exist.
+
+Acceptance: `snapshot-facts` S1-S5 (`features/phase-3/snapshot-facts.feature`).
 
 ### Capability: the step detail lists the decisions of the selected step
 
@@ -306,6 +333,11 @@ Acceptance: `real-issue-capture` S1 (`features/phase-1/real-issue-capture.featur
   the panel display of decisions (#20).
 - **MUST**: a decision that cannot be tied to a plan step is never attached to
   another step; it is left out and reported.
+- **MUST**: a step with no fact carries an empty fact list, and a consumer reads
+  facts from the snapshot only — never by re-reading the decisions file itself.
+- **MUST NOT**: a fact be invented for a step, or for a run the capture host did
+  not observe; a fact whose run cannot be tied to a step is never pushed onto the
+  current step.
 
 ## Open questions / Gaps
 
@@ -321,3 +353,10 @@ Acceptance: `real-issue-capture` S1 (`features/phase-1/real-issue-capture.featur
   character, `..`, a backslash, a bare catch-all.
 - [ ] No scenario pins the request id bounds (length, uniqueness within the
   file) or the repeated answer for one id.
+- [ ] Facts are pinned as declared only: no scenario shows a fact of origin
+  `verified`, the order of a verified fact relative to the declared ones, or an
+  unattached fact. `snapshot-facts` covers the shape and the declared facts;
+  `docs/technical/decisions/verified-facts.md` reads #109 as also shaping an
+  issue-level place for unattached facts and CI, while the ticket defers that
+  place to #112 and #114. The catalog above states the narrower, delivered
+  boundary; the technical record's reading is left to the Architect.
