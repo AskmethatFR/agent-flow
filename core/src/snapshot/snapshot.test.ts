@@ -650,7 +650,7 @@ describe('buildSnapshot', () => {
 describe('buildSnapshot with test reports', () => {
   const vitestReport = (stepId: string, total: number, passed: number) => ({
     step: stepId,
-    text: JSON.stringify({ numTotalTests: total, numPassedTests: passed, numFailedTestSuites: 0 }),
+    text: JSON.stringify({ numTotalTests: total, numPassedTests: passed, numFailedTestSuites: passed === total ? 0 : 1 }),
   })
 
   const cucumberReport = (stepId: string, ...statuses: string[]) => ({
@@ -815,8 +815,11 @@ describe('buildSnapshot reading the text of a test report', () => {
 
   const unknownShape = refusal('is not a vitest or cucumber-js JSON report')
 
-  const vitestText = (overlay: Record<string, unknown>): string =>
-    JSON.stringify({ numTotalTests: 5, numPassedTests: 5, numFailedTestSuites: 0, ...overlay })
+  const vitestText = (overlay: Record<string, unknown>): string => {
+    const report = { numTotalTests: 5, numPassedTests: 5, ...overlay }
+    const failedSuites = report.numPassedTests === report.numTotalTests ? 0 : 1
+    return JSON.stringify({ numFailedTestSuites: failedSuites, ...report })
+  }
 
   const padded = (body: string, length: number): string => `${body}${' '.repeat(length - body.length)}`
 
@@ -837,11 +840,13 @@ describe('buildSnapshot reading the text of a test report', () => {
     })
 
     it.each([
+      [5, 3, 1, '3 of 5 passed'],
+      [5, 3, 0, '3 of 5 passed'],
+      [5, 4, 1, '4 of 5 passed'],
       [5, 5, 0, '5 of 5 passed'],
-      [5, 5, 1, '5 of 5 passed, 1 suite failed'],
-      [5, 3, 2, '3 of 5 passed, 2 suites failed'],
-      [0, 0, 1, '0 of 0 passed, 1 suite failed'],
-      [5, 5, 12, '5 of 5 passed, 12 suites failed'],
+      [5, 5, 1, '5 of 5 passed, run failed'],
+      [5, 5, 3, '5 of 5 passed, run failed'],
+      [0, 0, 1, '0 of 0 passed, run failed'],
     ])('labels %i tests of which %i passed with %i failed suites as "%s"', (total, passed, failedSuites, label) => {
       const text = vitestText({ numTotalTests: total, numPassedTests: passed, numFailedTestSuites: failedSuites })
       expect(factsOf(text)).toEqual(verified('vitest', label))

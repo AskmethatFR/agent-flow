@@ -37,13 +37,13 @@ const decisionLineOf = (step: string): string =>
     confidence: 'high',
   })
 
-const vitestReportOf = (total: number, passed: number): string =>
+const vitestReportOf = (total: number, passed: number, failedSuites = passed === total ? 0 : 1): string =>
   JSON.stringify({
     numTotalTests: total,
     numPassedTests: passed,
     numFailedTests: total - passed,
-    numFailedTestSuites: 0,
-    success: passed === total,
+    numFailedTestSuites: failedSuites,
+    success: passed === total && failedSuites === 0,
     testResults: [],
   })
 
@@ -94,6 +94,13 @@ Given(
   function (this: ReportWorld, step: string, total: number, passed: number): void {
     this.expectedCounts = { passed, total }
     withReport(this, step, vitestReportOf(total, passed))
+  },
+)
+
+Given(
+  'a vitest report for step {string} with {int} tests of which {int} passed and {int} failed suite',
+  function (this: ReportWorld, step: string, total: number, passed: number, failedSuites: number): void {
+    withReport(this, step, vitestReportOf(total, passed, failedSuites))
   },
 )
 

@@ -77,15 +77,13 @@ const declaredFactOf = (decision: SnapshotDecision): SnapshotFact => ({
   label: decision.title,
 })
 
-const failedSuitesSuffixOf = (failedSuites: number): string => {
-  if (failedSuites === 0) return ''
-  return `, ${failedSuites} ${failedSuites === 1 ? 'suite' : 'suites'} failed`
-}
+const runFailedSuffixOf = ({ passed, total, failedSuites }: ParsedTestReport): string =>
+  passed === total && failedSuites > 0 ? ', run failed' : ''
 
-const verifiedFactOf = ({ source, passed, total, failedSuites }: ParsedTestReport): SnapshotFact => ({
+const verifiedFactOf = (report: ParsedTestReport): SnapshotFact => ({
   origin: 'verified',
-  source,
-  label: `${passed} of ${total} passed${failedSuitesSuffixOf(failedSuites)}`,
+  source: report.source,
+  label: `${report.passed} of ${report.total} passed${runFailedSuffixOf(report)}`,
 })
 
 const toSnapshotStep = (
