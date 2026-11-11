@@ -113,6 +113,7 @@ describe('getSnapshot', () => {
             timeSpent: { label: '1 h', milliseconds: 3_600_000 },
             decisions: [],
             omittedDecisions: 0,
+            facts: [],
           },
         ],
         currentStepId: 's1',
@@ -191,6 +192,9 @@ describe('getSnapshot', () => {
       expect(snapshot.errors).toEqual([])
       expect(snapshot.steps[0]?.decisions).toEqual([
         { title: 'Use a Map', why: 'safe keys', rejected: [], role: 'dev-a', confidence: 'high' },
+      ])
+      expect(snapshot.steps[0]?.facts).toEqual([
+        { origin: 'declared', source: 'decisions.jsonl', label: 'Use a Map' },
       ])
     })
 

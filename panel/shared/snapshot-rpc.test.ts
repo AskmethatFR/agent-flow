@@ -22,6 +22,7 @@ const snapshot: Snapshot = {
         { title: 'Use a Map', why: 'safe keys', rejected: ['object'], role: 'dev-a', confidence: 'high' },
       ],
       omittedDecisions: 4,
+      facts: [{ origin: 'declared', source: 'decisions.jsonl', label: 'Use a Map' }],
     },
   ],
   currentStepId: 's1',
@@ -64,6 +65,22 @@ describe('getSnapshotRpc', () => {
     expect(parsed).toMatchObject({ snapshot: { steps: [{ omittedDecisions: 4 }] } })
     const { omittedDecisions: _, ...withoutCount } = snapshot.steps[0] as Snapshot['steps'][number]
     const bad = { ...snapshot, steps: [withoutCount] }
+    expect(getSnapshotRpc.output.safeParse({ kind: 'snapshot', snapshot: bad }).success).toBe(false)
+  })
+
+  it('keeps the facts of a step intact', () => {
+    const parsed = getSnapshotRpc.output.parse({ kind: 'snapshot', snapshot })
+    expect(parsed).toMatchObject({ snapshot: { steps: [{ facts: snapshot.steps[0]?.facts }] } })
+  })
+
+  it('rejects an unknown fact origin', () => {
+    const bad = { ...snapshot, steps: [{ ...snapshot.steps[0], facts: [{ origin: 'maybe', source: 'decisions.jsonl', label: 'Use a Map' }] }] }
+    expect(getSnapshotRpc.output.safeParse({ kind: 'snapshot', snapshot: bad }).success).toBe(false)
+  })
+
+  it('rejects a step without facts', () => {
+    const { facts: _, ...withoutFacts } = snapshot.steps[0] as Snapshot['steps'][number]
+    const bad = { ...snapshot, steps: [withoutFacts] }
     expect(getSnapshotRpc.output.safeParse({ kind: 'snapshot', snapshot: bad }).success).toBe(false)
   })
 
