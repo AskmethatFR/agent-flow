@@ -5,6 +5,7 @@ import type { ContractError } from '../contracts/contract-error'
 import { readLocatedDecisions } from '../contracts/decisions'
 import { readPlan } from '../contracts/plan'
 import type { PlanStep, ReadPlanResult } from '../contracts/plan'
+import { mutationLabelOf, readMutationReport } from './mutation-report'
 import { readTestReport } from './test-report'
 import type { ParsedTestReport } from './test-report'
 import { instantOf, timeSpentOf } from './time-spent'
@@ -20,15 +21,20 @@ export type AgentFlowFile = string | FileUnavailable
 
 export type AgentStatusUnavailable = { readonly unavailable: 'host-error' }
 
-export type TestReport = {
+type StepReport = {
   readonly step: string
   readonly text: string
 }
+
+export type TestReport = StepReport
+
+export type MutationReport = StepReport
 
 export type SnapshotFiles = {
   readonly plan: AgentFlowFile
   readonly decisions?: AgentFlowFile
   readonly testReports?: readonly TestReport[]
+  readonly mutationReports?: readonly MutationReport[]
 }
 
 export type SnapshotDecision = {
@@ -210,6 +216,7 @@ const groupDecisions = (
 }
 
 const testReportFile = 'test-report'
+const mutationReportFile = 'mutation-report'
 
 type VerifiedFact = { readonly step: string; readonly fact: SnapshotFact }
 
@@ -220,24 +227,51 @@ type ReadReports = {
 
 type ReportOutcome = { readonly verified: VerifiedFact } | { readonly error: ContractError }
 
-const outcomeOfReport = (stepIds: ReadonlySet<string>, { step, text }: TestReport, location: number): ReportOutcome => {
-  if (!stepIds.has(step)) {
-    return { error: { file: testReportFile, location, field: 'step', message: 'is not a step of plan.json' } }
-  }
+type FactReading = { readonly fact: SnapshotFact } | { readonly message: string }
+
+type ReportReader = (text: string) => FactReading
+
+const readTestReportFact: ReportReader = (text) => {
   const result = readTestReport(text)
-  if (!result.accepted) {
-    return { error: { file: testReportFile, location, field: null, message: result.message } }
-  }
-  return { verified: { step, fact: verifiedFactOf(result.report) } }
+  return result.accepted ? { fact: verifiedFactOf(result.report) } : { message: result.message }
 }
 
-const readTestReports = (steps: readonly PlanStep[], reports: readonly TestReport[]): ReadReports => {
+const readMutationReportFact: ReportReader = (text) => {
+  const result = readMutationReport(text)
+  return result.accepted
+    ? { fact: { origin: 'verified', source: result.report.source, label: mutationLabelOf(result.report) } }
+    : { message: result.message }
+}
+
+const outcomeOfReport = (
+  file: string,
+  read: ReportReader,
+  stepIds: ReadonlySet<string>,
+  { step, text }: StepReport,
+  location: number,
+): ReportOutcome => {
+  if (!stepIds.has(step)) {
+    return { error: { file, location, field: 'step', message: 'is not a step of plan.json' } }
+  }
+  const reading = read(text)
+  if ('message' in reading) {
+    return { error: { file, location, field: null, message: reading.message } }
+  }
+  return { verified: { step, fact: reading.fact } }
+}
+
+const readReports = (
+  file: string,
+  read: ReportReader,
+  steps: readonly PlanStep[],
+  reports: readonly StepReport[],
+): ReadReports => {
   const stepIds = new Set(steps.map((step) => step.id))
-  const outcomes = reports.map((report, index) => outcomeOfReport(stepIds, report, index + 1))
+  const outcomes = reports.map((report, index) => outcomeOfReport(file, read, stepIds, report, index + 1))
   return {
     verified: outcomes.filter((outcome) => 'verified' in outcome).map((outcome) => outcome.verified),
     errors: capErrors(
-      testReportFile,
+      file,
       outcomes.filter((outcome) => 'error' in outcome).map((outcome) => outcome.error),
     ),
   }
@@ -264,7 +298,9 @@ export const buildSnapshot = (
   }
   const { plan } = result
   const { perStep, errors } = groupDecisions(plan.steps, files.decisions)
-  const { verified, errors: reportErrors } = readTestReports(plan.steps, files.testReports ?? [])
+  const testReports = readReports(testReportFile, readTestReportFact, plan.steps, files.testReports ?? [])
+  const mutationReports = readReports(mutationReportFile, readMutationReportFact, plan.steps, files.mutationReports ?? [])
+  const verified = [...testReports.verified, ...mutationReports.verified]
   const current = currentStepOf(plan.steps)
   return {
     issue: plan.issue,
@@ -272,6 +308,6 @@ export const buildSnapshot = (
     steps: perStep.map(({ step, bucket }) => toSnapshotStep(step, now, bucket, verified)),
     currentStepId: current?.id ?? null,
     currentAgent: currentAgentOf(current, status),
-    errors: [...errors, ...reportErrors, ...agentErrors],
+    errors: [...errors, ...testReports.errors, ...mutationReports.errors, ...agentErrors],
   }
 }

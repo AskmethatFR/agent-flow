@@ -19,6 +19,27 @@ const step = (overlay: Record<string, unknown> = {}): Record<string, unknown> =>
 const planText = (...steps: Record<string, unknown>[]): string =>
   JSON.stringify({ issue: '#38', title: 'Core snapshot', steps })
 
+const planOf = (...ids: string[]): string => planText(...ids.map((id) => step({ id })))
+
+const decisionLine = (stepId: string, title: string): string =>
+  JSON.stringify({
+    at: '2026-10-22T10:00:00Z',
+    step: stepId,
+    role: 'dev-a',
+    kind: 'decision',
+    title,
+    why: 'because',
+    rejected: [],
+    confidence: 'high',
+  })
+
+const unknownStepError = (file: string, location: number) => ({
+  file,
+  location,
+  field: 'step',
+  message: 'is not a step of plan.json',
+})
+
 describe('buildSnapshot', () => {
   it('projects a valid plan into its steps without time spent or current step', () => {
     const text = planText(step(), step({ id: 's2', title: 'Build', role: 'dev-a', origin: 'proposed' }))
@@ -658,26 +679,7 @@ describe('buildSnapshot with test reports', () => {
     text: JSON.stringify([{ elements: statuses.map((status) => ({ steps: [{ result: { status } }] })) }]),
   })
 
-  const decisionLine = (stepId: string, title: string): string =>
-    JSON.stringify({
-      at: '2026-10-22T10:00:00Z',
-      step: stepId,
-      role: 'dev-a',
-      kind: 'decision',
-      title,
-      why: 'because',
-      rejected: [],
-      confidence: 'high',
-    })
-
-  const planOf = (...ids: string[]): string => planText(...ids.map((id) => step({ id })))
-
-  const stepNotInPlan = (location: number) => ({
-    file: 'test-report',
-    location,
-    field: 'step',
-    message: 'is not a step of plan.json',
-  })
+  const stepNotInPlan = (location: number) => unknownStepError('test-report', location)
 
   it('attaches a verified fact labeled with the passed and total counts to its step only', () => {
     const snapshot = buildSnapshot({ plan: planOf('s1', 's2'), testReports: [vitestReport('s2', 5, 3)] }, now)
@@ -981,5 +983,230 @@ describe('buildSnapshot reading the text of a test report', () => {
       expect(reading(text).errors).toEqual(unknownShape)
       expect(factsOf(text)).toEqual([])
     })
+  })
+})
+
+describe('buildSnapshot with mutation reports', () => {
+  const MAX_TEXT = 1_048_576
+
+  const mutantsOf = (counts: Record<string, number>): Record<string, unknown>[] =>
+    Object.entries(counts).flatMap(([status, count]) =>
+      Array.from({ length: count }, () => ({ status })),
+    )
+
+  const strykerText = (counts: Record<string, number>, overlay: Record<string, unknown> = {}): string =>
+    JSON.stringify({ schemaVersion: '1.0', files: { 'src/a.ts': { language: 'typescript', mutants: mutantsOf(counts) } }, ...overlay })
+
+  const mutationReport = (stepId: string, counts: Record<string, number>) => ({ step: stepId, text: strykerText(counts) })
+
+  const labeled = (label: string) => [{ origin: 'verified', source: 'stryker', label }]
+
+  const mutationFactsOf = (text: string) =>
+    buildSnapshot({ plan: planOf('s1'), mutationReports: [{ step: 's1', text }] }, now).steps[0]?.facts
+
+  const refusal = (message: string, location = 1) => [{ file: 'mutation-report', location, field: null, message }]
+
+  it('attaches a verified stryker fact labeled with the score and the surviving count to its step only', () => {
+    const snapshot = buildSnapshot(
+      { plan: planOf('s1', 's2'), mutationReports: [mutationReport('s2', { Killed: 3, Survived: 1 })] },
+      now,
+    )
+    expect(snapshot.steps[0]?.facts).toEqual([])
+    expect(snapshot.steps[1]?.facts).toEqual(labeled('75.00% mutation score, 1 surviving'))
+    expect(snapshot.errors).toEqual([])
+  })
+
+  it.each([
+    ['floors 9 of 11 to 81.81', { Killed: 9, Survived: 2 }, '81.81% mutation score, 2 surviving'],
+    ['floors 2 of 3 to 66.66', { Killed: 2, Survived: 1 }, '66.66% mutation score, 1 surviving'],
+    ['never reads 100.00 with a survivor', { Killed: 20001, Survived: 1 }, '99.99% mutation score, 1 surviving'],
+    ['reads 0.00 when nothing is detected', { Survived: 3 }, '0.00% mutation score, 3 surviving'],
+    ['reads 100.00 when nothing survives', { Killed: 7 }, '100.00% mutation score, 0 surviving'],
+    ['pads a single digit of hundredths', { Killed: 1, Survived: 19 }, '5.00% mutation score, 19 surviving'],
+    ['pads the hundredths with a zero', { Killed: 1005, Survived: 8995 }, '10.05% mutation score, 8995 surviving'],
+    ['counts a timeout as detected', { Timeout: 1, Survived: 1 }, '50.00% mutation score, 1 surviving'],
+    ['counts a mutant with no coverage as surviving', { Killed: 1, NoCoverage: 1 }, '50.00% mutation score, 1 surviving'],
+    ['counts survived and no coverage together', { Killed: 8, Timeout: 1, Survived: 1, NoCoverage: 1 }, '81.81% mutation score, 2 surviving'],
+  ])('%s', (_, counts, label) => {
+    expect(mutationFactsOf(strykerText(counts))).toEqual(labeled(label))
+  })
+
+  it.each(['Ignored', 'CompileError', 'RuntimeError', 'Pending'])('does not count a %s mutant', (status) => {
+    expect(mutationFactsOf(strykerText({ Killed: 1, Survived: 1, [status]: 5 }))).toEqual(
+      labeled('50.00% mutation score, 1 surviving'),
+    )
+  })
+
+  it('sums the mutants of every file of the report', () => {
+    const text = JSON.stringify({
+      schemaVersion: '1.0',
+      files: {
+        'src/a.ts': { mutants: mutantsOf({ Killed: 1, Survived: 1 }) },
+        'src/b.ts': { mutants: mutantsOf({ Killed: 2 }) },
+        'src/c.ts': { mutants: [] },
+      },
+    })
+    expect(mutationFactsOf(text)).toEqual(labeled('75.00% mutation score, 1 surviving'))
+  })
+
+  it('reads a file named __proto__ like any other', () => {
+    const text = '{"schemaVersion":"1.0","files":{"__proto__":{"mutants":[{"status":"Killed"},{"status":"Survived"}]}}}'
+    expect(mutationFactsOf(text)).toEqual(labeled('50.00% mutation score, 1 surviving'))
+  })
+
+  it('states the score without ruling on the thresholds of the report', () => {
+    const high = mutationFactsOf(strykerText({ Killed: 3, Survived: 1 }, { thresholds: { high: 90, low: 80 } }))
+    const none = mutationFactsOf(strykerText({ Killed: 3, Survived: 1 }))
+    expect(high).toEqual(none)
+  })
+
+  it('lists the declared facts, then the test report facts, then the mutation facts in input order', () => {
+    const vitest = JSON.stringify({ numTotalTests: 2, numPassedTests: 2, numFailedTestSuites: 0 })
+    const snapshot = buildSnapshot(
+      {
+        plan: planOf('s1'),
+        decisions: decisionLine('s1', 'a'),
+        testReports: [{ step: 's1', text: vitest }],
+        mutationReports: [mutationReport('s1', { Killed: 1, Survived: 1 }), mutationReport('s1', { Killed: 1 })],
+      },
+      now,
+    )
+    expect(snapshot.steps[0]?.facts).toEqual([
+      { origin: 'declared', source: 'decisions.jsonl', label: 'a' },
+      { origin: 'verified', source: 'vitest', label: '2 of 2 passed' },
+      { origin: 'verified', source: 'stryker', label: '50.00% mutation score, 1 surviving' },
+      { origin: 'verified', source: 'stryker', label: '100.00% mutation score, 0 surviving' },
+    ])
+  })
+
+  it('builds the same snapshot whether the mutation reports are absent or empty', () => {
+    const files = { plan: planOf('s1'), decisions: decisionLine('s1', 'a') }
+    expect(buildSnapshot({ ...files, mutationReports: [] }, now)).toEqual(buildSnapshot(files, now))
+  })
+
+  const stepNotInPlan = (location: number) => unknownStepError('mutation-report', location)
+
+  it('adds an error at the report position and no fact when its step is not in the plan', () => {
+    const reports = [mutationReport('s1', { Killed: 1 }), mutationReport('s9', { Killed: 1 })]
+    const snapshot = buildSnapshot({ plan: planOf('s1'), mutationReports: reports }, now)
+    expect(snapshot.steps[0]?.facts).toHaveLength(1)
+    expect(snapshot.errors).toEqual([stepNotInPlan(2)])
+  })
+
+  it('reports an unmatched malformed report as an unmatched step only', () => {
+    const snapshot = buildSnapshot({ plan: planOf('s1'), mutationReports: [{ step: 's9', text: '{' }] }, now)
+    expect(snapshot.errors).toEqual([stepNotInPlan(1)])
+  })
+
+  it('reports a report whose step is an Object.prototype name instead of throwing', () => {
+    const reports = [mutationReport('toString', { Killed: 1 }), mutationReport('__proto__', { Killed: 1 })]
+    const snapshot = buildSnapshot({ plan: planOf('s1'), mutationReports: reports }, now)
+    expect(snapshot.errors).toEqual([stepNotInPlan(1), stepNotInPlan(2)])
+  })
+
+  it('attaches a report to a step whose id is an Object.prototype name', () => {
+    const snapshot = buildSnapshot({ plan: planOf('__proto__'), mutationReports: [mutationReport('__proto__', { Killed: 1 })] }, now)
+    expect(snapshot.steps[0]?.facts).toEqual(labeled('100.00% mutation score, 0 surviving'))
+    expect(snapshot.errors).toEqual([])
+  })
+
+  it.each([
+    ['text that is not JSON', '{', 'is not valid JSON'],
+    ['an empty text', '', 'is not valid JSON'],
+    ['an array', '[]', 'is not a Stryker mutation report'],
+    ['null', 'null', 'is not a Stryker mutation report'],
+    ['a string', '"report"', 'is not a Stryker mutation report'],
+    ['a document with no schemaVersion', '{"files":{"a":{"mutants":[{"status":"Killed"}]}}}', 'is not a Stryker mutation report'],
+    ['a schemaVersion that is not a string', '{"schemaVersion":2,"files":{"a":{"mutants":[{"status":"Killed"}]}}}', 'is not a Stryker mutation report'],
+    ['a document with no files', '{"schemaVersion":"1.0"}', 'is not a Stryker mutation report'],
+    ['files that is null', '{"schemaVersion":"1.0","files":null}', 'is not a Stryker mutation report'],
+    ['files that is an array', '{"schemaVersion":"1.0","files":[{"mutants":[{"status":"Killed"}]}]}', 'is not a Stryker mutation report'],
+    ['a file that is null', '{"schemaVersion":"1.0","files":{"a":null}}', 'is not a Stryker mutation report'],
+    ['a file with no mutants', '{"schemaVersion":"1.0","files":{"a":{}}}', 'is not a Stryker mutation report'],
+    ['a file whose mutants is not an array', '{"schemaVersion":"1.0","files":{"a":{"mutants":{}}}}', 'is not a Stryker mutation report'],
+    ['one bad file after a good one', '{"schemaVersion":"1.0","files":{"a":{"mutants":[{"status":"Killed"}]},"b":{}}}', 'is not a Stryker mutation report'],
+    ['a mutant that is null', '{"schemaVersion":"1.0","files":{"a":{"mutants":[null]}}}', 'is not a Stryker mutation report'],
+    ['a mutant with no status', '{"schemaVersion":"1.0","files":{"a":{"mutants":[{}]}}}', 'is not a Stryker mutation report'],
+    ['a status that is not a string', '{"schemaVersion":"1.0","files":{"a":{"mutants":[{"status":1}]}}}', 'is not a Stryker mutation report'],
+    ['a status outside the Stryker set', '{"schemaVersion":"1.0","files":{"a":{"mutants":[{"status":"killed"}]}}}', 'is not a Stryker mutation report'],
+    ['one bad mutant after good ones', '{"schemaVersion":"1.0","files":{"a":{"mutants":[{"status":"Killed"},{"status":"Nope"}]}}}', 'is not a Stryker mutation report'],
+    ['no file', '{"schemaVersion":"1.0","files":{}}', 'has no mutant to score'],
+    ['a file with no mutant', '{"schemaVersion":"1.0","files":{"a":{"mutants":[]}}}', 'has no mutant to score'],
+    ['only ignored mutants', strykerText({ Ignored: 2 }), 'has no mutant to score'],
+    ['only mutants that cannot be counted', strykerText({ Ignored: 1, CompileError: 1, RuntimeError: 1, Pending: 1 }), 'has no mutant to score'],
+    ['an oversized text', `${strykerText({ Killed: 1 })}${' '.repeat(MAX_TEXT)}`, `exceeds ${MAX_TEXT} characters`],
+  ])('adds one error and keeps every other fact for %s', (_, text, message) => {
+    const snapshot = buildSnapshot(
+      {
+        plan: planOf('s1', 's2'),
+        decisions: decisionLine('s1', 'a'),
+        mutationReports: [mutationReport('s2', { Killed: 1, Survived: 1 }), { step: 's1', text }],
+      },
+      now,
+    )
+    expect(snapshot.steps[0]?.facts).toEqual([{ origin: 'declared', source: 'decisions.jsonl', label: 'a' }])
+    expect(snapshot.steps[1]?.facts).toEqual(labeled('50.00% mutation score, 1 surviving'))
+    expect(snapshot.errors).toEqual(refusal(message, 2))
+  })
+
+  it('accepts a text of exactly the size bound and refuses one unit more', () => {
+    const body = strykerText({ Killed: 1 })
+    const padded = (length: number): string => `${body}${' '.repeat(length - body.length)}`
+    expect(mutationFactsOf(padded(MAX_TEXT))).toEqual(labeled('100.00% mutation score, 0 surviving'))
+    expect(mutationFactsOf(padded(MAX_TEXT + 1))).toEqual([])
+  })
+
+  it('carries nothing of the report source text into the snapshot', () => {
+    const marker = 'LEAK-MARKER'
+    const text = JSON.stringify({
+      schemaVersion: '1.0',
+      thresholds: { high: 90, low: 80, note: marker },
+      config: { note: marker },
+      files: {
+        'src/a.ts': {
+          source: marker,
+          mutants: [
+            { status: 'Survived', replacement: marker, statusReason: marker, mutatorName: marker, id: marker },
+            { status: 'Killed', replacement: marker, statusReason: marker },
+          ],
+        },
+      },
+    })
+    const snapshot = buildSnapshot({ plan: planOf('s1'), mutationReports: [{ step: 's1', text }, { step: 's1', text: `${text}x` }] }, now)
+    expect(snapshot.steps[0]?.facts).toEqual(labeled('50.00% mutation score, 1 surviving'))
+    expect(JSON.stringify(snapshot)).not.toContain(marker)
+  })
+
+  it('caps the mutation report errors and says so', () => {
+    const reports = Array.from({ length: 101 }, () => mutationReport('ghost', { Killed: 1 }))
+    const { errors } = buildSnapshot({ plan: planOf('s1'), mutationReports: reports }, now)
+    expect(errors).toHaveLength(101)
+    expect(errors[99]).toEqual(stepNotInPlan(100))
+    expect(errors[100]).toEqual({
+      file: 'mutation-report',
+      location: null,
+      field: null,
+      message: 'too many errors, only the first 100 are shown',
+    })
+  })
+
+  it('lists the decisions errors, then the test report errors, then the mutation report errors, then the agent error', () => {
+    const snapshot = buildSnapshot(
+      {
+        plan: planOf('s1'),
+        decisions: '{',
+        testReports: [{ step: 's9', text: '{' }],
+        mutationReports: [{ step: 's9', text: '{' }],
+      },
+      now,
+      { unavailable: 'host-error' },
+    )
+    expect(snapshot.errors.map(({ file }) => file)).toEqual(['decisions.jsonl', 'test-report', 'mutation-report', 'agent-state'])
+  })
+
+  it('reads no mutation report when the plan is unusable', () => {
+    const snapshot = buildSnapshot({ plan: '{', mutationReports: [mutationReport('s1', { Killed: 1 }), { step: 's1', text: '{' }] }, now)
+    expect(snapshot.steps).toEqual([])
+    expect(snapshot.errors).toEqual([{ file: 'plan.json', location: null, field: null, message: 'is not valid JSON' }])
   })
 })

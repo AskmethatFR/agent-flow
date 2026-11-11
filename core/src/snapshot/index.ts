@@ -4,6 +4,7 @@ export type {
   AgentStatusUnavailable,
   CurrentAgent,
   FileUnavailable,
+  MutationReport,
   Snapshot,
   SnapshotDecision,
   SnapshotFact,
