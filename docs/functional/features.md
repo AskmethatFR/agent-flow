@@ -30,6 +30,7 @@ answers:
   - "What does the plan rail show for the agent on the current step, and does it refresh?"
   - "What does the OpenCode launcher do when AGENT_FLOW_HOME does not name this checkout?"
   - "What does each snapshot step carry as facts, and what does a fact's origin, source and label mean?"
+  - "What CI fact does the snapshot give for the head commit, when is it passed, failed or pending, and why is it on no step?"
 decided_in:
   - "#21"
   - "#41"
@@ -44,6 +45,7 @@ decided_in:
   - "#16"
   - "#17"
   - "#109"
+  - "#114"
 ---
 
 # Feature catalog
@@ -164,14 +166,40 @@ carries an empty list, never an absent one.
 
 - A step's declared facts follow its decisions exactly: the same order, and no
   fact for a decision the snapshot already counts as omitted.
-- Only declared facts are produced today. No verified fact exists yet: test
-  reports (#110), mutation reports (#111) and CI status (#114), the last of
-  which is never attached to a step, all come later. Until they land the
-  [[glossary]] fact origin `verified` is unexercised, and the issue-level list
-  that will hold [[glossary]] unattached facts and CI status (#112, #114) does
-  not exist.
+- The facts a snapshot step carries are declared facts. A verified fact that is
+  tied to a step by a tool report (#110, #111) has its own feature files and is
+  not described in this catalog. The CI status is the one verified fact that
+  belongs to no step: see the next capability. The list that will hold
+  [[glossary]] unattached facts (#112) does not exist.
 
 Acceptance: `snapshot-facts` S1-S5 (`features/phase-3/snapshot-facts.feature`).
+
+### Capability: the CI status of the head commit is an issue-level verified fact
+
+Given the CI status of the issue's [[glossary]] head commit as text, the snapshot
+carries one [[glossary]] CI fact for the issue, shown apart from the plan steps:
+a check covers a commit, not a step, so it is never attached to a step. A status
+that cannot be used adds an error, never a fact, and never removes another fact.
+
+| Situation | Behaviour | Outcome |
+|---|---|---|
+| Every check of the head commit passed | One CI fact. | Origin `verified`, source `gh`, the head commit it covers and state `passed`. |
+| A check concluded with a failure | One CI fact. | State `failed`, even when other checks are still running. |
+| No check failed and a check is still running | One CI fact. | State `pending`. |
+| A status for another head commit | Another fact. | Never merged into the first one. |
+| A step with declared facts | Left as it was. | The step carries the same facts with and without a CI status; the CI fact carries no step. |
+| No CI status given | Nothing added. | No CI fact and no error. |
+| A status that cannot be used (not JSON, no head commit, no checks, a check whose state or outcome is unknown, a legacy status entry) | One error, fixed wording, the input never echoed. | No CI fact; every other fact stays. |
+| A status over the size bound | Refused whole, before it is read. | A size error and no CI fact. |
+
+- The state covers every check of the commit, not a chosen few, and the check
+  names and links are not part of the fact. The meaning of each conclusion is in
+  the [[glossary]] CI fact entry.
+- Core only reads the text it is handed: reading the status from GitHub is the
+  daemon's (#115), and the panel does not display the CI fact yet.
+
+Acceptance: `ci-fact` S1-S6 (`features/phase-3/ci-fact.feature`); the technical
+decision is in [[verified-facts]].
 
 ### Capability: the step detail lists the decisions of the selected step
 
@@ -353,9 +381,10 @@ Acceptance: `real-issue-capture` S1 (`features/phase-1/real-issue-capture.featur
   character, `..`, a backslash, a bare catch-all.
 - [ ] No scenario pins the request id bounds (length, uniqueness within the
   file) or the repeated answer for one id.
-- [ ] Facts are pinned as declared only: no scenario shows a fact of origin
-  `verified`, the order of a verified fact relative to the declared ones, or an
-  unattached fact. `snapshot-facts` covers the shape and the declared facts;
+- [ ] Per-step facts are pinned as declared only in this catalog: no scenario
+  here shows the order of a verified fact relative to the declared ones, or an
+  unattached fact. `ci-fact` pins the one issue-level verified fact;
+  `snapshot-facts` covers the shape and the declared facts;
   `docs/technical/decisions/verified-facts.md` reads #109 as also shaping an
   issue-level place for unattached facts and CI, while the ticket defers that
   place to #112 and #114. The catalog above states the narrower, delivered

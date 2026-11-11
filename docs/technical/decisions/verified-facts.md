@@ -17,11 +17,14 @@ answers:
   - "Does a step that ran no tool owe a verified fact?"
   - "How does core turn a vitest or cucumber-js report text into a verified fact on a step, and what does it refuse?"
   - "How does core turn a Stryker mutation report text into a verified fact, how is the score computed, and what does it refuse?"
+  - "How does core turn a gh CI status text into the issue-level CI fact, and what does it refuse?"
+  - "What do the gh read (#115) and the CI display (#113) owe before they show a CI state?"
 decided_in:
   - "#108"
   - "#110"
   - "#111"
   - "#113"
+  - "#114"
 ---
 
 # Verified facts: sources, capture-time step attachment, separator
@@ -156,13 +159,29 @@ Same seam as S7: core takes `{step, text}`, opens no file and does not attach. O
 
 Frozen surface of #111: none. `plan.json`, `decisions.jsonl` and the `Snapshot` type are unchanged; the panel wire `source` is any string (`panel/shared/snapshot-rpc.ts:21`), so `stryker` needs no wire change.
 
+### S9 CI status into the issue-level fact (#114)
+
+Core takes the raw stdout of `gh pr view --json headRefOid,statusCheckRollup` as text, opens nothing and calls nothing; the read is #115's. Where the fact sits: [[snapshot-facts]]. Every symbol is in `core/src/snapshot/ci-status.ts` or `snapshot.ts`.
+
+| Concern | Rule | Anchor |
+|---|---|---|
+| Input | `SnapshotFiles.ciStatus?: string`, additive and optional. Absent, or any non-string at runtime, is no status: `ci: null` and no error. No host passes it before #115 | `readCi` |
+| Error label | at most one error `{file: 'ci-status', location: null, field: null, message}`; no `capErrors` (one input). Order: after the mutation-report errors, before the agent-state error; on an unusable plan, after the plan errors | `readCi`, `buildSnapshot` |
+| Refusal | fixed messages only, never the input: `exceeds 1048576 characters` (checked before `JSON.parse`), `is not valid JSON`, `is not a gh check status rollup`, `has no check run` | `readCiStatus` `:56-71` |
+| Shape | an object with a string `headRefOid` and an array `statusCheckRollup`. Every entry must classify, else the whole status is refused: a record whose `__typename` is absent or `CheckRun` (a `StatusContext` is refused), whose `status` is a known running status or `COMPLETED`, and, when `COMPLETED`, whose `conclusion` is known | `isCheckRun`, `stateOfCheck` `:31-43` |
+| Classification | a running status gives pending (its conclusion is ignored); a `COMPLETED` check with a failing conclusion (`STALE` included) gives failed; `SUCCESS`, `NEUTRAL` or `SKIPPED` give passed. The lists are closed: an unknown value never defaults to passed | `:17-26` |
+| State | any failed check gives `failed`, else any pending gives `pending`, else `passed`. Every check run of the rollup counts: no required-check filter | `overallStateOf` `:51-54` |
+| Report text | only `headRefOid`, `__typename`, `status` and `conclusion` are read; check names, URLs, workflow names and instants never reach the snapshot. `headRefOid` is the one copied string, as `headCommit` | `:70` |
+
+Frozen surface of #114: the top-level `ci` and the four `CiFact` fields, required by the hypothesis; the wire mirror, kept now because [[snapshot-rpc]] `:114` and the type pin require it; per-check detail, dropped (an additive `checks` field later). `SnapshotFiles.ciStatus`, the error label and the messages are not frozen.
+
 ### Consequences per fact kind (AC6)
 
 | Fact kind | Consequence |
 |---|---|
 | Test report (vitest, cucumber-js JSON) | Step-level. #110 parses it; every run is attached at capture time, which the loop counter needs (keyed by plan step and test id over consecutive runs, `loop-threshold.md:48-49`). The parser input is bounded (1 MiB); an over-bound report is refused whole, as a size error with no fact, never truncated or partly parsed. Sizes above are for the `core` project and for all scenarios, a full vitest run is not measured |
 | Stryker report | Step-level only when the role that ran it has a step. #111 parses it (S8); the single report path is overwritten on every run, so it must be captured at run end, never read on poll (`json-reporter.js:23`). Carries no instant: the run-end instant is the capture instant. The same size rule applies |
-| CI status | Issue-level, keyed by head commit, shown apart from the steps. #114 maps `statusCheckRollup` (workflow `ci` / job `test`, `bdd` / `bdd`) to a fact; #115 reads it with `gh` for the head commit. It is never attached to a step by instant |
+| CI status | Issue-level, keyed by head commit, shown apart from the steps. #114 maps every check run of `statusCheckRollup` to the top-level `ci` fact (S9); #115 reads it with `gh` for the head commit. It is never attached to a step by instant |
 | Declared fact | Unchanged: `decisions.jsonl`, attached by `decisionStepOf` at write time |
 | Unattached fact | Counted at issue level and reported; the slice that first produces one shapes where, additively (#112 re-slice) |
 
@@ -170,7 +189,7 @@ Per slice:
 - **#109**: facts per step, additive; per fact `origin: verified|declared`; declared first, derived from `decisions.jsonl` only (`declaredFactOf`, `toSnapshotStep`, `core/src/snapshot/snapshot.ts`). The snapshot has no issue-level place for unattached facts or CI (`Snapshot`, same file): the slice that first produces such a fact adds it, additively (#112 re-slice for unattached facts, #114 for CI). The sixth `.agent-flow` file moves with the verified-fact writer to #112's re-slice, Security lane.
 - **#112**: its title assumes the daemon reads report files on poll. Capture-time attachment means the fact-file writer is capture-side and runs when a tool run ends; #112 stays the reader of that file and needs re-slicing (its Touches are `daemon/**` and its AC4 says no parsing in `daemon/`). It also owns how the role reaches the writer. The PM re-slices; this record does not edit #112.
 - **#113**: panel only, computes nothing. Step detail lists each fact after the decisions block, in snapshot order, as three lines: the badge `Verified` or `Declared` (a fixed lookup over the wire `origin` enum, `panel/client/step-detail.tsx:10`), the label verbatim and `Source: <source>`, both through `toDisplayText` (`:33-37`). An empty `facts` list renders nothing, no placeholder; the decisions empty copy (`:21`) is unchanged. No verified-fact producer exists yet, so the acceptance fixture's verified fact is a snapshot reply checked by the RPC schema (`features/support/panel-host.ts:108`).
-- **Deferred from #113 until the snapshot carries the data**: the exemption copy for a step that ran no tool (decision (a)) and the issue-level display of unattached facts and CI. The snapshot has no ran-a-tool signal per step and no issue-level fact field (`SnapshotStep`, `Snapshot`, `core/src/snapshot/snapshot.ts`; `panel/shared/snapshot-rpc.ts:25-46`), so a panel could show either only by computing. Each display follows the slice that adds its data: the ran-a-tool signal and unattached facts with the #112 re-slice (the capture-side writer sees the tool runs), CI with #114.
+- **Deferred from #113 until the snapshot carries the data**: the exemption copy for a step that ran no tool (decision (a)) and the issue-level display of unattached facts and CI. The snapshot has no ran-a-tool signal per step and, until #114 added `ci` (S9), had no issue-level fact field (`SnapshotStep`, `Snapshot`, `core/src/snapshot/snapshot.ts`; `panel/shared/snapshot-rpc.ts`), so a panel could show either only by computing. Each display follows the slice that adds its data: the ran-a-tool signal and unattached facts with the #112 re-slice (the capture-side writer sees the tool runs), CI with #114.
 - **#116**: asserts the amended outcome, not "every completed step": every completed step that ran a test or mutation tool shows at least one verified fact with its source, and a step that ran no tool shows none and says so. The "says so" half needs the ran-a-tool signal deferred above.
 - **Phase 5 loop detector**: input is the stored fingerprint of the failure message (never its text) of vitest and cucumber-js test runs only (`loop-threshold.md:50`, `:69`); the normalisation behind the fingerprint is owed to Phase 5 story 5 (`loop-threshold.md:71`, `:84`); #110 reads no failure message and builds no fingerprint (S7). Stryker and CI are excluded: neither is a per-test pass/fail run.
 
@@ -200,6 +219,10 @@ Per slice:
 - **MUST** (owed to #112, its host adapter): hand `buildSnapshot` only well-typed reports, a `{step: string, text: string}` per entry in an array. A failed read is an error the adapter reports, never an entry with a `null` text. Today `buildSnapshot` throws on a `null` text, a `null` entry, or a non-array `testReports`/`mutationReports`; no host passes these and TypeScript forbids them (Security S1, low, on #111, inherited from #110). If #112 cannot guarantee the shape at the boundary, core hardens `outcomeOfReport` and `readReports` instead, in #112. The omitted count is a new additive snapshot field, deferred from #110 to #112 (#110 frozen surface: 4 elements declared, 4 `required_by_hypothesis: false`, S7).
 - **MUST** (owed to #112 or the capture-side slice cut from it, and #109 where it applies): the trust rules of S4 hold for every fact.
 - **MUST** (owed to #112 or the capture-side slice cut from it): an attachment made through the only-step fallback (no step of the role was in progress) carries the marker that says so (rule in S2). Whether such a fact stays attached or becomes unattached is an open question below.
+- **MUST** (whoever shows a CI state as the state of the current work, #113 or #115): `headCommit` is the PR head commit on GitHub, not the local `HEAD`. Compare the two before showing `passed` for the current work, or a stale green shows for unpushed commits (Security observation on #114).
+- **MUST** (owed to #115): validate `headRefOid` as a 40- or 64-hex object id before it reaches any `git` or `gh` argument (CWE-88). Core accepts any string (Security S1 on #114, low, deferred: the committed Gherkin uses a short fixture value); for display it is untrusted text (`snapshot-contract.md:66`).
+- **MUST** (owed to #115): the raw `gh pr view --json headRefOid,statusCheckRollup` shape, `__typename` presence included, is not recorded in-repo (`evidence/verified-facts/gh-checks-pr93.json` is a curated excerpt). #115's live read confirms it and commits the evidence. Core accepts an absent `__typename` and refuses any value other than `CheckRun`.
+- **MUST** (owed to #115): a failed or missing `gh` read (no PR, no auth, a `gh` error) is #115's error to report; core never reports it. Pass the `gh` stdout string or nothing: core reads a non-string as absent, so a `null` would hide the failure (Security S2 on #114, closed in core).
 - **MUST** (owed to #112 or the capture-side slice cut from it): report reads are confined. Open the file with `O_RDONLY|O_NOFOLLOW|O_NONBLOCK`, require an `fstat` regular file, read at most `MAX_TEXT_LENGTH`+1 bytes, derive the path from the worktree realpath. The fact-file writer follows `plan-writer-confinement.md:86`. #112 AC1 still says "at the paths from #108" on poll, which this record rejects (Considered options): its body needs updating.
 - **Out of scope**: the name and shape of the new `.agent-flow` fact file (#112 and Security), snapshot facts (#109), the role-delivery mechanism (#112), glossary terms "verified fact", "declared fact", "unattached fact" (PM gap, `docs/functional/glossary.md:43-58`), the Security-lane routing of the sixth file (carried by #112's re-slice, which does not carry it today; the orchestrator adds it there), ruling on (b).
 

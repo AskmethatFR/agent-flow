@@ -20,6 +20,7 @@ answers:
   - "What is the OpenCode launcher?"
   - "What is a fact, and what do a fact's origin, source and label mean?"
   - "What do declared fact, verified fact and unattached fact mean?"
+  - "What do CI fact, head commit and issue-level fact mean, and what are the CI states?"
 decided_in:
   - "#21"
   - "#83"
@@ -33,6 +34,7 @@ decided_in:
   - "#16"
   - "#17"
   - "#109"
+  - "#114"
 ---
 
 # Glossary — ubiquitous language
@@ -81,6 +83,9 @@ decided_in:
 | **declared fact** | A fact a role wrote down: one per decision kept for that step, labelled with the decision's title and sourced to the decisions file. Every logged decision of the step becomes one, whatever its kind. |
 | **verified fact** | A fact a tool run produced: read from the run's report rather than taken from a role's word, and sourced to the tool that ran. It means the capture host observed the run; it is not proof against a forged report. |
 | **unattached fact** | A fact whose run cannot be tied to a plan step. It is kept and reported apart from the steps, never dropped and never pushed onto the current step. A declared record naming a step absent from the plan is not an unattached fact: it belongs to no step and is reported as an error. |
+| **issue-level fact** | A fact that covers the issue's work as a whole, not one plan step, so it belongs to no step and is shown apart from the steps. It differs from an unattached fact: it is never attached by nature, whereas an unattached fact is one that should have been tied to a step and could not be. The CI fact is the one issue-level fact. |
+| **head commit** | The latest commit of the issue's pull request, identified by its commit id. The CI fact states which head commit it covers, so a status for another head commit is another fact. |
+| **CI fact** | The issue-level verified fact for the CI status of one head commit, with source `gh` and one state. `failed`: any check concluded as failure, timed out, cancelled, action required, startup failure or stale. Otherwise `pending`: any check not finished. Otherwise `passed`: every check finished as success, neutral or skipped. The check names and links are not part of it. |
 | **fact source** | Where a fact comes from: the decisions file for a declared fact, the tool that ran for a verified fact. It is what separates verified from declared, not a field of the decisions log. |
 | **fact label** | The short text identifying a fact; for a declared fact, the title of the decision behind it. |
 
@@ -99,8 +104,8 @@ decided_in:
   shows every record of the step as a decision, whatever its kind, because the
   snapshot drops `kind` (`core/src/snapshot/snapshot.ts:136-142`). Showing
   questions and deviations as distinct kinds is Phase 4. Kept open.
-- [ ] Only declared facts exist yet: the snapshot carries no verified fact and
-  no issue-level list of unattached facts until the tool-report slices land
-  (#110, #111, #112, #114). The terms above are settled
-  (`docs/technical/decisions/verified-facts.md`); the behaviour is not
-  observable yet.
+- [ ] The snapshot carries declared facts per step and, since #114, the CI fact
+  as an issue-level verified fact. The list of unattached facts (#112) does not
+  exist, and no panel displays the CI fact yet. The terms above are settled
+  (`docs/technical/decisions/verified-facts.md`); the behaviour of the unattached
+  fact is not observable yet.
