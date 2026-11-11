@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import { Given, Then, When } from '@cucumber/cucumber'
 import { buildSnapshot } from '@agent-flow/core/snapshot'
-import type { Snapshot, SnapshotStep, TestReport } from '@agent-flow/core/snapshot'
+import type { MutationReport, Snapshot, SnapshotStep, TestReport } from '@agent-flow/core/snapshot'
 
 type DecisionsWorld = {
   planText: string
   decisionsText?: string
   testReports?: readonly TestReport[]
+  mutationReports?: readonly MutationReport[]
   snapshot: Snapshot
 }
 
@@ -66,7 +67,12 @@ Given(
 
 When('the snapshot is built', function (this: DecisionsWorld): void {
   this.snapshot = buildSnapshot(
-    { plan: this.planText, decisions: this.decisionsText, testReports: this.testReports },
+    {
+      plan: this.planText,
+      decisions: this.decisionsText,
+      testReports: this.testReports,
+      mutationReports: this.mutationReports,
+    },
     new Date('2026-10-22T10:38:00Z'),
   )
 })
