@@ -13,13 +13,15 @@ answers:
   - "In what order are a step's facts given, and where do verified facts go when they arrive?"
   - "What separates a fact's origin from the frozen step origin?"
   - "Which parts of the facts design were deferred, and to which slice?"
+  - "Where does the issue-level CI fact sit in the snapshot, and why not on a step?"
 decided_in:
   - "#109"
+  - "#114"
 ---
 
 # Snapshot facts: per-step shape, declared facts first
 
-> **One-liner**: Each snapshot step carries a required `facts` list of `{ origin, source, label }`, `origin` being `verified` or `declared`. Today every fact is declared: one per decision the step keeps, `source` `decisions.jsonl`, `label` the decision title. Declared facts come first; verified facts append after them. The step's frozen `origin` is untouched.
+> **One-liner**: Each snapshot step carries a required `facts` list of `{ origin, source, label }`, `origin` being `verified` or `declared`. Today every fact is declared: one per decision the step keeps, `source` `decisions.jsonl`, `label` the decision title. Declared facts come first; verified facts append after them. The step's frozen `origin` is untouched. CI is the one issue-level fact: a top-level `ci`, `null` when absent (#114).
 > **Links**: [[snapshot-contract]] (additive-only rule `:38`, cost bound `:44`, untrusted display text `:66`), [[snapshot-decisions]] (per-step bucket, cap `:43`, read failures `:49-51`), [[verified-facts]] (separator is the source, S4 `:86-91`; per-slice split `:126-131`), [[snapshot-rpc]] (wire mirror rule `:55`, `:114`), [[decisions-jsonl-schema]] (the source of every declared fact). Consumers: #110, #111 (verified producers), #113 (display).
 
 ## Context
@@ -54,6 +56,17 @@ Corrected here, not edited there (closed records):
 | `omittedFacts` | #110 | only verified facts can exceed the decisions cap; the count is owed by the slice that makes it non-zero |
 | Sixth `.agent-flow` fact file | #112 | the capture-side writer and reader own it; its Security-routing requirements are recorded in the Security lane's report on #109 |
 
+### Issue-level CI fact (#114)
+
+Closes the CI row above. Unattached facts stay deferred to #112. Parsing rules: [[verified-facts]] S9.
+
+| Concern | Decision | Rationale |
+|---|---|---|
+| Placement | one top-level `ci: CiFact \| null` on `Snapshot`, beside `currentAgent` (`core/src/snapshot/snapshot.ts`); never on a step; `steps[].facts` is identical with or without a CI status | a check covers a commit, not a step (`verified-facts.md:85`); the panel reads one field and computes nothing |
+| Shape | `CiFact = { origin: 'verified', source: string, headCommit: string, state: 'passed' \| 'failed' \| 'pending' }`; no `label`, no step id | `state` and `headCommit` stay machine-readable for the head comparison owed by #113/#115; `source` is a string, as on `SnapshotFact`, so another forge is additive |
+| Absence | `null` when no status was given or it was refused, never an omitted key; the wire mirror `ci: CiFactSchema.nullable()` is required, with no `.default` (`panel/shared/snapshot-rpc.ts`) | `snapshot-contract.md:37`; the Required row above |
+| Unusable plan | `ci` is read before the plan branch and kept when `plan.json` is unusable | keyed by commit, it needs no step; step reports, which need step ids, are skipped there |
+
 ### Considered and rejected
 
 | Option | Why rejected |
@@ -64,16 +77,19 @@ Corrected here, not edited there (closed records):
 | Copy every decision field into the fact | duplicates `decisions`; freezes metadata no consumer asked for |
 | One fact per decision line, capped separately | a second cap and a second count for the same lines |
 | `.default([])` on the wire `facts` | masks a missing field instead of failing the parse |
+| CI as a `SnapshotFact` (`origin`, `source`, `label`) | needs a label nobody asked for and loses the machine-readable `state` and `headCommit` |
+| A `ci` list keyed by commit | one status gives one commit; a list would be a placeholder |
 
 ## Consequences / Constraints
 
-- **MUST**: `steps[].facts` and the three fact fields fall under the additive-only rule of [[snapshot-contract]]; the wire follows in the same change ([[snapshot-rpc]] `:114`).
+- **MUST**: `steps[].facts`, the top-level `ci` and their fields fall under the additive-only rule of [[snapshot-contract]]; the wire follows in the same change ([[snapshot-rpc]] `:114`).
 - **MUST**: every fact with `origin: declared` is the view of exactly one kept decision of the same step; no declared fact without its decision, no kept decision without its fact.
 - **MUST**: a verified fact is appended after the declared facts of its step; it never enters `decisions.jsonl` (`verified-facts.md:151`).
 - **MUST** (every consumer, #113 first): `label` is agent-written display text for declared facts; `snapshot-contract.md:66` (Security S2) applies.
-- **Out of scope**: verified-fact parsing (#110, #111), CI (#114, #115), the fact file and its reader (#112), display (#113).
+- **Out of scope**: verified-fact parsing (#110, #111, #114: [[verified-facts]]), the `gh` read (#115), the fact file and its reader (#112), display (#113).
 
 ## Open questions / Gaps
 
 - [ ] The `source` value of each verified fact kind: owed to #110 and #111.
-- [ ] Where unattached facts and CI sit at issue level: owed to #112 and #114.
+- [x] Where CI sits at issue level: top-level `ci` (#114, above).
+- [ ] Where unattached facts sit at issue level: owed to #112.
