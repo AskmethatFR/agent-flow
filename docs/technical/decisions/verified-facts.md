@@ -17,6 +17,7 @@ answers:
   - "Does a step that ran no tool owe a verified fact?"
 decided_in:
   - "#108"
+  - "#113"
 ---
 
 # Verified facts: sources, capture-time step attachment, separator
@@ -87,7 +88,7 @@ A fact that `decisionStepOf` refuses is **kept, counted at issue level and repor
 
 **The separator is the source, not a field.** It is neither an existing `decisions.jsonl` field nor a new one.
 - Every `decisions.jsonl` line is declared (`snapshot-decisions.md:45`). A verified fact never enters that file: the schema requires `why` and `confidence` (`core/schemas/decisions.schema.json:6`) and refuses extra fields (`:7`). `decisions.jsonl` stays unchanged.
-- In the snapshot the origin is an additive field **per fact, inside `steps[].facts[]`** (shape owned by #109), `origin: verified|declared` (additive-only rule `snapshot-contract.md:38`; #109 AC1). It is not the frozen step field `origin: planned|proposed` (`core/src/snapshot/snapshot.ts:39`, `core/schemas/plan.schema.json:23`, `snapshot-contract.md:37-38`, `:62`), which stays as it is.
+- In the snapshot the origin is an additive field **per fact, inside `steps[].facts[]`** (shape owned by #109), `origin: verified|declared` (additive-only rule `snapshot-contract.md:38`; #109 AC1). It is not the frozen step field `origin: planned|proposed` (`core/src/snapshot/snapshot.ts:45`, `core/schemas/plan.schema.json:23`, `snapshot-contract.md:37-38`, `:62`), which stays as it is.
 - Capture-time attachments must outlive the run, so they need a new file under `.agent-flow/`. Today the contract is five files (`core/src/contracts/contract-check.ts:9-15`, `docs/plan.md:65-71`), and any other name is refused as "is not a contract file" (`:19-27`). AC4's "new field" appears here as a new sixth file, and **that sixth file is the frozen-contract change for #109 and goes through the Security lane.** Its name and shape are not decided here. The writer is capture-side: it runs when a tool run ends, and no hook sees a tool run today (`capture/claude-code/settings.json:5` matches `TaskCreate|TaskUpdate` only). #112 stays the reader and needs re-slicing, see Consequences.
 
 #### Trust: what "verified" means
@@ -121,13 +122,14 @@ What the run did not show: how a live agent's tool run delivers its role to the 
 | Stryker report | Step-level only when the role that ran it has a step. #111 parses it; the single report path is overwritten on every run, so it must be captured at run end, never read on poll (`json-reporter.js:23`). Carries no instant: the run-end instant is the capture instant. The same size rule applies |
 | CI status | Issue-level, keyed by head commit, shown apart from the steps. #114 maps `statusCheckRollup` (workflow `ci` / job `test`, `bdd` / `bdd`) to a fact; #115 reads it with `gh` for the head commit. It is never attached to a step by instant |
 | Declared fact | Unchanged: `decisions.jsonl`, attached by `decisionStepOf` at write time |
-| Unattached fact | Counted at issue level and reported; #109 shapes where, additively |
+| Unattached fact | Counted at issue level and reported; the slice that first produces one shapes where, additively (#112 re-slice) |
 
 Per slice:
-- **#109**: facts per step plus an issue-level place for unattached facts and CI, additive; per fact `origin: verified|declared`; declared first. Lists the sixth `.agent-flow` file as the frozen-contract change for the Security lane.
+- **#109**: facts per step, additive; per fact `origin: verified|declared`; declared first, derived from `decisions.jsonl` only (`core/src/snapshot/snapshot.ts:66-70`, `:85`). The snapshot has no issue-level place for unattached facts or CI (`:57-64`): the slice that first produces such a fact adds it, additively (#112 re-slice for unattached facts, #114 for CI). The sixth `.agent-flow` file moves with the verified-fact writer to #112's re-slice, Security lane.
 - **#112**: its title assumes the daemon reads report files on poll. Capture-time attachment means the fact-file writer is capture-side and runs when a tool run ends; #112 stays the reader of that file and needs re-slicing (its Touches are `daemon/**` and its AC4 says no parsing in `daemon/`). It also owns how the role reaches the writer. The PM re-slices; this record does not edit #112.
-- **#113**: display only; shows verified and declared apart, unattached and CI apart from the steps; a step that ran no tool shows the exemption (it shows no verified fact and says so, decision (a)).
-- **#116**: asserts the amended outcome, not "every completed step": every completed step that ran a test or mutation tool shows at least one verified fact with its source, and a step that ran no tool shows none and says so.
+- **#113**: panel only, computes nothing. Step detail lists each fact after the decisions block, in snapshot order, as three lines: the badge `Verified` or `Declared` (a fixed lookup over the wire `origin` enum, `panel/client/step-detail.tsx:10`), the label verbatim and `Source: <source>`, both through `toDisplayText` (`:33-37`). An empty `facts` list renders nothing, no placeholder; the decisions empty copy (`:21`) is unchanged. No verified-fact producer exists yet, so the acceptance fixture's verified fact is a snapshot reply checked by the RPC schema (`features/support/panel-host.ts:108`).
+- **Deferred from #113 until the snapshot carries the data**: the exemption copy for a step that ran no tool (decision (a)) and the issue-level display of unattached facts and CI. The snapshot has no ran-a-tool signal per step and no issue-level fact field (`core/src/snapshot/snapshot.ts:40-64`, `panel/shared/snapshot-rpc.ts:25-46`), so a panel could show either only by computing. Each display follows the slice that adds its data: the ran-a-tool signal and unattached facts with the #112 re-slice (the capture-side writer sees the tool runs), CI with #114.
+- **#116**: asserts the amended outcome, not "every completed step": every completed step that ran a test or mutation tool shows at least one verified fact with its source, and a step that ran no tool shows none and says so. The "says so" half needs the ran-a-tool signal deferred above.
 - **Phase 5 loop detector**: input is the stored fingerprint of the failure message (never its text) of vitest and cucumber-js test runs only (`loop-threshold.md:50`, `:69`); the normalisation behind the fingerprint is owed to #110 and to Phase 5 story 5. Stryker and CI are excluded: neither is a per-test pass/fail run.
 
 ### Considered options
@@ -154,7 +156,7 @@ Per slice:
 - **MUST** (owed to #112 or the capture-side slice cut from it, and #109 where it applies): the trust rules of S4 hold for every fact.
 - **MUST** (owed to #112 or the capture-side slice cut from it): an attachment made through the only-step fallback (no step of the role was in progress) carries the marker that says so (rule in S2). Whether such a fact stays attached or becomes unattached is an open question below.
 - **MUST** (owed to #112 or the capture-side slice cut from it): report reads are confined. Open the file with `O_RDONLY|O_NOFOLLOW|O_NONBLOCK`, require an `fstat` regular file, read at most `MAX_TEXT_LENGTH`+1 bytes, derive the path from the worktree realpath. The fact-file writer follows `plan-writer-confinement.md:86`. #112 AC1 still says "at the paths from #108" on poll, which this record rejects (Considered options): its body needs updating.
-- **Out of scope**: the name and shape of the new `.agent-flow` fact file (#112 and Security), snapshot facts (#109), the role-delivery mechanism (#112), glossary terms "verified fact", "declared fact", "unattached fact" (PM gap, `docs/functional/glossary.md:43-58`), the Security-lane routing of the sixth file (carried by #109 and #112, which do not carry it today; the orchestrator adds it there), ruling on (b).
+- **Out of scope**: the name and shape of the new `.agent-flow` fact file (#112 and Security), snapshot facts (#109), the role-delivery mechanism (#112), glossary terms "verified fact", "declared fact", "unattached fact" (PM gap, `docs/functional/glossary.md:43-58`), the Security-lane routing of the sixth file (carried by #112's re-slice, which does not carry it today; the orchestrator adds it there), ruling on (b).
 
 ## Open questions / Gaps
 
@@ -165,3 +167,4 @@ Per slice:
 - [ ] How the role reaches the capture step when an agent runs a tool (#112). The run used an operator-supplied role.
 - [ ] Whether capture reads the agent transcript for steps and tool runs; the transcript could carry the role and the tool result. This record does not decide the direction; #112 settles it with the capture design.
 - [ ] A full vitest run size and a whole-repo Stryker report size against the 1 MiB bound (#110, #111).
+- [ ] Each decision shows twice in step detail. With real `.agent-flow/` files every decision is also a Declared fact (`core/src/snapshot/snapshot.ts:85`, `declaredFactOf` `:66-70`), so its title appears once as a decision and once as `Declared` with `Source: decisions.jsonl`. The panel must not filter it (it computes nothing); deduplication, if wanted, belongs to the producer or core. Product call for the human, not decided here.
