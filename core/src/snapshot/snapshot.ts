@@ -14,6 +14,7 @@ import { instantOf, timeSpentOf } from './time-spent'
 import type { TimeSpent } from './time-spent'
 
 export const MAX_DECISIONS_PER_STEP = 50
+export const MAX_REPORTS_PER_BUILD = 200
 
 export type FileUnavailable = {
   readonly unavailable: 'missing' | 'unreadable' | 'too-large'
@@ -282,6 +283,18 @@ const outcomeOfReport = (
   return { verified: { step, fact: reading.fact } }
 }
 
+const boundErrorsOf = (file: string, skipped: number): readonly ContractError[] =>
+  skipped === 0
+    ? []
+    : [
+        {
+          file,
+          location: null,
+          field: null,
+          message: `too many reports, only the last ${MAX_REPORTS_PER_BUILD} are read`,
+        },
+      ]
+
 const readReports = (
   file: string,
   read: ReportReader,
@@ -289,13 +302,19 @@ const readReports = (
   reports: readonly StepReport[],
 ): ReadReports => {
   const stepIds = new Set(steps.map((step) => step.id))
-  const outcomes = reports.map((report, index) => outcomeOfReport(file, read, stepIds, report, index + 1))
+  const skipped = Math.max(0, reports.length - MAX_REPORTS_PER_BUILD)
+  const outcomes = reports
+    .slice(skipped)
+    .map((report, index) => outcomeOfReport(file, read, stepIds, report, skipped + index + 1))
   return {
     verified: outcomes.filter((outcome) => 'verified' in outcome).map((outcome) => outcome.verified),
-    errors: capErrors(
-      file,
-      outcomes.filter((outcome) => 'error' in outcome).map((outcome) => outcome.error),
-    ),
+    errors: [
+      ...boundErrorsOf(file, skipped),
+      ...capErrors(
+        file,
+        outcomes.filter((outcome) => 'error' in outcome).map((outcome) => outcome.error),
+      ),
+    ],
   }
 }
 

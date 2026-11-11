@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
-import { MAX_DECISIONS_PER_STEP, buildSnapshot } from './index'
+import { MAX_DECISIONS_PER_STEP, MAX_REPORTS_PER_BUILD, buildSnapshot } from './index'
 import type { AgentStatusUnavailable, Snapshot, SnapshotStep } from './index'
 
 const now = new Date('2026-10-22T10:38:00Z')
@@ -1481,5 +1481,127 @@ describe('buildSnapshot with a cap on verified facts per step', () => {
     expect(snapshot.steps[0]?.omittedFacts).toBe(2)
     expect(verifiedLabelsOf(snapshot, 1)).toEqual(labelsOfNumbers(1, 3))
     expect(snapshot.steps[1]?.omittedFacts).toBe(0)
+  })
+})
+
+describe('buildSnapshot with a bound on reports per build', () => {
+  const vitestText = JSON.stringify({ numTotalTests: 1, numPassedTests: 1, numFailedTestSuites: 0 })
+  const strykerText = JSON.stringify({
+    schemaVersion: '1.0',
+    files: { 'src/a.ts': { language: 'typescript', mutants: [{ status: 'Killed' }] } },
+  })
+
+  const kinds = [
+    { kind: 'test', file: 'test-report', key: 'testReports', validText: vitestText },
+    { kind: 'mutation', file: 'mutation-report', key: 'mutationReports', validText: strykerText },
+  ] as const
+
+  const boundError = (file: string) => ({
+    file,
+    location: null,
+    field: null,
+    message: 'too many reports, only the last 200 are read',
+  })
+
+  const reportsOf = (count: number, first: { step: string; text: string }, validText: string) => [
+    first,
+    ...Array.from({ length: count - 1 }, () => ({ step: 's1', text: validText })),
+  ]
+
+  const hostileFirstReports = (validText: string) => [
+    ['valid for a step of the plan', { step: 's1', text: validText }],
+    ['for a step that is not in the plan', { step: 's9', text: validText }],
+    ['malformed', { step: 's1', text: '{' }],
+  ] as const
+
+  it('bounds the reports of a build at 200 of each kind', () => {
+    expect(MAX_REPORTS_PER_BUILD).toBe(200)
+  })
+
+  describe.each(kinds)('for $kind reports', ({ file, key, validText }) => {
+    const buildWith = (reports: readonly { step: string; text: string }[], more: Record<string, unknown> = {}) =>
+      buildSnapshot({ plan: planOf('s1'), [key]: reports, ...more }, now)
+
+    it.each(hostileFirstReports(validText))(
+      'reads all 200 reports, the first being %s, and adds no bound error',
+      (_, first) => {
+        const snapshot = buildWith(reportsOf(MAX_REPORTS_PER_BUILD, first, validText))
+        expect(snapshot.errors).not.toContainEqual(boundError(file))
+        expect(snapshot.errors.length).toBe(first.text === '{' || first.step === 's9' ? 1 : 0)
+      },
+    )
+
+    it.each(hostileFirstReports(validText))(
+      'does not read the first of 201 reports, being %s, and adds exactly one bound error',
+      (_, first) => {
+        const snapshot = buildWith(reportsOf(MAX_REPORTS_PER_BUILD + 1, first, validText))
+        expect(snapshot.errors).toEqual([boundError(file)])
+        expect(snapshot.steps[0]?.facts).toHaveLength(MAX_DECISIONS_PER_STEP)
+        expect(snapshot.steps[0]?.omittedFacts).toBe(MAX_REPORTS_PER_BUILD - MAX_DECISIONS_PER_STEP)
+      },
+    )
+
+    it('keeps the input position of a kept report that is not in the plan', () => {
+      const reports = [
+        ...Array.from({ length: MAX_REPORTS_PER_BUILD + 4 }, () => ({ step: 's1', text: validText })),
+        { step: 's9', text: validText },
+      ]
+      expect(buildWith(reports).errors).toEqual([boundError(file), unknownStepError(file, MAX_REPORTS_PER_BUILD + 5)])
+    })
+
+    it('lists the bound error first and keeps it out of the error cap', () => {
+      const reports = Array.from({ length: MAX_REPORTS_PER_BUILD + 1 }, () => ({ step: 's9', text: validText }))
+      const { errors } = buildWith(reports)
+      expect(errors).toHaveLength(102)
+      expect(errors[0]).toEqual(boundError(file))
+      expect(errors[1]).toEqual(unknownStepError(file, 2))
+      expect(errors[100]).toEqual(unknownStepError(file, 101))
+      expect(errors[101]).toEqual({
+        file,
+        location: null,
+        field: null,
+        message: 'too many errors, only the first 100 are shown',
+      })
+    })
+
+    it('reads no report and adds no bound error when the plan is unusable', () => {
+      const reports = Array.from({ length: MAX_REPORTS_PER_BUILD + 1 }, () => ({ step: 's1', text: validText }))
+      const snapshot = buildSnapshot({ plan: '{', [key]: reports }, now)
+      expect(snapshot.errors).toEqual([{ file: 'plan.json', location: null, field: null, message: 'is not valid JSON' }])
+    })
+  })
+
+  it('adds one bound error per kind over the bound, the test report before the mutation report', () => {
+    const over = (validText: string) =>
+      Array.from({ length: MAX_REPORTS_PER_BUILD + 1 }, () => ({ step: 's1', text: validText }))
+    const snapshot = buildSnapshot(
+      {
+        plan: planOf('s1'),
+        decisions: '{',
+        testReports: over(vitestText),
+        mutationReports: over(strykerText),
+      },
+      now,
+      { unavailable: 'host-error' },
+    )
+    expect(snapshot.errors.map(({ file }) => file)).toEqual([
+      'decisions.jsonl',
+      'test-report',
+      'mutation-report',
+      'agent-state',
+    ])
+    expect(snapshot.errors.slice(1, 3)).toEqual([boundError('test-report'), boundError('mutation-report')])
+  })
+
+  it('bounds one kind without touching the other', () => {
+    const over = Array.from({ length: MAX_REPORTS_PER_BUILD + 1 }, () => ({ step: 's1', text: vitestText }))
+    const snapshot = buildSnapshot({ plan: planOf('s1'), testReports: over, mutationReports: [{ step: 's9', text: '{' }] }, now)
+    expect(snapshot.errors).toEqual([boundError('test-report'), unknownStepError('mutation-report', 1)])
+  })
+
+  it('echoes no step and no report text in the bound error', () => {
+    const over = Array.from({ length: MAX_REPORTS_PER_BUILD + 1 }, () => ({ step: 'secret-step', text: 'secret-text' }))
+    const snapshot = buildSnapshot({ plan: planOf('s1'), testReports: over }, now)
+    expect(JSON.stringify(snapshot.errors[0])).toBe(JSON.stringify(boundError('test-report')))
   })
 })
