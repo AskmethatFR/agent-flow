@@ -557,7 +557,7 @@ describe('buildSnapshot', () => {
     expect(buildSnapshot({ plan: planText(step()), decisions }, now).steps[0]?.facts).toEqual([])
   })
 
-  it('keeps the steps and their empty facts when the plan is unusable', () => {
+  it('builds no step when the plan is unusable', () => {
     expect(buildSnapshot({ plan: '{', decisions: line() }, now).steps).toEqual([])
   })
 
