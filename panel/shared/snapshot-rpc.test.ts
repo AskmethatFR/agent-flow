@@ -27,6 +27,7 @@ const snapshot: Snapshot = {
   ],
   currentStepId: 's1',
   currentAgent: { role: 'dev-a', state: 'running' },
+  ci: { origin: 'verified', source: 'gh', headCommit: 'abc123', state: 'passed' },
   errors: [
     { file: 'plan.json', location: 3, field: 'status', message: 'bad' },
     { file: 'plan.json', location: 'steps', field: null, message: 'bad' },
@@ -109,6 +110,28 @@ describe('getSnapshotRpc', () => {
     ['a missing field', undefined],
   ])('rejects %s on the current agent', (_, currentAgent) => {
     const bad = { ...snapshot, currentAgent }
+    expect(getSnapshotRpc.output.safeParse({ kind: 'snapshot', snapshot: bad }).success).toBe(false)
+  })
+
+  it.each([
+    ['a passed fact', { origin: 'verified', source: 'gh', headCommit: 'abc123', state: 'passed' }],
+    ['a failed fact', { origin: 'verified', source: 'gh', headCommit: 'abc123', state: 'failed' }],
+    ['a pending fact', { origin: 'verified', source: 'gh', headCommit: 'abc123', state: 'pending' }],
+    ['no fact', null],
+  ])('keeps %s on the CI field intact', (_, ci) => {
+    const parsed = getSnapshotRpc.output.parse({ kind: 'snapshot', snapshot: { ...snapshot, ci } })
+    expect(parsed).toMatchObject({ snapshot: { ci } })
+  })
+
+  it.each([
+    ['a state outside the set', { origin: 'verified', source: 'gh', headCommit: 'abc123', state: 'green' }],
+    ['a declared origin', { origin: 'declared', source: 'gh', headCommit: 'abc123', state: 'passed' }],
+    ['a missing head commit', { origin: 'verified', source: 'gh', state: 'passed' }],
+    ['a missing source', { origin: 'verified', headCommit: 'abc123', state: 'passed' }],
+    ['a missing state', { origin: 'verified', source: 'gh', headCommit: 'abc123' }],
+    ['a missing field', undefined],
+  ])('rejects %s on the CI field', (_, ci) => {
+    const bad = { ...snapshot, ci }
     expect(getSnapshotRpc.output.safeParse({ kind: 'snapshot', snapshot: bad }).success).toBe(false)
   })
 

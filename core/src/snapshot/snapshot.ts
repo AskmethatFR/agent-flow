@@ -5,6 +5,8 @@ import type { ContractError } from '../contracts/contract-error'
 import { readLocatedDecisions } from '../contracts/decisions'
 import { readPlan } from '../contracts/plan'
 import type { PlanStep, ReadPlanResult } from '../contracts/plan'
+import { readCiStatus } from './ci-status'
+import type { CiState } from './ci-status'
 import { mutationLabelOf, readMutationReport } from './mutation-report'
 import { readTestReport } from './test-report'
 import type { ParsedTestReport } from './test-report'
@@ -35,6 +37,7 @@ export type SnapshotFiles = {
   readonly decisions?: AgentFlowFile
   readonly testReports?: readonly TestReport[]
   readonly mutationReports?: readonly MutationReport[]
+  readonly ciStatus?: string
 }
 
 export type SnapshotDecision = {
@@ -49,6 +52,13 @@ export type SnapshotFact = {
   readonly origin: 'verified' | 'declared'
   readonly source: string
   readonly label: string
+}
+
+export type CiFact = {
+  readonly origin: 'verified'
+  readonly source: string
+  readonly headCommit: string
+  readonly state: CiState
 }
 
 export type SnapshotStep = {
@@ -74,6 +84,7 @@ export type Snapshot = {
   readonly steps: readonly SnapshotStep[]
   readonly currentStepId: string | null
   readonly currentAgent: CurrentAgent | null
+  readonly ci: CiFact | null
   readonly errors: readonly ContractError[]
 }
 
@@ -277,6 +288,21 @@ const readReports = (
   }
 }
 
+const ciStatusFile = 'ci-status'
+
+type ReadCi = {
+  readonly ci: CiFact | null
+  readonly errors: readonly ContractError[]
+}
+
+const readCi = (text: string | undefined): ReadCi => {
+  if (text === undefined) return { ci: null, errors: [] }
+  const result = readCiStatus(text)
+  return result.accepted
+    ? { ci: { origin: 'verified', ...result.status }, errors: [] }
+    : { ci: null, errors: [{ file: ciStatusFile, location: null, field: null, message: result.message }] }
+}
+
 export const buildSnapshot = (
   files: SnapshotFiles,
   now: Date,
@@ -286,6 +312,7 @@ export const buildSnapshot = (
   const agentErrors = unavailable ? [agentStateError(agentStatus)] : []
   const status = unavailable ? undefined : agentStatus
   const result = readPlanFile(files.plan)
+  const { ci, errors: ciErrors } = readCi(files.ciStatus)
   if (!result.accepted) {
     return {
       issue: null,
@@ -293,7 +320,8 @@ export const buildSnapshot = (
       steps: [],
       currentStepId: null,
       currentAgent: null,
-      errors: [...result.errors, ...agentErrors],
+      ci,
+      errors: [...result.errors, ...ciErrors, ...agentErrors],
     }
   }
   const { plan } = result
@@ -308,6 +336,7 @@ export const buildSnapshot = (
     steps: perStep.map(({ step, bucket }) => toSnapshotStep(step, now, bucket, verified)),
     currentStepId: current?.id ?? null,
     currentAgent: currentAgentOf(current, status),
-    errors: [...errors, ...testReports.errors, ...mutationReports.errors, ...agentErrors],
+    ci,
+    errors: [...errors, ...testReports.errors, ...mutationReports.errors, ...ciErrors, ...agentErrors],
   }
 }

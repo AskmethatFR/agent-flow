@@ -28,6 +28,7 @@ const snapshotWithFacts = (facts: readonly Fact[]): unknown => ({
     ],
     currentStepId: null,
     currentAgent: null,
+    ci: null,
     errors: [],
   },
 })

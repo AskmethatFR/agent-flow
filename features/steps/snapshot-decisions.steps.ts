@@ -8,6 +8,7 @@ type DecisionsWorld = {
   decisionsText?: string
   testReports?: readonly TestReport[]
   mutationReports?: readonly MutationReport[]
+  ciStatus?: string
   snapshot: Snapshot
 }
 
@@ -72,6 +73,7 @@ When('the snapshot is built', function (this: DecisionsWorld): void {
       decisions: this.decisionsText,
       testReports: this.testReports,
       mutationReports: this.mutationReports,
+      ciStatus: this.ciStatus,
     },
     new Date('2026-10-22T10:38:00Z'),
   )

@@ -2,6 +2,7 @@ export { MAX_DECISIONS_PER_STEP, buildSnapshot } from './snapshot'
 export type {
   AgentFlowFile,
   AgentStatusUnavailable,
+  CiFact,
   CurrentAgent,
   FileUnavailable,
   MutationReport,
@@ -13,4 +14,5 @@ export type {
   TestReport,
 } from './snapshot'
 export type { AgentDisplayState } from '../agent-state'
+export type { CiState } from './ci-status'
 export type { TimeSpent } from './time-spent'

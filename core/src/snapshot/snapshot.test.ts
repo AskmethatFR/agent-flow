@@ -52,6 +52,7 @@ describe('buildSnapshot', () => {
       ],
       currentStepId: null,
       currentAgent: null,
+      ci: null,
       errors: [],
     })
   })
@@ -62,6 +63,7 @@ describe('buildSnapshot', () => {
     steps: [],
     currentStepId: null,
     currentAgent: null,
+    ci: null,
     errors: [{ file: 'plan.json', location, field, message }],
   })
 
@@ -394,7 +396,7 @@ describe('buildSnapshot', () => {
 
   it('carries no estimate or budget field', () => {
     expectTypeOf<keyof Snapshot>().toEqualTypeOf<
-      'issue' | 'title' | 'steps' | 'currentStepId' | 'currentAgent' | 'errors'
+      'issue' | 'title' | 'steps' | 'currentStepId' | 'currentAgent' | 'ci' | 'errors'
     >()
     expectTypeOf<keyof SnapshotStep>().toEqualTypeOf<
       'id' | 'title' | 'role' | 'status' | 'origin' | 'timeSpent' | 'decisions' | 'omittedDecisions' | 'facts'
@@ -1208,5 +1210,179 @@ describe('buildSnapshot with mutation reports', () => {
     const snapshot = buildSnapshot({ plan: '{', mutationReports: [mutationReport('s1', { Killed: 1 }), { step: 's1', text: '{' }] }, now)
     expect(snapshot.steps).toEqual([])
     expect(snapshot.errors).toEqual([{ file: 'plan.json', location: null, field: null, message: 'is not valid JSON' }])
+  })
+})
+
+describe('buildSnapshot with a CI status', () => {
+  const MAX_TEXT = 1_048_576
+  const rollupMessage = 'is not a gh check status rollup'
+
+  const checkRun = (overlay: Record<string, unknown> = {}): Record<string, unknown> => ({
+    __typename: 'CheckRun',
+    name: 'test',
+    status: 'COMPLETED',
+    conclusion: 'SUCCESS',
+    detailsUrl: 'https://example.invalid/run/1',
+    workflowName: 'ci',
+    startedAt: '2026-11-11T09:00:00Z',
+    completedAt: '2026-11-11T09:05:00Z',
+    ...overlay,
+  })
+
+  const rollupText = (checks: unknown, headRefOid: unknown = 'abc123'): string =>
+    JSON.stringify({ headRefOid, statusCheckRollup: checks })
+
+  const ciOf = (text: string) => buildSnapshot({ plan: planOf('s1'), ciStatus: text }, now).ci
+
+  const stateOf = (...checks: Record<string, unknown>[]) => ciOf(rollupText(checks))?.state
+
+  const refusal = (message: string) => [{ file: 'ci-status', location: null, field: null, message }]
+
+  it('gives no CI fact and no error when no CI status is given', () => {
+    const snapshot = buildSnapshot({ plan: planOf('s1') }, now)
+    expect(snapshot.ci).toBeNull()
+    expect(snapshot.errors).toEqual([])
+  })
+
+  it('yields a verified gh fact for the head commit when every check passed', () => {
+    expect(ciOf(rollupText([checkRun(), checkRun({ name: 'bdd' })]))).toEqual({
+      origin: 'verified',
+      source: 'gh',
+      headCommit: 'abc123',
+      state: 'passed',
+    })
+  })
+
+  it.each(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'STALE'])(
+    'is failed when a check concluded with %s',
+    (conclusion) => {
+      expect(stateOf(checkRun(), checkRun({ conclusion }))).toBe('failed')
+    },
+  )
+
+  it.each(['SUCCESS', 'NEUTRAL', 'SKIPPED'])('is passed when the only check concluded with %s', (conclusion) => {
+    expect(stateOf(checkRun({ conclusion }))).toBe('passed')
+  })
+
+  it.each(['REQUESTED', 'QUEUED', 'IN_PROGRESS', 'WAITING', 'PENDING'])(
+    'is pending when a check is %s, whatever its conclusion says',
+    (status) => {
+      expect(stateOf(checkRun(), checkRun({ status, conclusion: '' }))).toBe('pending')
+      expect(stateOf(checkRun({ status, conclusion: 'FAILURE' }))).toBe('pending')
+    },
+  )
+
+  it('is failed rather than pending when a check failed and another is running', () => {
+    const running = checkRun({ status: 'IN_PROGRESS', conclusion: '' })
+    const failed = checkRun({ conclusion: 'FAILURE' })
+    expect(stateOf(running, failed)).toBe('failed')
+    expect(stateOf(failed, running)).toBe('failed')
+  })
+
+  it('reads a check run that carries no type name', () => {
+    expect(stateOf(checkRun({ __typename: undefined }))).toBe('passed')
+  })
+
+  it('leaves the steps identical with and without a CI status and names no step on the fact', () => {
+    const decisions = decisionLine('s1', 'a')
+    const without = buildSnapshot({ plan: planOf('s1', 's2'), decisions }, now)
+    const withCi = buildSnapshot({ plan: planOf('s1', 's2'), decisions, ciStatus: rollupText([checkRun()]) }, now)
+    expect(withCi.steps).toEqual(without.steps)
+    expect(withCi.steps[0]?.facts).toEqual([{ origin: 'declared', source: 'decisions.jsonl', label: 'a' }])
+    expect(Object.keys(withCi.ci ?? {}).sort()).toEqual(['headCommit', 'origin', 'source', 'state'])
+  })
+
+  it('keys the fact by the head commit it covers', () => {
+    const checks = [checkRun()]
+    expect(ciOf(rollupText(checks, 'abc123'))?.headCommit).toBe('abc123')
+    expect(ciOf(rollupText(checks, 'def456'))?.headCommit).toBe('def456')
+  })
+
+  it.each([
+    ['text that is not JSON', '{not json', 'is not valid JSON'],
+    ['a document that is null', 'null', rollupMessage],
+    ['a document that is an array', '[]', rollupMessage],
+    ['no head commit', JSON.stringify({ statusCheckRollup: [checkRun()] }), rollupMessage],
+    ['a head commit that is not a string', rollupText([checkRun()], 42), rollupMessage],
+    ['no rollup', JSON.stringify({ headRefOid: 'abc123' }), rollupMessage],
+    ['a rollup that is not an array', rollupText({ status: 'COMPLETED' }), rollupMessage],
+    ['an empty rollup', rollupText([]), 'has no check run'],
+    ['an entry that is not a record', rollupText([checkRun(), 'COMPLETED']), rollupMessage],
+    ['an entry that is null', rollupText([checkRun(), null]), rollupMessage],
+    ['an entry that is an array', rollupText([checkRun(), []]), rollupMessage],
+    ['a legacy status context', rollupText([checkRun(), { __typename: 'StatusContext', state: 'SUCCESS' }]), rollupMessage],
+    ['a type name that is not a string', rollupText([checkRun({ __typename: 7 })]), rollupMessage],
+    ['a check without a status', rollupText([checkRun({ status: undefined })]), rollupMessage],
+    ['a check with an unknown status', rollupText([checkRun({ status: 'DONE' })]), rollupMessage],
+    ['a check with a lower-case status', rollupText([checkRun({ status: 'completed' })]), rollupMessage],
+    ['a completed check without a conclusion', rollupText([checkRun({ conclusion: undefined })]), rollupMessage],
+    ['a completed check with an empty conclusion', rollupText([checkRun({ conclusion: '' })]), rollupMessage],
+    ['a completed check with an unknown conclusion', rollupText([checkRun({ conclusion: 'BROKEN' })]), rollupMessage],
+    ['an unusable entry after a failed check', rollupText([checkRun({ conclusion: 'FAILURE' }), { status: 'DONE' }]), rollupMessage],
+  ])('adds one fixed error and no fact for %s, and keeps the other facts', (_, text, message) => {
+    const decisions = decisionLine('s1', 'a')
+    const snapshot = buildSnapshot({ plan: planOf('s1'), decisions, ciStatus: text }, now)
+    expect(snapshot.ci).toBeNull()
+    expect(snapshot.errors).toEqual(refusal(message))
+    expect(snapshot.steps[0]?.facts).toEqual([{ origin: 'declared', source: 'decisions.jsonl', label: 'a' }])
+  })
+
+  it('accepts a text of exactly the size bound and refuses one unit more', () => {
+    const body = rollupText([checkRun()])
+    const padded = (length: number): string => `${body}${' '.repeat(length - body.length)}`
+    expect(ciOf(padded(MAX_TEXT))?.state).toBe('passed')
+    const refused = buildSnapshot({ plan: planOf('s1'), ciStatus: padded(MAX_TEXT + 1) }, now)
+    expect(refused.ci).toBeNull()
+    expect(refused.errors).toEqual(refusal(`exceeds ${MAX_TEXT} characters`))
+  })
+
+  it('refuses an oversized text before parsing it', () => {
+    const { errors } = buildSnapshot({ plan: planOf('s1'), ciStatus: 'x'.repeat(MAX_TEXT + 1) }, now)
+    expect(errors).toEqual(refusal(`exceeds ${MAX_TEXT} characters`))
+  })
+
+  it('carries nothing of the status source text but the head commit into the snapshot', () => {
+    const marker = 'LEAK-MARKER'
+    const text = JSON.stringify({
+      headRefOid: 'abc123',
+      noise: marker,
+      statusCheckRollup: [checkRun({ name: marker, detailsUrl: marker, workflowName: marker, note: marker })],
+    })
+    const snapshot = buildSnapshot({ plan: planOf('s1'), ciStatus: text }, now)
+    expect(snapshot.ci?.state).toBe('passed')
+    expect(JSON.stringify(snapshot)).not.toContain(marker)
+    const refused = buildSnapshot({ plan: planOf('s1'), ciStatus: `${marker}{` }, now)
+    expect(JSON.stringify(refused)).not.toContain(marker)
+  })
+
+  it('keeps the CI fact when the plan is unusable and puts its error after the plan errors', () => {
+    const snapshot = buildSnapshot({ plan: '{', ciStatus: rollupText([checkRun()]) }, now)
+    expect(snapshot.steps).toEqual([])
+    expect(snapshot.ci).toEqual({ origin: 'verified', source: 'gh', headCommit: 'abc123', state: 'passed' })
+    expect(snapshot.errors.map(({ file }) => file)).toEqual(['plan.json'])
+    const refused = buildSnapshot({ plan: '{', ciStatus: '{' }, now, { unavailable: 'host-error' })
+    expect(refused.ci).toBeNull()
+    expect(refused.errors.map(({ file }) => file)).toEqual(['plan.json', 'ci-status', 'agent-state'])
+  })
+
+  it('lists the decisions, test report, mutation report, CI status, then agent errors', () => {
+    const snapshot = buildSnapshot(
+      {
+        plan: planOf('s1'),
+        decisions: '{',
+        testReports: [{ step: 's9', text: '{' }],
+        mutationReports: [{ step: 's9', text: '{' }],
+        ciStatus: '{',
+      },
+      now,
+      { unavailable: 'host-error' },
+    )
+    expect(snapshot.errors.map(({ file }) => file)).toEqual([
+      'decisions.jsonl',
+      'test-report',
+      'mutation-report',
+      'ci-status',
+      'agent-state',
+    ])
   })
 })

@@ -22,6 +22,13 @@ const SnapshotFactSchema = z.object({
   label: z.string(),
 }).readonly()
 
+const CiFactSchema = z.object({
+  origin: z.literal('verified'),
+  source: z.string(),
+  headCommit: z.string(),
+  state: z.enum(['passed', 'failed', 'pending']),
+}).readonly()
+
 const SnapshotStepSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -43,6 +50,7 @@ export const SnapshotSchema = z.object({
     .object({ role: z.string(), state: z.enum(['running', 'stopped', 'unknown']) })
     .readonly()
     .nullable(),
+  ci: CiFactSchema.nullable(),
   errors: z.array(ContractErrorSchema).readonly(),
 }).readonly()
 
