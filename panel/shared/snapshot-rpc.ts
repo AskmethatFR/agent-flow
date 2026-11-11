@@ -16,6 +16,12 @@ const SnapshotDecisionSchema = z.object({
   confidence: z.enum(['high', 'medium', 'low']),
 }).readonly()
 
+const SnapshotFactSchema = z.object({
+  origin: z.enum(['verified', 'declared']),
+  source: z.string(),
+  label: z.string(),
+}).readonly()
+
 const SnapshotStepSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -25,6 +31,7 @@ const SnapshotStepSchema = z.object({
   timeSpent: z.object({ milliseconds: z.number(), label: z.string() }).readonly().nullable(),
   decisions: z.array(SnapshotDecisionSchema).readonly(),
   omittedDecisions: z.number().int().nonnegative(),
+  facts: z.array(SnapshotFactSchema).readonly(),
 }).readonly()
 
 export const SnapshotSchema = z.object({

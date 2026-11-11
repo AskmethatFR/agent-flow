@@ -26,8 +26,8 @@ describe('buildSnapshot', () => {
       issue: '#38',
       title: 'Core snapshot',
       steps: [
-        { id: 's1', title: 'Design', role: 'architect', status: 'todo', origin: 'planned', timeSpent: null, decisions: [], omittedDecisions: 0 },
-        { id: 's2', title: 'Build', role: 'dev-a', status: 'todo', origin: 'proposed', timeSpent: null, decisions: [], omittedDecisions: 0 },
+        { id: 's1', title: 'Design', role: 'architect', status: 'todo', origin: 'planned', timeSpent: null, decisions: [], omittedDecisions: 0, facts: [] },
+        { id: 's2', title: 'Build', role: 'dev-a', status: 'todo', origin: 'proposed', timeSpent: null, decisions: [], omittedDecisions: 0, facts: [] },
       ],
       currentStepId: null,
       currentAgent: null,
@@ -376,7 +376,7 @@ describe('buildSnapshot', () => {
       'issue' | 'title' | 'steps' | 'currentStepId' | 'currentAgent' | 'errors'
     >()
     expectTypeOf<keyof SnapshotStep>().toEqualTypeOf<
-      'id' | 'title' | 'role' | 'status' | 'origin' | 'timeSpent' | 'decisions' | 'omittedDecisions'
+      'id' | 'title' | 'role' | 'status' | 'origin' | 'timeSpent' | 'decisions' | 'omittedDecisions' | 'facts'
     >()
   })
 
@@ -514,6 +514,51 @@ describe('buildSnapshot', () => {
 
   it.each(['decision', 'step_event', 'question', 'deviation'])('counts a %s line as a decision', (kind) => {
     expect(decisionsOf(line({ kind })).steps[0]?.decisions).toHaveLength(1)
+  })
+
+  it('declares a fact for every kept decision with the decisions file as its source', () => {
+    const snapshot = decisionsOf(line(), step(), step({ id: 's2' }))
+    expect(snapshot.steps[0]?.facts).toEqual([
+      { origin: 'declared', source: 'decisions.jsonl', label: 'Use a Map' },
+    ])
+    expect(snapshot.steps[1]?.facts).toEqual([])
+  })
+
+  it('keeps the declared facts mirroring the capped decisions of a step', () => {
+    const snapshot = decisionsOf(manyLines(MAX_DECISIONS_PER_STEP + 1).join('\n'))
+    expect(snapshot.steps[0]?.decisions).toHaveLength(MAX_DECISIONS_PER_STEP)
+    expect(snapshot.steps[0]?.facts).toEqual(
+      manyLines(MAX_DECISIONS_PER_STEP).map((_, index) => ({ origin: 'declared', source: 'decisions.jsonl', label: `d${index}` })),
+    )
+  })
+
+  it('declares a fact for every line around a malformed one', () => {
+    const snapshot = decisionsOf([line({ title: 'a' }), '{oops', line({ title: 'b' })].join('\n'))
+    expect(snapshot.steps[0]?.facts).toEqual([
+      { origin: 'declared', source: 'decisions.jsonl', label: 'a' },
+      { origin: 'declared', source: 'decisions.jsonl', label: 'b' },
+    ])
+    expect(snapshot.errors).toEqual([
+      { file: 'decisions.jsonl', location: 2, field: null, message: 'is not valid JSON' },
+    ])
+  })
+
+  it.each(['decision', 'step_event', 'question', 'deviation'])('counts a %s line as a declared fact', (kind) => {
+    expect(decisionsOf(line({ kind })).steps[0]?.facts).toEqual([
+      { origin: 'declared', source: 'decisions.jsonl', label: 'Use a Map' },
+    ])
+  })
+
+  it.each([
+    ['absent', undefined],
+    ['missing', { unavailable: 'missing' }],
+    ['unreadable', { unavailable: 'unreadable' }],
+  ] as const)('declares no fact when the decisions file is %s', (_, decisions) => {
+    expect(buildSnapshot({ plan: planText(step()), decisions }, now).steps[0]?.facts).toEqual([])
+  })
+
+  it('builds no step when the plan is unusable', () => {
+    expect(buildSnapshot({ plan: '{', decisions: line() }, now).steps).toEqual([])
   })
 
   it('excludes an orphan decision from every step and reports its line', () => {

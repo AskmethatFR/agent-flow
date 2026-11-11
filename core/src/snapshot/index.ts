@@ -6,6 +6,7 @@ export type {
   FileUnavailable,
   Snapshot,
   SnapshotDecision,
+  SnapshotFact,
   SnapshotFiles,
   SnapshotStep,
 } from './snapshot'

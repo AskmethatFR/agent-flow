@@ -31,6 +31,12 @@ export type SnapshotDecision = {
   readonly confidence: 'high' | 'medium' | 'low'
 }
 
+export type SnapshotFact = {
+  readonly origin: 'verified' | 'declared'
+  readonly source: string
+  readonly label: string
+}
+
 export type SnapshotStep = {
   readonly id: string
   readonly title: string
@@ -40,6 +46,7 @@ export type SnapshotStep = {
   readonly timeSpent: TimeSpent | null
   readonly decisions: readonly SnapshotDecision[]
   readonly omittedDecisions: number
+  readonly facts: readonly SnapshotFact[]
 }
 
 export type CurrentAgent = {
@@ -56,6 +63,12 @@ export type Snapshot = {
   readonly errors: readonly ContractError[]
 }
 
+const declaredFactOf = (decision: SnapshotDecision): SnapshotFact => ({
+  origin: 'declared',
+  source: decisionsFile,
+  label: decision.title,
+})
+
 const toSnapshotStep = (
   step: PlanStep,
   now: Date,
@@ -69,6 +82,7 @@ const toSnapshotStep = (
   timeSpent: timeSpentOf(step, now),
   decisions,
   omittedDecisions: omitted,
+  facts: decisions.map(declaredFactOf),
 })
 
 const startOf = (step: PlanStep): number => instantOf(step.startedAt) ?? Number.NEGATIVE_INFINITY
