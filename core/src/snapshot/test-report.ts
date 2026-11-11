@@ -1,14 +1,10 @@
 import { MAX_TEXT_LENGTH } from '../contracts/contract-error'
 
-export type TestReport = {
-  readonly step: string
-  readonly text: string
-}
-
 export type ParsedTestReport = {
   readonly source: 'vitest' | 'cucumber-js'
   readonly passed: number
   readonly total: number
+  readonly failedSuites: number
 }
 
 export type ReadTestReportResult =
@@ -23,8 +19,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isCount = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0
 
 const vitestReportOf = (document: Record<string, unknown>): ParsedTestReport | null => {
-  const { numTotalTests: total, numPassedTests: passed } = document
-  return isCount(total) && isCount(passed) && passed <= total ? { source: 'vitest', passed, total } : null
+  const { numTotalTests: total, numPassedTests: passed, numFailedTestSuites: failedSuites } = document
+  return isCount(total) && isCount(passed) && isCount(failedSuites) && passed <= total
+    ? { source: 'vitest', passed, total, failedSuites }
+    : null
 }
 
 const stepStatusOf = (step: unknown): string | null =>
@@ -43,7 +41,7 @@ const cucumberReportOf = (features: readonly unknown[]): ParsedTestReport | null
   const outcomes = features.flatMap(scenarioOutcomesOf)
   return outcomes.includes(null)
     ? null
-    : { source: 'cucumber-js', passed: outcomes.filter(Boolean).length, total: outcomes.length }
+    : { source: 'cucumber-js', passed: outcomes.filter(Boolean).length, total: outcomes.length, failedSuites: 0 }
 }
 
 const reportOf = (document: unknown): ParsedTestReport | null => {

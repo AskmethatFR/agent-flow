@@ -6,7 +6,7 @@ import { readLocatedDecisions } from '../contracts/decisions'
 import { readPlan } from '../contracts/plan'
 import type { PlanStep, ReadPlanResult } from '../contracts/plan'
 import { readTestReport } from './test-report'
-import type { ParsedTestReport, TestReport } from './test-report'
+import type { ParsedTestReport } from './test-report'
 import { instantOf, timeSpentOf } from './time-spent'
 import type { TimeSpent } from './time-spent'
 
@@ -19,6 +19,11 @@ export type FileUnavailable = {
 export type AgentFlowFile = string | FileUnavailable
 
 export type AgentStatusUnavailable = { readonly unavailable: 'host-error' }
+
+export type TestReport = {
+  readonly step: string
+  readonly text: string
+}
 
 export type SnapshotFiles = {
   readonly plan: AgentFlowFile
@@ -72,10 +77,15 @@ const declaredFactOf = (decision: SnapshotDecision): SnapshotFact => ({
   label: decision.title,
 })
 
-const verifiedFactOf = ({ source, passed, total }: ParsedTestReport): SnapshotFact => ({
+const failedSuitesSuffixOf = (failedSuites: number): string => {
+  if (failedSuites === 0) return ''
+  return `, ${failedSuites} ${failedSuites === 1 ? 'suite' : 'suites'} failed`
+}
+
+const verifiedFactOf = ({ source, passed, total, failedSuites }: ParsedTestReport): SnapshotFact => ({
   origin: 'verified',
   source,
-  label: `${passed} of ${total} passed`,
+  label: `${passed} of ${total} passed${failedSuitesSuffixOf(failedSuites)}`,
 })
 
 const toSnapshotStep = (

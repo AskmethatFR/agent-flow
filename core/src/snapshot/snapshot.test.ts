@@ -650,7 +650,7 @@ describe('buildSnapshot', () => {
 describe('buildSnapshot with test reports', () => {
   const vitestReport = (stepId: string, total: number, passed: number) => ({
     step: stepId,
-    text: JSON.stringify({ numTotalTests: total, numPassedTests: passed }),
+    text: JSON.stringify({ numTotalTests: total, numPassedTests: passed, numFailedTestSuites: 0 }),
   })
 
   const cucumberReport = (stepId: string, ...statuses: string[]) => ({
@@ -787,6 +787,7 @@ describe('buildSnapshot with test reports', () => {
     const vitest = JSON.stringify({
       numTotalTests: 2,
       numPassedTests: 1,
+      numFailedTestSuites: 0,
       testResults: [{ assertionResults: [{ status: 'failed', failureMessages: [failure] }] }],
     })
     const cucumber = JSON.stringify([
@@ -799,5 +800,181 @@ describe('buildSnapshot with test reports', () => {
     expect(snapshot.steps[0]?.facts).toHaveLength(2)
     expect(JSON.stringify(snapshot)).not.toContain('AssertionError')
     expect(JSON.stringify(snapshot)).not.toContain('secret.ts')
+  })
+})
+
+describe('buildSnapshot reading the text of a test report', () => {
+  const MAX_TEXT = 1_048_576
+
+  const reading = (text: string): Snapshot =>
+    buildSnapshot({ plan: planText(step()), testReports: [{ step: 's1', text }] }, now)
+
+  const factsOf = (text: string) => reading(text).steps[0]?.facts
+
+  const refusal = (message: string) => [{ file: 'test-report', location: 1, field: null, message }]
+
+  const unknownShape = refusal('is not a vitest or cucumber-js JSON report')
+
+  const vitestText = (overlay: Record<string, unknown>): string =>
+    JSON.stringify({ numTotalTests: 5, numPassedTests: 5, numFailedTestSuites: 0, ...overlay })
+
+  const padded = (body: string, length: number): string => `${body}${' '.repeat(length - body.length)}`
+
+  const verified = (source: string, label: string) => [{ origin: 'verified', source, label }]
+
+  describe('a vitest report', () => {
+    it.each([
+      [5, 5],
+      [5, 3],
+      [5, 0],
+      [0, 0],
+      [1, 1],
+      [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER],
+    ])('is accepted with %i tests of which %i passed, as reported', (total, passed) => {
+      const snapshot = reading(vitestText({ numTotalTests: total, numPassedTests: passed }))
+      expect(snapshot.steps[0]?.facts).toEqual(verified('vitest', `${passed} of ${total} passed`))
+      expect(snapshot.errors).toEqual([])
+    })
+
+    it.each([
+      [5, 5, 0, '5 of 5 passed'],
+      [5, 5, 1, '5 of 5 passed, 1 suite failed'],
+      [5, 3, 2, '3 of 5 passed, 2 suites failed'],
+      [0, 0, 1, '0 of 0 passed, 1 suite failed'],
+      [5, 5, 12, '5 of 5 passed, 12 suites failed'],
+    ])('labels %i tests of which %i passed with %i failed suites as "%s"', (total, passed, failedSuites, label) => {
+      const text = vitestText({ numTotalTests: total, numPassedTests: passed, numFailedTestSuites: failedSuites })
+      expect(factsOf(text)).toEqual(verified('vitest', label))
+    })
+
+    it.each([
+      ['one more passed than total', { numTotalTests: 5, numPassedTests: 6 }],
+      ['a negative total', { numTotalTests: -1, numPassedTests: 0 }],
+      ['a negative passed count', { numPassedTests: -1 }],
+      ['a fractional total', { numTotalTests: 2.5, numPassedTests: 2 }],
+      ['a fractional passed count', { numPassedTests: 2.5 }],
+      ['an unsafe integer total', { numTotalTests: 2 ** 53, numPassedTests: 0 }],
+      ['a string total', { numTotalTests: '5' }],
+      ['a string passed count', { numPassedTests: '5' }],
+      ['a missing total', { numTotalTests: undefined }],
+      ['a missing passed count', { numPassedTests: undefined }],
+      ['a missing failed suites count', { numFailedTestSuites: undefined }],
+      ['a negative failed suites count', { numFailedTestSuites: -1 }],
+      ['a fractional failed suites count', { numFailedTestSuites: 1.5 }],
+      ['a string failed suites count', { numFailedTestSuites: '1' }],
+      ['a null failed suites count', { numFailedTestSuites: null }],
+    ])('is refused as an unknown shape with %s', (_, overlay) => {
+      const snapshot = reading(vitestText(overlay))
+      expect(snapshot.steps[0]?.facts).toEqual([])
+      expect(snapshot.errors).toEqual(unknownShape)
+    })
+
+    it('is refused as an unknown shape when it is an empty object', () => {
+      expect(reading('{}').errors).toEqual(unknownShape)
+    })
+  })
+
+  describe('a text that is not a usable report', () => {
+    it.each([
+      ['an empty text', ''],
+      ['a truncated document', '{"numTotalTests": 5'],
+      ['plain prose', 'not json'],
+    ])('is refused as invalid JSON for %s', (_, text) => {
+      expect(reading(text).errors).toEqual(refusal('is not valid JSON'))
+      expect(factsOf(text)).toEqual([])
+    })
+
+    it.each([
+      ['null', 'null'],
+      ['a number', '5'],
+      ['a string', '"vitest"'],
+      ['a boolean', 'true'],
+      ['an array holding null', '[null]'],
+      ['an array holding an array', '[[]]'],
+      ['deeply nested arrays', `${'['.repeat(500)}${']'.repeat(500)}`],
+      ['an array of features without elements', '[{}]'],
+    ])('is refused as an unknown shape without throwing for %s', (_, text) => {
+      expect(reading(text).errors).toEqual(unknownShape)
+      expect(factsOf(text)).toEqual([])
+    })
+
+    it('is refused when one character over the bound, before it is parsed', () => {
+      const text = padded(vitestText({}), MAX_TEXT + 1)
+      expect(text).toHaveLength(MAX_TEXT + 1)
+      expect(reading(text).errors).toEqual(refusal(`exceeds ${MAX_TEXT} characters`))
+      expect(factsOf(text)).toEqual([])
+    })
+
+    it('is accepted at exactly the bound', () => {
+      const text = padded(vitestText({}), MAX_TEXT)
+      expect(text).toHaveLength(MAX_TEXT)
+      expect(factsOf(text)).toEqual(verified('vitest', '5 of 5 passed'))
+    })
+  })
+
+  describe('a cucumber-js JSON report', () => {
+    const scenario = (...statuses: unknown[]): Record<string, unknown> => ({
+      type: 'scenario',
+      steps: statuses.map((status) => ({ result: { status } })),
+    })
+
+    const feature = (...elements: unknown[]): Record<string, unknown> => ({ keyword: 'Feature', elements })
+
+    const cucumberText = (...features: unknown[]): string => JSON.stringify(features)
+
+    const labeled = (label: string) => verified('cucumber-js', label)
+
+    it('counts a scenario as passed when every one of its steps passed', () => {
+      expect(factsOf(cucumberText(feature(scenario('passed', 'passed'), scenario('passed'))))).toEqual(
+        labeled('2 of 2 passed'),
+      )
+    })
+
+    it.each(['failed', 'skipped', 'pending', 'undefined', 'ambiguous', 'unknown'])(
+      'does not count a scenario with one %s step as passed',
+      (status) => {
+        const text = cucumberText(feature(scenario('passed', status, 'passed'), scenario('passed')))
+        expect(factsOf(text)).toEqual(labeled('1 of 2 passed'))
+      },
+    )
+
+    it('does not count a scenario whose last step is a failed hidden hook', () => {
+      const hook = { hidden: true, keyword: 'After', result: { status: 'failed' } }
+      const text = cucumberText(feature({ type: 'scenario', steps: [{ result: { status: 'passed' } }, hook] }))
+      expect(factsOf(text)).toEqual(labeled('0 of 1 passed'))
+    })
+
+    it('counts a scenario with no step as passed', () => {
+      expect(factsOf(cucumberText(feature(scenario())))).toEqual(labeled('1 of 1 passed'))
+    })
+
+    it('sums the scenarios of every feature and never adds a failed suites suffix', () => {
+      const text = cucumberText(feature(scenario('passed'), scenario('failed')), feature(scenario('passed')), feature())
+      expect(factsOf(text)).toEqual(labeled('2 of 3 passed'))
+    })
+
+    it.each([
+      ['no feature', '[]'],
+      ['a feature with no scenario', cucumberText(feature())],
+    ])('reports 0 of 0 for %s', (_, text) => {
+      expect(factsOf(text)).toEqual(labeled('0 of 0 passed'))
+    })
+
+    it.each([
+      ['a null feature', cucumberText(null)],
+      ['a feature whose elements is not an array', cucumberText({ elements: {} })],
+      ['a null scenario', cucumberText(feature(null))],
+      ['a scenario whose steps is not an array', cucumberText(feature({ steps: 'passed' }))],
+      ['a null step', cucumberText(feature({ steps: [null] }))],
+      ['a step with no result', cucumberText(feature({ steps: [{}] }))],
+      ['a step whose result is null', cucumberText(feature({ steps: [{ result: null }] }))],
+      ['a step with no status', cucumberText(feature({ steps: [{ result: {} }] }))],
+      ['a step whose status is not a string', cucumberText(feature(scenario(1)))],
+      ['one bad scenario after good ones', cucumberText(feature(scenario('passed'), null))],
+      ['one bad feature after good ones', cucumberText(feature(scenario('passed')), null)],
+    ])('is refused whole for %s', (_, text) => {
+      expect(reading(text).errors).toEqual(unknownShape)
+      expect(factsOf(text)).toEqual([])
+    })
   })
 })

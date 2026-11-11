@@ -9,7 +9,7 @@ export type {
   SnapshotFact,
   SnapshotFiles,
   SnapshotStep,
+  TestReport,
 } from './snapshot'
-export type { TestReport } from './test-report'
 export type { AgentDisplayState } from '../agent-state'
 export type { TimeSpent } from './time-spent'

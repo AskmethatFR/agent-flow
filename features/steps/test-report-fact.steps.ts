@@ -42,6 +42,7 @@ const vitestReportOf = (total: number, passed: number): string =>
     numTotalTests: total,
     numPassedTests: passed,
     numFailedTests: total - passed,
+    numFailedTestSuites: 0,
     success: passed === total,
     testResults: [],
   })
@@ -97,6 +98,15 @@ Given(
 )
 
 Given(
+  'a vitest report, the first and only test report, for step {string} with {int} tests of which {int} passed',
+  function (this: ReportWorld, step: string, total: number, passed: number): void {
+    assert.equal(this.testReports, undefined)
+    this.expectedCounts = { passed, total }
+    withReport(this, step, vitestReportOf(total, passed))
+  },
+)
+
+Given(
   'a cucumber-js JSON report for step {string} with {int} scenarios of which {int} passed',
   function (this: ReportWorld, step: string, total: number, passed: number): void {
     this.expectedCounts = { passed, total }
@@ -134,15 +144,14 @@ Then(
   },
 )
 
-Then('the snapshot carries the error {string}', function (this: ReportWorld, expected: string): void {
-  assert.equal(this.snapshot.errors.length, 1)
-  const [error] = this.snapshot.errors
-  assert.equal(error?.file, 'test-report')
-  assert.equal(error?.field, 'step')
-  assert.equal(typeof error?.location, 'number')
-  const report = this.testReports?.[(error?.location as number) - 1]
-  assert.equal(`${report?.step} ${error?.message}`, expected)
-})
+Then(
+  'the snapshot reports test report {int} as not a step of plan.json',
+  function (this: ReportWorld, position: number): void {
+    assert.deepEqual(this.snapshot.errors, [
+      { file: 'test-report', location: position, field: 'step', message: 'is not a step of plan.json' },
+    ])
+  },
+)
 
 Then('no step carries a verified fact', function (this: ReportWorld): void {
   assert.deepEqual(this.snapshot.steps.flatMap(verifiedFactsOf), [])

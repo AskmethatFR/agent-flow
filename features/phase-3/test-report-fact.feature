@@ -1,6 +1,5 @@
 # context: Phase 3 core snapshot, a verified fact parsed from a test report (vitest JSON, cucumber-js JSON) and attached to its step
 # origin: #110
-# note: AC5 (the parser takes report text and touches no file system) has no scenario here; the existing core import-boundary test proves it.
 @feature:test-report-fact
 Feature: Core snapshot: a test report becomes a verified fact on its step
   Core reads a test report given as text and attaches one verified fact to the step it names, so the panel and the daemon read facts and compute nothing. A report that cannot be used never throws and never removes another fact.
@@ -31,9 +30,9 @@ Feature: Core snapshot: a test report becomes a verified fact on its step
   @scenario:S4
   Scenario: A report whose step is not in the plan adds an error and no fact
     Given the plan has a step "s1"
-    And a vitest report for step "s9" with 5 tests of which 5 passed
+    And a vitest report, the first and only test report, for step "s9" with 5 tests of which 5 passed
     When the snapshot is built
-    Then the snapshot carries the error "s9 is not a step of plan.json"
+    Then the snapshot reports test report 1 as not a step of plan.json
     And no step carries a verified fact
 
   @scenario:S5
