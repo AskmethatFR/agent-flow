@@ -1509,10 +1509,17 @@ describe('buildSnapshot with a bound on reports per build', () => {
   ]
 
   const hostileFirstReports = (validText: string) => [
-    ['valid for a step of the plan', { step: 's1', text: validText }],
-    ['for a step that is not in the plan', { step: 's9', text: validText }],
-    ['malformed', { step: 's1', text: '{' }],
+    ['valid for a step of the plan', { step: 's1', text: validText }, 0],
+    ['for a step that is not in the plan', { step: 's9', text: validText }, 1],
+    ['malformed', { step: 's1', text: '{' }, 1],
   ] as const
+
+  const unreadableFirstReport = {
+    step: 's1',
+    get text(): string {
+      throw new Error('read')
+    },
+  }
 
   it('bounds the reports of a build at 200 of each kind', () => {
     expect(MAX_REPORTS_PER_BUILD).toBe(200)
@@ -1524,12 +1531,21 @@ describe('buildSnapshot with a bound on reports per build', () => {
 
     it.each(hostileFirstReports(validText))(
       'reads all 200 reports, the first being %s, and adds no bound error',
-      (_, first) => {
+      (_, first, errorCount) => {
         const snapshot = buildWith(reportsOf(MAX_REPORTS_PER_BUILD, first, validText))
         expect(snapshot.errors).not.toContainEqual(boundError(file))
-        expect(snapshot.errors.length).toBe(first.text === '{' || first.step === 's9' ? 1 : 0)
+        expect(snapshot.errors).toHaveLength(errorCount)
       },
     )
+
+    it('reads the first of 200 reports', () => {
+      expect(() => buildWith(reportsOf(MAX_REPORTS_PER_BUILD, unreadableFirstReport, validText))).toThrow('read')
+    })
+
+    it('never reads the first of 201 reports', () => {
+      const snapshot = buildWith(reportsOf(MAX_REPORTS_PER_BUILD + 1, unreadableFirstReport, validText))
+      expect(snapshot.errors).toEqual([boundError(file)])
+    })
 
     it.each(hostileFirstReports(validText))(
       'does not read the first of 201 reports, being %s, and adds exactly one bound error',

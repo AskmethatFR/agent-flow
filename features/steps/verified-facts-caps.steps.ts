@@ -23,17 +23,12 @@ const numberedFactLabel = (number: number): string => `${number} of ${number} pa
 const numberedVitestReportOf = (number: number): string =>
   JSON.stringify({ numTotalTests: number, numPassedTests: number, numFailedTestSuites: 0 })
 
-const numberedStrykerReportOf = (number: number): string =>
-  JSON.stringify({
-    schemaVersion: '1.0',
-    files: {
-      'src/sample.ts': {
-        language: 'typescript',
-        source: 'export const sample = 1',
-        mutants: Array.from({ length: number }, () => ({ status: 'Killed' })),
-      },
-    },
-  })
+const STRYKER_REPORT = JSON.stringify({
+  schemaVersion: '1.0',
+  files: {
+    'src/sample.ts': { language: 'typescript', source: 'export const sample = 1', mutants: [{ status: 'Killed' }] },
+  },
+})
 
 const withReports = (world: CapsWorld, kind: ReportKind, reports: readonly TestReport[]): void => {
   if (kind === 'test') world.testReports = [...(world.testReports ?? []), ...reports]
@@ -69,10 +64,11 @@ Given(
 Given(
   'the first of {int} {word} reports for step {string} is malformed and the others are numbered',
   function (this: CapsWorld, total: number, kind: string, step: string): void {
-    const numberedOf = fileOf(kind) === 'test-report' ? numberedVitestReportOf : numberedStrykerReportOf
+    const validTextOf = (number: number): string =>
+      fileOf(kind) === 'test-report' ? numberedVitestReportOf(number) : STRYKER_REPORT
     const reports = Array.from({ length: total }, (_, index) => ({
       step,
-      text: index === 0 ? MALFORMED_REPORT : numberedOf(index + 1),
+      text: index === 0 ? MALFORMED_REPORT : validTextOf(index + 1),
     }))
     withReports(this, kind as ReportKind, reports)
   },
@@ -98,9 +94,10 @@ Then('step {string} counts {int} omitted facts', function (this: CapsWorld, id: 
 Then(
   'step {string} carries {int} verified facts, those of the last {int} reports',
   function (this: CapsWorld, id: string, carried: number, last: number): void {
-    assert.equal(carried, last)
+    const labels = verifiedLabelsOf(stepNamed(this, id))
     const reported = (this.testReports ?? []).filter((report) => report.step === id).length
-    assert.deepEqual(verifiedLabelsOf(stepNamed(this, id)), labelsOfReports(reported - last + 1, reported))
+    assert.equal(labels.length, carried)
+    assert.deepEqual(labels, labelsOfReports(reported - last + 1, reported))
   },
 )
 
