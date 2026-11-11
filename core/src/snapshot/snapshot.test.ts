@@ -646,3 +646,158 @@ describe('buildSnapshot', () => {
     ])
   })
 })
+
+describe('buildSnapshot with test reports', () => {
+  const vitestReport = (stepId: string, total: number, passed: number) => ({
+    step: stepId,
+    text: JSON.stringify({ numTotalTests: total, numPassedTests: passed }),
+  })
+
+  const cucumberReport = (stepId: string, ...statuses: string[]) => ({
+    step: stepId,
+    text: JSON.stringify([{ elements: statuses.map((status) => ({ steps: [{ result: { status } }] })) }]),
+  })
+
+  const decisionLine = (stepId: string, title: string): string =>
+    JSON.stringify({
+      at: '2026-10-22T10:00:00Z',
+      step: stepId,
+      role: 'dev-a',
+      kind: 'decision',
+      title,
+      why: 'because',
+      rejected: [],
+      confidence: 'high',
+    })
+
+  const planOf = (...ids: string[]): string => planText(...ids.map((id) => step({ id })))
+
+  const stepNotInPlan = (location: number) => ({
+    file: 'test-report',
+    location,
+    field: 'step',
+    message: 'is not a step of plan.json',
+  })
+
+  it('attaches a verified fact labeled with the passed and total counts to its step only', () => {
+    const snapshot = buildSnapshot({ plan: planOf('s1', 's2'), testReports: [vitestReport('s2', 5, 3)] }, now)
+    expect(snapshot.steps[0]?.facts).toEqual([])
+    expect(snapshot.steps[1]?.facts).toEqual([{ origin: 'verified', source: 'vitest', label: '3 of 5 passed' }])
+    expect(snapshot.errors).toEqual([])
+  })
+
+  it('labels a cucumber-js report with its source and scenario counts', () => {
+    const snapshot = buildSnapshot({ plan: planOf('s1'), testReports: [cucumberReport('s1', 'passed', 'failed', 'passed')] }, now)
+    expect(snapshot.steps[0]?.facts).toEqual([{ origin: 'verified', source: 'cucumber-js', label: '2 of 3 passed' }])
+  })
+
+  it('lists the declared facts of a step first, then its verified facts in input order', () => {
+    const snapshot = buildSnapshot(
+      {
+        plan: planOf('s1'),
+        decisions: [decisionLine('s1', 'a'), decisionLine('s1', 'b')].join('\n'),
+        testReports: [cucumberReport('s1', 'passed'), vitestReport('s1', 2, 1)],
+      },
+      now,
+    )
+    expect(snapshot.steps[0]?.facts).toEqual([
+      { origin: 'declared', source: 'decisions.jsonl', label: 'a' },
+      { origin: 'declared', source: 'decisions.jsonl', label: 'b' },
+      { origin: 'verified', source: 'cucumber-js', label: '1 of 1 passed' },
+      { origin: 'verified', source: 'vitest', label: '1 of 2 passed' },
+    ])
+  })
+
+  it('builds the same snapshot whether the reports are absent or empty', () => {
+    const files = { plan: planOf('s1'), decisions: decisionLine('s1', 'a') }
+    expect(buildSnapshot({ ...files, testReports: [] }, now)).toEqual(buildSnapshot(files, now))
+  })
+
+  it('adds an error at the report position and no fact when its step is not in the plan', () => {
+    const snapshot = buildSnapshot({ plan: planOf('s1'), testReports: [vitestReport('s1', 1, 1), vitestReport('s9', 5, 5)] }, now)
+    expect(snapshot.steps[0]?.facts).toHaveLength(1)
+    expect(snapshot.errors).toEqual([stepNotInPlan(2)])
+  })
+
+  it('reports an unmatched malformed report as an unmatched step only', () => {
+    const snapshot = buildSnapshot({ plan: planOf('s1'), testReports: [{ step: 's9', text: '{' }] }, now)
+    expect(snapshot.errors).toEqual([stepNotInPlan(1)])
+  })
+
+  it('reports a report whose step is an Object.prototype name instead of throwing', () => {
+    const reports = [vitestReport('toString', 1, 1), vitestReport('__proto__', 1, 1)]
+    const snapshot = buildSnapshot({ plan: planOf('s1'), testReports: reports }, now)
+    expect(snapshot.errors).toEqual([stepNotInPlan(1), stepNotInPlan(2)])
+  })
+
+  it('attaches a report to a step whose id is an Object.prototype name', () => {
+    const snapshot = buildSnapshot({ plan: planOf('__proto__'), testReports: [vitestReport('__proto__', 1, 1)] }, now)
+    expect(snapshot.steps[0]?.facts).toEqual([{ origin: 'verified', source: 'vitest', label: '1 of 1 passed' }])
+    expect(snapshot.errors).toEqual([])
+  })
+
+  it.each([
+    ['text that is not JSON', '{', 'is not valid JSON'],
+    ['a document of an unknown shape', '[null]', 'is not a vitest or cucumber-js JSON report'],
+    ['an oversized text', ' '.repeat(1_048_577), 'exceeds 1048576 characters'],
+  ])('adds one error and keeps every other fact for %s', (_, text, message) => {
+    const snapshot = buildSnapshot(
+      {
+        plan: planOf('s1', 's2'),
+        decisions: decisionLine('s1', 'a'),
+        testReports: [vitestReport('s2', 1, 1), { step: 's1', text }],
+      },
+      now,
+    )
+    expect(snapshot.steps[0]?.facts).toEqual([{ origin: 'declared', source: 'decisions.jsonl', label: 'a' }])
+    expect(snapshot.steps[1]?.facts).toEqual([{ origin: 'verified', source: 'vitest', label: '1 of 1 passed' }])
+    expect(snapshot.errors).toEqual([{ file: 'test-report', location: 2, field: null, message }])
+  })
+
+  it('caps the report errors and says so', () => {
+    const reports = Array.from({ length: 101 }, () => vitestReport('ghost', 1, 1))
+    const { errors } = buildSnapshot({ plan: planOf('s1'), testReports: reports }, now)
+    expect(errors).toHaveLength(101)
+    expect(errors[99]).toEqual(stepNotInPlan(100))
+    expect(errors[100]).toEqual({
+      file: 'test-report',
+      location: null,
+      field: null,
+      message: 'too many errors, only the first 100 are shown',
+    })
+  })
+
+  it('lists the decisions errors, then the report errors, then the agent error', () => {
+    const snapshot = buildSnapshot(
+      { plan: planOf('s1'), decisions: '{', testReports: [{ step: 's9', text: '{' }] },
+      now,
+      { unavailable: 'host-error' },
+    )
+    expect(snapshot.errors.map(({ file }) => file)).toEqual(['decisions.jsonl', 'test-report', 'agent-state'])
+  })
+
+  it('reads no report when the plan is unusable', () => {
+    const snapshot = buildSnapshot({ plan: '{', testReports: [vitestReport('s1', 1, 1), { step: 's1', text: '{' }] }, now)
+    expect(snapshot.steps).toEqual([])
+    expect(snapshot.errors).toEqual([{ file: 'plan.json', location: null, field: null, message: 'is not valid JSON' }])
+  })
+
+  it('carries no failure text of the report into the snapshot', () => {
+    const failure = 'AssertionError: expected 1 to be 2 at /home/dev/secret.ts:12'
+    const vitest = JSON.stringify({
+      numTotalTests: 2,
+      numPassedTests: 1,
+      testResults: [{ assertionResults: [{ status: 'failed', failureMessages: [failure] }] }],
+    })
+    const cucumber = JSON.stringify([
+      { elements: [{ steps: [{ result: { status: 'failed', error_message: failure } }] }] },
+    ])
+    const snapshot = buildSnapshot(
+      { plan: planOf('s1'), testReports: [{ step: 's1', text: vitest }, { step: 's1', text: cucumber }] },
+      now,
+    )
+    expect(snapshot.steps[0]?.facts).toHaveLength(2)
+    expect(JSON.stringify(snapshot)).not.toContain('AssertionError')
+    expect(JSON.stringify(snapshot)).not.toContain('secret.ts')
+  })
+})
