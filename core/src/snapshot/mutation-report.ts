@@ -1,12 +1,13 @@
 import { MAX_TEXT_LENGTH } from '../contracts/contract-error'
 
-export type MutationCounts = {
+export type ParsedMutationReport = {
+  readonly source: 'stryker'
   readonly detected: number
   readonly surviving: number
 }
 
 export type ReadMutationReportResult =
-  | { readonly accepted: true; readonly counts: MutationCounts }
+  | { readonly accepted: true; readonly report: ParsedMutationReport }
   | { readonly accepted: false; readonly message: string }
 
 const refusedWith = (message: string): ReadMutationReportResult => ({ accepted: false, message })
@@ -35,7 +36,8 @@ const statusesOf = (document: unknown): string[] | null => {
   return known.length === statuses.length ? known : null
 }
 
-const countsOf = (statuses: readonly string[]): MutationCounts => ({
+const reportOf = (statuses: readonly string[]): ParsedMutationReport => ({
+  source: 'stryker',
   detected: statuses.filter((status) => detectedStatuses.includes(status)).length,
   surviving: statuses.filter((status) => survivingStatuses.includes(status)).length,
 })
@@ -50,13 +52,13 @@ export const readMutationReport = (text: string): ReadMutationReportResult => {
   }
   const statuses = statusesOf(document)
   if (statuses === null) return refusedWith('is not a Stryker mutation report')
-  const counts = countsOf(statuses)
-  return counts.detected + counts.surviving === 0
+  const report = reportOf(statuses)
+  return report.detected + report.surviving === 0
     ? refusedWith('has no mutant to score')
-    : { accepted: true, counts }
+    : { accepted: true, report }
 }
 
-export const mutationLabelOf = ({ detected, surviving }: MutationCounts): string => {
+export const mutationLabelOf = ({ detected, surviving }: ParsedMutationReport): string => {
   const hundredths = Math.floor((detected * 10_000) / (detected + surviving))
   const fraction = String(hundredths % 100).padStart(2, '0')
   return `${Math.floor(hundredths / 100)}.${fraction}% mutation score, ${surviving} surviving`

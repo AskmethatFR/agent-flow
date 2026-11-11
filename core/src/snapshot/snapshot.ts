@@ -21,15 +21,14 @@ export type AgentFlowFile = string | FileUnavailable
 
 export type AgentStatusUnavailable = { readonly unavailable: 'host-error' }
 
-export type TestReport = {
+type StepReport = {
   readonly step: string
   readonly text: string
 }
 
-export type MutationReport = {
-  readonly step: string
-  readonly text: string
-}
+export type TestReport = StepReport
+
+export type MutationReport = StepReport
 
 export type SnapshotFiles = {
   readonly plan: AgentFlowFile
@@ -240,7 +239,7 @@ const readTestReportFact: ReportReader = (text) => {
 const readMutationReportFact: ReportReader = (text) => {
   const result = readMutationReport(text)
   return result.accepted
-    ? { fact: { origin: 'verified', source: 'stryker', label: mutationLabelOf(result.counts) } }
+    ? { fact: { origin: 'verified', source: result.report.source, label: mutationLabelOf(result.report) } }
     : { message: result.message }
 }
 
@@ -248,7 +247,7 @@ const outcomeOfReport = (
   file: string,
   read: ReportReader,
   stepIds: ReadonlySet<string>,
-  { step, text }: TestReport,
+  { step, text }: StepReport,
   location: number,
 ): ReportOutcome => {
   if (!stepIds.has(step)) {
@@ -265,7 +264,7 @@ const readReports = (
   file: string,
   read: ReportReader,
   steps: readonly PlanStep[],
-  reports: readonly TestReport[],
+  reports: readonly StepReport[],
 ): ReadReports => {
   const stepIds = new Set(steps.map((step) => step.id))
   const outcomes = reports.map((report, index) => outcomeOfReport(file, read, stepIds, report, index + 1))

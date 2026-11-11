@@ -19,6 +19,27 @@ const step = (overlay: Record<string, unknown> = {}): Record<string, unknown> =>
 const planText = (...steps: Record<string, unknown>[]): string =>
   JSON.stringify({ issue: '#38', title: 'Core snapshot', steps })
 
+const planOf = (...ids: string[]): string => planText(...ids.map((id) => step({ id })))
+
+const decisionLine = (stepId: string, title: string): string =>
+  JSON.stringify({
+    at: '2026-10-22T10:00:00Z',
+    step: stepId,
+    role: 'dev-a',
+    kind: 'decision',
+    title,
+    why: 'because',
+    rejected: [],
+    confidence: 'high',
+  })
+
+const unknownStepError = (file: string, location: number) => ({
+  file,
+  location,
+  field: 'step',
+  message: 'is not a step of plan.json',
+})
+
 describe('buildSnapshot', () => {
   it('projects a valid plan into its steps without time spent or current step', () => {
     const text = planText(step(), step({ id: 's2', title: 'Build', role: 'dev-a', origin: 'proposed' }))
@@ -658,26 +679,7 @@ describe('buildSnapshot with test reports', () => {
     text: JSON.stringify([{ elements: statuses.map((status) => ({ steps: [{ result: { status } }] })) }]),
   })
 
-  const decisionLine = (stepId: string, title: string): string =>
-    JSON.stringify({
-      at: '2026-10-22T10:00:00Z',
-      step: stepId,
-      role: 'dev-a',
-      kind: 'decision',
-      title,
-      why: 'because',
-      rejected: [],
-      confidence: 'high',
-    })
-
-  const planOf = (...ids: string[]): string => planText(...ids.map((id) => step({ id })))
-
-  const stepNotInPlan = (location: number) => ({
-    file: 'test-report',
-    location,
-    field: 'step',
-    message: 'is not a step of plan.json',
-  })
+  const stepNotInPlan = (location: number) => unknownStepError('test-report', location)
 
   it('attaches a verified fact labeled with the passed and total counts to its step only', () => {
     const snapshot = buildSnapshot({ plan: planOf('s1', 's2'), testReports: [vitestReport('s2', 5, 3)] }, now)
@@ -993,30 +995,16 @@ describe('buildSnapshot with mutation reports', () => {
     )
 
   const strykerText = (counts: Record<string, number>, overlay: Record<string, unknown> = {}): string =>
-    JSON.stringify({ schemaVersion: '2', files: { 'src/a.ts': { language: 'typescript', mutants: mutantsOf(counts) } }, ...overlay })
+    JSON.stringify({ schemaVersion: '1.0', files: { 'src/a.ts': { language: 'typescript', mutants: mutantsOf(counts) } }, ...overlay })
 
   const mutationReport = (stepId: string, counts: Record<string, number>) => ({ step: stepId, text: strykerText(counts) })
 
-  const planOf = (...ids: string[]): string => planText(...ids.map((id) => step({ id })))
-
   const labeled = (label: string) => [{ origin: 'verified', source: 'stryker', label }]
 
-  const mutationFactsOf = (text: string, stepIds: string[] = ['s1']) =>
-    buildSnapshot({ plan: planOf(...stepIds), mutationReports: [{ step: 's1', text }] }, now).steps[0]?.facts
+  const mutationFactsOf = (text: string) =>
+    buildSnapshot({ plan: planOf('s1'), mutationReports: [{ step: 's1', text }] }, now).steps[0]?.facts
 
   const refusal = (message: string, location = 1) => [{ file: 'mutation-report', location, field: null, message }]
-
-  const decisionLine = (stepId: string, title: string): string =>
-    JSON.stringify({
-      at: '2026-10-22T10:00:00Z',
-      step: stepId,
-      role: 'dev-a',
-      kind: 'decision',
-      title,
-      why: 'because',
-      rejected: [],
-      confidence: 'high',
-    })
 
   it('attaches a verified stryker fact labeled with the score and the surviving count to its step only', () => {
     const snapshot = buildSnapshot(
@@ -1051,7 +1039,7 @@ describe('buildSnapshot with mutation reports', () => {
 
   it('sums the mutants of every file of the report', () => {
     const text = JSON.stringify({
-      schemaVersion: '2',
+      schemaVersion: '1.0',
       files: {
         'src/a.ts': { mutants: mutantsOf({ Killed: 1, Survived: 1 }) },
         'src/b.ts': { mutants: mutantsOf({ Killed: 2 }) },
@@ -1062,7 +1050,7 @@ describe('buildSnapshot with mutation reports', () => {
   })
 
   it('reads a file named __proto__ like any other', () => {
-    const text = '{"schemaVersion":"2","files":{"__proto__":{"mutants":[{"status":"Killed"},{"status":"Survived"}]}}}'
+    const text = '{"schemaVersion":"1.0","files":{"__proto__":{"mutants":[{"status":"Killed"},{"status":"Survived"}]}}}'
     expect(mutationFactsOf(text)).toEqual(labeled('50.00% mutation score, 1 surviving'))
   })
 
@@ -1096,12 +1084,7 @@ describe('buildSnapshot with mutation reports', () => {
     expect(buildSnapshot({ ...files, mutationReports: [] }, now)).toEqual(buildSnapshot(files, now))
   })
 
-  const stepNotInPlan = (location: number) => ({
-    file: 'mutation-report',
-    location,
-    field: 'step',
-    message: 'is not a step of plan.json',
-  })
+  const stepNotInPlan = (location: number) => unknownStepError('mutation-report', location)
 
   it('adds an error at the report position and no fact when its step is not in the plan', () => {
     const reports = [mutationReport('s1', { Killed: 1 }), mutationReport('s9', { Killed: 1 })]
@@ -1135,20 +1118,20 @@ describe('buildSnapshot with mutation reports', () => {
     ['a string', '"report"', 'is not a Stryker mutation report'],
     ['a document with no schemaVersion', '{"files":{"a":{"mutants":[{"status":"Killed"}]}}}', 'is not a Stryker mutation report'],
     ['a schemaVersion that is not a string', '{"schemaVersion":2,"files":{"a":{"mutants":[{"status":"Killed"}]}}}', 'is not a Stryker mutation report'],
-    ['a document with no files', '{"schemaVersion":"2"}', 'is not a Stryker mutation report'],
-    ['files that is null', '{"schemaVersion":"2","files":null}', 'is not a Stryker mutation report'],
-    ['files that is an array', '{"schemaVersion":"2","files":[{"mutants":[{"status":"Killed"}]}]}', 'is not a Stryker mutation report'],
-    ['a file that is null', '{"schemaVersion":"2","files":{"a":null}}', 'is not a Stryker mutation report'],
-    ['a file with no mutants', '{"schemaVersion":"2","files":{"a":{}}}', 'is not a Stryker mutation report'],
-    ['a file whose mutants is not an array', '{"schemaVersion":"2","files":{"a":{"mutants":{}}}}', 'is not a Stryker mutation report'],
-    ['one bad file after a good one', '{"schemaVersion":"2","files":{"a":{"mutants":[{"status":"Killed"}]},"b":{}}}', 'is not a Stryker mutation report'],
-    ['a mutant that is null', '{"schemaVersion":"2","files":{"a":{"mutants":[null]}}}', 'is not a Stryker mutation report'],
-    ['a mutant with no status', '{"schemaVersion":"2","files":{"a":{"mutants":[{}]}}}', 'is not a Stryker mutation report'],
-    ['a status that is not a string', '{"schemaVersion":"2","files":{"a":{"mutants":[{"status":1}]}}}', 'is not a Stryker mutation report'],
-    ['a status outside the Stryker set', '{"schemaVersion":"2","files":{"a":{"mutants":[{"status":"killed"}]}}}', 'is not a Stryker mutation report'],
-    ['one bad mutant after good ones', '{"schemaVersion":"2","files":{"a":{"mutants":[{"status":"Killed"},{"status":"Nope"}]}}}', 'is not a Stryker mutation report'],
-    ['no file', '{"schemaVersion":"2","files":{}}', 'has no mutant to score'],
-    ['a file with no mutant', '{"schemaVersion":"2","files":{"a":{"mutants":[]}}}', 'has no mutant to score'],
+    ['a document with no files', '{"schemaVersion":"1.0"}', 'is not a Stryker mutation report'],
+    ['files that is null', '{"schemaVersion":"1.0","files":null}', 'is not a Stryker mutation report'],
+    ['files that is an array', '{"schemaVersion":"1.0","files":[{"mutants":[{"status":"Killed"}]}]}', 'is not a Stryker mutation report'],
+    ['a file that is null', '{"schemaVersion":"1.0","files":{"a":null}}', 'is not a Stryker mutation report'],
+    ['a file with no mutants', '{"schemaVersion":"1.0","files":{"a":{}}}', 'is not a Stryker mutation report'],
+    ['a file whose mutants is not an array', '{"schemaVersion":"1.0","files":{"a":{"mutants":{}}}}', 'is not a Stryker mutation report'],
+    ['one bad file after a good one', '{"schemaVersion":"1.0","files":{"a":{"mutants":[{"status":"Killed"}]},"b":{}}}', 'is not a Stryker mutation report'],
+    ['a mutant that is null', '{"schemaVersion":"1.0","files":{"a":{"mutants":[null]}}}', 'is not a Stryker mutation report'],
+    ['a mutant with no status', '{"schemaVersion":"1.0","files":{"a":{"mutants":[{}]}}}', 'is not a Stryker mutation report'],
+    ['a status that is not a string', '{"schemaVersion":"1.0","files":{"a":{"mutants":[{"status":1}]}}}', 'is not a Stryker mutation report'],
+    ['a status outside the Stryker set', '{"schemaVersion":"1.0","files":{"a":{"mutants":[{"status":"killed"}]}}}', 'is not a Stryker mutation report'],
+    ['one bad mutant after good ones', '{"schemaVersion":"1.0","files":{"a":{"mutants":[{"status":"Killed"},{"status":"Nope"}]}}}', 'is not a Stryker mutation report'],
+    ['no file', '{"schemaVersion":"1.0","files":{}}', 'has no mutant to score'],
+    ['a file with no mutant', '{"schemaVersion":"1.0","files":{"a":{"mutants":[]}}}', 'has no mutant to score'],
     ['only ignored mutants', strykerText({ Ignored: 2 }), 'has no mutant to score'],
     ['only mutants that cannot be counted', strykerText({ Ignored: 1, CompileError: 1, RuntimeError: 1, Pending: 1 }), 'has no mutant to score'],
     ['an oversized text', `${strykerText({ Killed: 1 })}${' '.repeat(MAX_TEXT)}`, `exceeds ${MAX_TEXT} characters`],
@@ -1176,7 +1159,7 @@ describe('buildSnapshot with mutation reports', () => {
   it('carries nothing of the report source text into the snapshot', () => {
     const marker = 'LEAK-MARKER'
     const text = JSON.stringify({
-      schemaVersion: '2',
+      schemaVersion: '1.0',
       thresholds: { high: 90, low: 80, note: marker },
       config: { note: marker },
       files: {

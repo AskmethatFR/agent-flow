@@ -16,7 +16,7 @@ const mutantsOf = (counts: MutantCounts): Record<string, unknown>[] =>
 
 const strykerReportOf = (counts: MutantCounts, thresholds?: { readonly high: number; readonly low: number }): string =>
   JSON.stringify({
-    schemaVersion: '2',
+    schemaVersion: '1.0',
     ...(thresholds === undefined ? {} : { thresholds }),
     files: { 'src/sample.ts': { language: 'typescript', source: 'export const sample = 1', mutants: mutantsOf(counts) } },
   })
