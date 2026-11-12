@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
-import { MAX_DECISIONS_PER_STEP, buildSnapshot } from './index'
+import { MAX_DECISIONS_PER_STEP, MAX_REPORTS_PER_BUILD, buildSnapshot } from './index'
 import type { AgentStatusUnavailable, Snapshot, SnapshotStep } from './index'
 
 const now = new Date('2026-10-22T10:38:00Z')
@@ -47,8 +47,8 @@ describe('buildSnapshot', () => {
       issue: '#38',
       title: 'Core snapshot',
       steps: [
-        { id: 's1', title: 'Design', role: 'architect', status: 'todo', origin: 'planned', timeSpent: null, decisions: [], omittedDecisions: 0, facts: [] },
-        { id: 's2', title: 'Build', role: 'dev-a', status: 'todo', origin: 'proposed', timeSpent: null, decisions: [], omittedDecisions: 0, facts: [] },
+        { id: 's1', title: 'Design', role: 'architect', status: 'todo', origin: 'planned', timeSpent: null, decisions: [], omittedDecisions: 0, facts: [], omittedFacts: 0 },
+        { id: 's2', title: 'Build', role: 'dev-a', status: 'todo', origin: 'proposed', timeSpent: null, decisions: [], omittedDecisions: 0, facts: [], omittedFacts: 0 },
       ],
       currentStepId: null,
       currentAgent: null,
@@ -399,7 +399,7 @@ describe('buildSnapshot', () => {
       'issue' | 'title' | 'steps' | 'currentStepId' | 'currentAgent' | 'ci' | 'errors'
     >()
     expectTypeOf<keyof SnapshotStep>().toEqualTypeOf<
-      'id' | 'title' | 'role' | 'status' | 'origin' | 'timeSpent' | 'decisions' | 'omittedDecisions' | 'facts'
+      'id' | 'title' | 'role' | 'status' | 'origin' | 'timeSpent' | 'decisions' | 'omittedDecisions' | 'facts' | 'omittedFacts'
     >()
   })
 
@@ -1391,5 +1391,233 @@ describe('buildSnapshot with a CI status', () => {
       'ci-status',
       'agent-state',
     ])
+  })
+})
+
+describe('buildSnapshot with a cap on verified facts per step', () => {
+  const numberedReport = (stepId: string, number: number) => ({
+    step: stepId,
+    text: JSON.stringify({ numTotalTests: number, numPassedTests: number, numFailedTestSuites: 0 }),
+  })
+
+  const numberedReports = (stepId: string, count: number) =>
+    Array.from({ length: count }, (_, index) => numberedReport(stepId, index + 1))
+
+  const labelsOfNumbers = (from: number, to: number): string[] =>
+    Array.from({ length: to - from + 1 }, (_, index) => `${from + index} of ${from + index} passed`)
+
+  const verifiedLabelsOf = (snapshot: Snapshot, index = 0): string[] =>
+    snapshot.steps[index]?.facts.filter(({ origin }) => origin === 'verified').map(({ label }) => label) ?? []
+
+  const strykerReport = (stepId: string) => ({
+    step: stepId,
+    text: JSON.stringify({
+      schemaVersion: '1.0',
+      files: { 'src/a.ts': { language: 'typescript', mutants: [{ status: 'Killed' }, { status: 'Survived' }] } },
+    }),
+  })
+
+  it.each([0, 1, MAX_DECISIONS_PER_STEP - 1, MAX_DECISIONS_PER_STEP])(
+    'keeps all %i verified facts of a step at or under the cap and omits none',
+    (count) => {
+      const snapshot = buildSnapshot({ plan: planOf('s1'), testReports: numberedReports('s1', count) }, now)
+      expect(verifiedLabelsOf(snapshot)).toEqual(labelsOfNumbers(1, count))
+      expect(snapshot.steps[0]?.omittedFacts).toBe(0)
+      expect(snapshot.errors).toEqual([])
+    },
+  )
+
+  it.each([1, 2, MAX_DECISIONS_PER_STEP])(
+    'keeps the last verified facts up to the cap in input order and counts the %i left out',
+    (extra) => {
+      const total = MAX_DECISIONS_PER_STEP + extra
+      const snapshot = buildSnapshot({ plan: planOf('s1'), testReports: numberedReports('s1', total) }, now)
+      expect(verifiedLabelsOf(snapshot)).toEqual(labelsOfNumbers(extra + 1, total))
+      expect(snapshot.steps[0]?.omittedFacts).toBe(extra)
+      expect(snapshot.errors).toEqual([])
+    },
+  )
+
+  it('never counts or drops the declared facts of a step against the cap', () => {
+    const snapshot = buildSnapshot(
+      {
+        plan: planOf('s1'),
+        decisions: [decisionLine('s1', 'a'), decisionLine('s1', 'b')].join('\n'),
+        testReports: numberedReports('s1', MAX_DECISIONS_PER_STEP + 1),
+      },
+      now,
+    )
+    const facts = snapshot.steps[0]?.facts ?? []
+    expect(facts).toHaveLength(MAX_DECISIONS_PER_STEP + 2)
+    expect(facts.slice(0, 2)).toEqual([
+      { origin: 'declared', source: 'decisions.jsonl', label: 'a' },
+      { origin: 'declared', source: 'decisions.jsonl', label: 'b' },
+    ])
+    expect(verifiedLabelsOf(snapshot)).toEqual(labelsOfNumbers(2, MAX_DECISIONS_PER_STEP + 1))
+    expect(snapshot.steps[0]?.omittedFacts).toBe(1)
+    expect(snapshot.steps[0]?.omittedDecisions).toBe(0)
+  })
+
+  it('caps the test and mutation facts of a step together, dropping the earliest test facts first', () => {
+    const snapshot = buildSnapshot(
+      {
+        plan: planOf('s1'),
+        testReports: numberedReports('s1', 45),
+        mutationReports: Array.from({ length: 10 }, () => strykerReport('s1')),
+      },
+      now,
+    )
+    const labels = verifiedLabelsOf(snapshot)
+    expect(labels).toEqual([...labelsOfNumbers(6, 45), ...Array.from({ length: 10 }, () => '50.00% mutation score, 1 surviving')])
+    expect(snapshot.steps[0]?.omittedFacts).toBe(5)
+  })
+
+  it('applies the cap to each step on its own, whatever interleaving', () => {
+    const over = numberedReports('s1', MAX_DECISIONS_PER_STEP + 2)
+    const other = numberedReports('s2', 3)
+    const testReports = [...over.slice(0, 10), ...other.slice(0, 1), ...over.slice(10), ...other.slice(1)]
+    const snapshot = buildSnapshot({ plan: planOf('s1', 's2'), testReports }, now)
+    expect(verifiedLabelsOf(snapshot, 0)).toEqual(labelsOfNumbers(3, MAX_DECISIONS_PER_STEP + 2))
+    expect(snapshot.steps[0]?.omittedFacts).toBe(2)
+    expect(verifiedLabelsOf(snapshot, 1)).toEqual(labelsOfNumbers(1, 3))
+    expect(snapshot.steps[1]?.omittedFacts).toBe(0)
+  })
+})
+
+describe('buildSnapshot with a bound on reports per build', () => {
+  const vitestText = JSON.stringify({ numTotalTests: 1, numPassedTests: 1, numFailedTestSuites: 0 })
+  const strykerText = JSON.stringify({
+    schemaVersion: '1.0',
+    files: { 'src/a.ts': { language: 'typescript', mutants: [{ status: 'Killed' }] } },
+  })
+
+  const kinds = [
+    { kind: 'test', file: 'test-report', key: 'testReports', validText: vitestText },
+    { kind: 'mutation', file: 'mutation-report', key: 'mutationReports', validText: strykerText },
+  ] as const
+
+  const boundError = (file: string) => ({
+    file,
+    location: null,
+    field: null,
+    message: 'too many reports, only the last 200 are read',
+  })
+
+  const reportsOf = (count: number, first: { step: string; text: string }, validText: string) => [
+    first,
+    ...Array.from({ length: count - 1 }, () => ({ step: 's1', text: validText })),
+  ]
+
+  const hostileFirstReports = (validText: string) => [
+    ['valid for a step of the plan', { step: 's1', text: validText }, 0],
+    ['for a step that is not in the plan', { step: 's9', text: validText }, 1],
+    ['malformed', { step: 's1', text: '{' }, 1],
+  ] as const
+
+  const unreadableFirstReport = {
+    step: 's1',
+    get text(): string {
+      throw new Error('read')
+    },
+  }
+
+  it('bounds the reports of a build at 200 of each kind', () => {
+    expect(MAX_REPORTS_PER_BUILD).toBe(200)
+  })
+
+  describe.each(kinds)('for $kind reports', ({ file, key, validText }) => {
+    const buildWith = (reports: readonly { step: string; text: string }[], more: Record<string, unknown> = {}) =>
+      buildSnapshot({ plan: planOf('s1'), [key]: reports, ...more }, now)
+
+    it.each(hostileFirstReports(validText))(
+      'reads all 200 reports, the first being %s, and adds no bound error',
+      (_, first, errorCount) => {
+        const snapshot = buildWith(reportsOf(MAX_REPORTS_PER_BUILD, first, validText))
+        expect(snapshot.errors).not.toContainEqual(boundError(file))
+        expect(snapshot.errors).toHaveLength(errorCount)
+      },
+    )
+
+    it('reads the first of 200 reports', () => {
+      expect(() => buildWith(reportsOf(MAX_REPORTS_PER_BUILD, unreadableFirstReport, validText))).toThrow('read')
+    })
+
+    it('never reads the first of 201 reports', () => {
+      const snapshot = buildWith(reportsOf(MAX_REPORTS_PER_BUILD + 1, unreadableFirstReport, validText))
+      expect(snapshot.errors).toEqual([boundError(file)])
+    })
+
+    it.each(hostileFirstReports(validText))(
+      'does not read the first of 201 reports, being %s, and adds exactly one bound error',
+      (_, first) => {
+        const snapshot = buildWith(reportsOf(MAX_REPORTS_PER_BUILD + 1, first, validText))
+        expect(snapshot.errors).toEqual([boundError(file)])
+        expect(snapshot.steps[0]?.facts).toHaveLength(MAX_DECISIONS_PER_STEP)
+        expect(snapshot.steps[0]?.omittedFacts).toBe(MAX_REPORTS_PER_BUILD - MAX_DECISIONS_PER_STEP)
+      },
+    )
+
+    it('keeps the input position of a kept report that is not in the plan', () => {
+      const reports = [
+        ...Array.from({ length: MAX_REPORTS_PER_BUILD + 4 }, () => ({ step: 's1', text: validText })),
+        { step: 's9', text: validText },
+      ]
+      expect(buildWith(reports).errors).toEqual([boundError(file), unknownStepError(file, MAX_REPORTS_PER_BUILD + 5)])
+    })
+
+    it('lists the bound error first and keeps it out of the error cap', () => {
+      const reports = Array.from({ length: MAX_REPORTS_PER_BUILD + 1 }, () => ({ step: 's9', text: validText }))
+      const { errors } = buildWith(reports)
+      expect(errors).toHaveLength(102)
+      expect(errors[0]).toEqual(boundError(file))
+      expect(errors[1]).toEqual(unknownStepError(file, 2))
+      expect(errors[100]).toEqual(unknownStepError(file, 101))
+      expect(errors[101]).toEqual({
+        file,
+        location: null,
+        field: null,
+        message: 'too many errors, only the first 100 are shown',
+      })
+    })
+
+    it('reads no report and adds no bound error when the plan is unusable', () => {
+      const reports = Array.from({ length: MAX_REPORTS_PER_BUILD + 1 }, () => ({ step: 's1', text: validText }))
+      const snapshot = buildSnapshot({ plan: '{', [key]: reports }, now)
+      expect(snapshot.errors).toEqual([{ file: 'plan.json', location: null, field: null, message: 'is not valid JSON' }])
+    })
+  })
+
+  it('adds one bound error per kind over the bound, the test report before the mutation report', () => {
+    const over = (validText: string) =>
+      Array.from({ length: MAX_REPORTS_PER_BUILD + 1 }, () => ({ step: 's1', text: validText }))
+    const snapshot = buildSnapshot(
+      {
+        plan: planOf('s1'),
+        decisions: '{',
+        testReports: over(vitestText),
+        mutationReports: over(strykerText),
+      },
+      now,
+      { unavailable: 'host-error' },
+    )
+    expect(snapshot.errors.map(({ file }) => file)).toEqual([
+      'decisions.jsonl',
+      'test-report',
+      'mutation-report',
+      'agent-state',
+    ])
+    expect(snapshot.errors.slice(1, 3)).toEqual([boundError('test-report'), boundError('mutation-report')])
+  })
+
+  it('bounds one kind without touching the other', () => {
+    const over = Array.from({ length: MAX_REPORTS_PER_BUILD + 1 }, () => ({ step: 's1', text: vitestText }))
+    const snapshot = buildSnapshot({ plan: planOf('s1'), testReports: over, mutationReports: [{ step: 's9', text: '{' }] }, now)
+    expect(snapshot.errors).toEqual([boundError('test-report'), unknownStepError('mutation-report', 1)])
+  })
+
+  it('echoes no step and no report text in the bound error', () => {
+    const over = Array.from({ length: MAX_REPORTS_PER_BUILD + 1 }, () => ({ step: 'secret-step', text: 'secret-text' }))
+    const snapshot = buildSnapshot({ plan: planOf('s1'), testReports: over }, now)
+    expect(JSON.stringify(snapshot.errors[0])).toBe(JSON.stringify(boundError('test-report')))
   })
 })

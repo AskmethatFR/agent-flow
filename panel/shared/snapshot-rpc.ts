@@ -39,6 +39,7 @@ const SnapshotStepSchema = z.object({
   decisions: z.array(SnapshotDecisionSchema).readonly(),
   omittedDecisions: z.number().int().nonnegative(),
   facts: z.array(SnapshotFactSchema).readonly(),
+  omittedFacts: z.number().int().nonnegative(),
 }).readonly()
 
 export const SnapshotSchema = z.object({

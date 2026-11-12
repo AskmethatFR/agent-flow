@@ -14,6 +14,7 @@ import { instantOf, timeSpentOf } from './time-spent'
 import type { TimeSpent } from './time-spent'
 
 export const MAX_DECISIONS_PER_STEP = 50
+export const MAX_REPORTS_PER_BUILD = 200
 
 export type FileUnavailable = {
   readonly unavailable: 'missing' | 'unreadable' | 'too-large'
@@ -71,6 +72,7 @@ export type SnapshotStep = {
   readonly decisions: readonly SnapshotDecision[]
   readonly omittedDecisions: number
   readonly facts: readonly SnapshotFact[]
+  readonly omittedFacts: number
 }
 
 export type CurrentAgent = {
@@ -103,25 +105,35 @@ const verifiedFactOf = (report: ParsedTestReport): SnapshotFact => ({
   label: `${report.passed} of ${report.total} passed${runFailedSuffixOf(report)}`,
 })
 
+const latestVerifiedFacts = (
+  stepId: string,
+  verified: readonly VerifiedFact[],
+): { readonly kept: readonly SnapshotFact[]; readonly omitted: number } => {
+  const facts = verified.filter((entry) => entry.step === stepId).map(({ fact }) => fact)
+  const omitted = Math.max(0, facts.length - MAX_DECISIONS_PER_STEP)
+  return { kept: facts.slice(omitted), omitted }
+}
+
 const toSnapshotStep = (
   step: PlanStep,
   now: Date,
   { decisions, omitted }: StepDecisions,
   verified: readonly VerifiedFact[],
-): SnapshotStep => ({
-  id: step.id,
-  title: step.title,
-  role: step.role,
-  status: step.status,
-  origin: step.origin,
-  timeSpent: timeSpentOf(step, now),
-  decisions,
-  omittedDecisions: omitted,
-  facts: [
-    ...decisions.map(declaredFactOf),
-    ...verified.filter((entry) => entry.step === step.id).map(({ fact }) => fact),
-  ],
-})
+): SnapshotStep => {
+  const { kept, omitted: omittedFacts } = latestVerifiedFacts(step.id, verified)
+  return {
+    id: step.id,
+    title: step.title,
+    role: step.role,
+    status: step.status,
+    origin: step.origin,
+    timeSpent: timeSpentOf(step, now),
+    decisions,
+    omittedDecisions: omitted,
+    facts: [...decisions.map(declaredFactOf), ...kept],
+    omittedFacts,
+  }
+}
 
 const startOf = (step: PlanStep): number => instantOf(step.startedAt) ?? Number.NEGATIVE_INFINITY
 
@@ -271,6 +283,18 @@ const outcomeOfReport = (
   return { verified: { step, fact: reading.fact } }
 }
 
+const boundErrorsOf = (file: string, skipped: number): readonly ContractError[] =>
+  skipped === 0
+    ? []
+    : [
+        {
+          file,
+          location: null,
+          field: null,
+          message: `too many reports, only the last ${MAX_REPORTS_PER_BUILD} are read`,
+        },
+      ]
+
 const readReports = (
   file: string,
   read: ReportReader,
@@ -278,13 +302,19 @@ const readReports = (
   reports: readonly StepReport[],
 ): ReadReports => {
   const stepIds = new Set(steps.map((step) => step.id))
-  const outcomes = reports.map((report, index) => outcomeOfReport(file, read, stepIds, report, index + 1))
+  const skipped = Math.max(0, reports.length - MAX_REPORTS_PER_BUILD)
+  const outcomes = reports
+    .slice(skipped)
+    .map((report, index) => outcomeOfReport(file, read, stepIds, report, skipped + index + 1))
   return {
     verified: outcomes.filter((outcome) => 'verified' in outcome).map((outcome) => outcome.verified),
-    errors: capErrors(
-      file,
-      outcomes.filter((outcome) => 'error' in outcome).map((outcome) => outcome.error),
-    ),
+    errors: [
+      ...boundErrorsOf(file, skipped),
+      ...capErrors(
+        file,
+        outcomes.filter((outcome) => 'error' in outcome).map((outcome) => outcome.error),
+      ),
+    ],
   }
 }
 

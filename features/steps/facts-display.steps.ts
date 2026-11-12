@@ -24,6 +24,7 @@ const snapshotWithFacts = (facts: readonly Fact[]): unknown => ({
         decisions: [],
         omittedDecisions: 0,
         facts,
+        omittedFacts: 0,
       },
     ],
     currentStepId: null,
