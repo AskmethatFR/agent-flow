@@ -3,6 +3,8 @@ import { buildSnapshot } from '@agent-flow/core/snapshot'
 import type { Snapshot } from '@agent-flow/core/snapshot'
 import { agentStatusOf } from './agent-status'
 import type { AgentSource } from './agent-status'
+import { ciStatusErrorOf, ciStatusOf } from './ci-status'
+import type { CiStatusSource } from './ci-status'
 import { readAgentFlowFile } from './read-agent-flow-file'
 import type { ReadIo } from './read-agent-flow-file'
 import { realPathOf, worktreeRootOf } from './worktree-root'
@@ -18,7 +20,11 @@ export type SnapshotReply =
   | { readonly kind: 'snapshot'; readonly snapshot: Snapshot }
   | { readonly kind: 'refused'; readonly reason: 'unknown-worktree' }
 
-export type GetSnapshotDeps = { readonly io: ReadIo; readonly now: () => Date }
+export type GetSnapshotDeps = {
+  readonly io: ReadIo
+  readonly now: () => Date
+  readonly ciStatus: CiStatusSource
+}
 
 const input = z.strictObject({ workspaceId: z.string().min(1).max(256) })
 
@@ -38,7 +44,7 @@ const lookupOf = async (
 }
 
 export const createGetSnapshot =
-  ({ io, now }: GetSnapshotDeps) =>
+  ({ io, now, ciStatus }: GetSnapshotDeps) =>
   async (
     request: unknown,
     workspaces: WorkspaceSource,
@@ -55,6 +61,14 @@ export const createGetSnapshot =
     if (realWorktree === null) return refused
     const plan = readAgentFlowFile(io, realWorktree, 'plan.json')
     const decisions = readAgentFlowFile(io, realWorktree, 'decisions.jsonl')
-    const agentStatus = await agentStatusOf(agents, io, realWorktree)
-    return { kind: 'snapshot', snapshot: buildSnapshot({ plan, decisions }, now(), agentStatus) }
+    const [agentStatus, ci] = await Promise.all([
+      agentStatusOf(agents, io, realWorktree),
+      ciStatusOf(ciStatus, realWorktree),
+    ])
+    const files = { plan, decisions, ...('status' in ci ? { ciStatus: ci.status } : {}) }
+    const snapshot = buildSnapshot(files, now(), agentStatus)
+    return {
+      kind: 'snapshot',
+      snapshot: 'status' in ci ? snapshot : { ...snapshot, errors: [...snapshot.errors, ciStatusErrorOf(ci)] },
+    }
   }
