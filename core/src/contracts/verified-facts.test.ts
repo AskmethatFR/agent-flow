@@ -82,6 +82,17 @@ describe('validateVerifiedFacts', () => {
     )
   })
 
+  it.each(['source', 'stdout', 'command', 'session_id', 'agent_id', 'fingerprint'])(
+    'refuses a line carrying %s, naming its line number and the key and never the value',
+    (key) => {
+      const forbidden = 'FORBIDDEN-VALUE-MUST-NOT-BE-ECHOED'
+      const text = fileText(lineText(attachedVitest), lineText(factWith({ [key]: forbidden })))
+      const result = validateVerifiedFacts(text)
+      expect(result).toEqual(rejection(2, key, 'is not allowed'))
+      expect(JSON.stringify(result)).not.toContain(forbidden)
+    },
+  )
+
   it('sizes the post-cap prefilter on the shortest valid compact line', () => {
     const shortest =
       '{"at":"2026-11-23T12:00:00.000Z","tool":"stryker","step":"1","attachment":"role","role":"qa","roleFrom":"host","detected":0,"surviving":1}'

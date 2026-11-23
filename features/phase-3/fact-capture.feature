@@ -9,3 +9,15 @@ Feature: Capture: verified facts are kept in a sixth contract file
     Given a worktree whose .agent-flow holds a valid verified-facts.jsonl and a stray verified-facts.json
     When the contract check runs on the worktree
     Then it reports one error, for verified-facts.json not being a contract file, and exits with status 1
+
+  @scenario:S10
+  Scenario Outline: A fact line carrying failure text is refused
+    Given a worktree whose .agent-flow holds a verified-facts.jsonl whose second line carries "<key>" with a failure text
+    When the contract check runs on the worktree
+    Then it reports one error naming verified-facts.jsonl, line 2 and the key "<key>" as not allowed, and exits with status 1
+    And the failure text appears in neither its output nor its error output
+
+    Examples:
+      | key             |
+      | failureMessages |
+      | error_message   |
