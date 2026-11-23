@@ -1,0 +1,88 @@
+import { join } from 'node:path'
+import { checkContractFile } from '@agent-flow/core/contracts'
+import type { ValidationResult } from '@agent-flow/core/contracts'
+import { ROLE_IDS, decisionStepOf } from '@agent-flow/core/lifecycle'
+import { readTestReport } from '@agent-flow/core/snapshot'
+import { appendLine } from '../shared/confined-append'
+import type { AppendIo } from '../shared/confined-append'
+import {
+  inspectAgentFlowDirectory,
+  isConfinableWorktree,
+  readContractFile,
+  readPlan,
+  refusalFor,
+  resolveWorktree,
+} from '../shared/confinement'
+import type { Rejected } from '../shared/confinement'
+
+export type ObservedRun = { readonly agentType: unknown; readonly at: string }
+
+type Appender = (worktree: string, run: ObservedRun) => ValidationResult
+
+const factsFile = 'verified-facts.jsonl'
+const reportPath = 'reports/vitest/vitest.json'
+const refuse = refusalFor(factsFile)
+const refuseReport = refusalFor(reportPath)
+const hostPrefix = 'agentic-team:'
+
+// Ruling G2 (docs/technical/decisions/verified-facts.md S13): a bare role id, or one with the
+// agentic-team: prefix, is host-observed; any other prefix is not.
+const hostRoleOf = (agentType: unknown): string | undefined => {
+  if (typeof agentType !== 'string') return undefined
+  const name = agentType.startsWith(hostPrefix) ? agentType.slice(hostPrefix.length) : agentType
+  return ROLE_IDS.find((role) => role === name)
+}
+
+type Confined = { readonly realWorktree: string; readonly directory: string }
+
+// The paths derive from the worktree realpath, and .agent-flow must be a real directory
+// (docs/technical/decisions/plan-writer-confinement.md:86).
+const confine = (worktree: string): Confined | Rejected => {
+  if (!isConfinableWorktree(worktree)) {
+    return refuse('worktree must be an absolute path without . or .. segments')
+  }
+  const realWorktree = resolveWorktree(worktree, refuse)
+  if (typeof realWorktree !== 'string') return realWorktree
+  const directory = join(realWorktree, '.agent-flow')
+  return inspectAgentFlowDirectory(directory, refuse) ?? { realWorktree, directory }
+}
+
+type Counts = { readonly passed: number; readonly total: number; readonly failedSuites: number }
+
+// Read from the fixed path under the worktree, never from a path in the command, and parsed by
+// core's own reader, so the host holds no parsing rule.
+const vitestCountsOf = (io: AppendIo, realWorktree: string): Counts | Rejected => {
+  const report = readContractFile(io, join(realWorktree, reportPath), refuseReport)
+  if ('accepted' in report) return report
+  const parsed = readTestReport(report.text)
+  if (!parsed.accepted) return refuseReport(parsed.message)
+  const { source, passed, total, failedSuites } = parsed.report
+  return source === 'vitest' ? { passed, total, failedSuites } : refuseReport('is not a vitest JSON report')
+}
+
+export function createFactAppender(io: AppendIo): Appender {
+  return function appendFact(worktree, run) {
+    const role = hostRoleOf(run.agentType)
+    if (role === undefined) return refuse('is not host-observed', 'role')
+    const confined = confine(worktree)
+    if ('accepted' in confined) return confined
+    const plan = readPlan(io, join(confined.directory, 'plan.json'))
+    if ('accepted' in plan) return plan
+    const step = decisionStepOf(plan.text, role)
+    if (!step.accepted) return step
+    const counts = vitestCountsOf(io, confined.realWorktree)
+    if ('accepted' in counts) return counts
+    const line = JSON.stringify({
+      at: run.at,
+      tool: 'vitest',
+      step: step.stepId,
+      attachment: 'role',
+      role,
+      roleFrom: 'host',
+      ...counts,
+    })
+    const checked = checkContractFile(factsFile, line)
+    if (!checked.accepted) return checked
+    return appendLine(io, confined.directory, join(confined.directory, factsFile), line, refuse)
+  }
+}

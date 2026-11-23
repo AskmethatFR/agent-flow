@@ -149,9 +149,16 @@ describe('step timing hook process', { timeout: 30_000 }, () => {
 describe('hook registration', () => {
   const settings = JSON.parse(readFileSync(settingsPath, 'utf8'))
 
-  it('registers PostToolUse for TaskCreate and TaskUpdate only', () => {
-    expect(Object.keys(settings.hooks)).toEqual(['PostToolUse'])
-    expect(settings.hooks.PostToolUse).toHaveLength(1)
+  it('registers the step timing hook once, on PostToolUse for TaskCreate and TaskUpdate only', () => {
+    type Group = { matcher: string; hooks: { command: string }[] }
+    const registrations = Object.entries(settings.hooks as Record<string, Group[]>).flatMap(([event, groups]) =>
+      groups.flatMap((group) =>
+        group.hooks
+          .filter((entry) => entry.command.includes('/step-timing/'))
+          .map(() => [event, group.matcher]),
+      ),
+    )
+    expect(registrations).toEqual([['PostToolUse', 'TaskCreate|TaskUpdate']])
     expect(settings.hooks.PostToolUse[0].matcher).toBe('TaskCreate|TaskUpdate')
   })
 

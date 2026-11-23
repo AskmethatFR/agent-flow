@@ -4,6 +4,18 @@
 Feature: Capture: verified facts are kept in a sixth contract file
   Every tool run the capture host observes leaves one line in `.agent-flow/verified-facts.jsonl`, so a fact outlives the run. The file is a frozen contract file like the five before it: the contract check accepts it and still refuses any other name.
 
+  @scenario:S1
+  Scenario Outline: A qa subagent's vitest run leaves one fact on its step
+    Given a plan whose step "1" is in progress for the role qa
+    When a subagent of type "qa" runs "npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json" and it ends <outcome>, <passed> of <total> tests passed
+    Then verified-facts.jsonl holds one line on step "1", attachment role, role qa, roleFrom host, with <passed> passed of <total> and <failedSuites> failed suites
+    And that line passes the contract check
+
+    Examples:
+      | outcome | passed | total | failedSuites |
+      | passing | 3      | 3     | 0            |
+      | failing | 2      | 3     | 1            |
+
   @scenario:S9
   Scenario: The contract check accepts the sixth file and still refuses other names
     Given a worktree whose .agent-flow holds a valid verified-facts.jsonl and a stray verified-facts.json

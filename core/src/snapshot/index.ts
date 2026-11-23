@@ -1,4 +1,5 @@
 export { MAX_DECISIONS_PER_STEP, MAX_REPORTS_PER_BUILD, buildSnapshot } from './snapshot'
+export { readTestReport } from './test-report'
 export type {
   AgentFlowFile,
   AgentStatusUnavailable,

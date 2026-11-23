@@ -10,6 +10,28 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${AGENT_FLOW_HOME:?}/node_modules/.bin/tsx\" --no-cache --tsconfig \"${AGENT_FLOW_HOME:?}/tsconfig.json\" \"${AGENT_FLOW_HOME:?}/capture/claude-code/src/fact-capture/hook.ts\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${AGENT_FLOW_HOME:?}/node_modules/.bin/tsx\" --no-cache --tsconfig \"${AGENT_FLOW_HOME:?}/tsconfig.json\" \"${AGENT_FLOW_HOME:?}/capture/claude-code/src/fact-capture/hook.ts\"",
+            "timeout": 10
+          }
+        ]
       }
     ]
   }
