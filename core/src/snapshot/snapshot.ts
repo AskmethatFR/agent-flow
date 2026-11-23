@@ -53,12 +53,10 @@ export type FactEntries = {
   readonly errors: readonly ContractError[]
 }
 
-const verifiedFactsFile = 'verified-facts.jsonl'
-
 // Only the attached lines become entries, each with its own line as text, in file order.
 export const factEntriesOf = (file: AgentFlowFile): FactEntries => {
   if (typeof file !== 'string') {
-    const errors = file.unavailable === 'missing' ? [] : [unavailableError(verifiedFactsFile, file.unavailable)]
+    const errors = file.unavailable === 'missing' ? [] : [unavailableError(verifiedFactsContract.file, file.unavailable)]
     return { entries: [], errors }
   }
   const lines = file.split('\n')
@@ -275,7 +273,7 @@ const groupDecisions = (
 
 const testReportFile = 'test-report'
 const mutationReportFile = 'mutation-report'
-const verifiedFactFile = 'verified-fact'
+const verifiedFactEntryLabel = 'verified-fact'
 
 type VerifiedFact = { readonly step: string; readonly fact: SnapshotFact }
 
@@ -399,7 +397,7 @@ export const buildSnapshot = (
   const { perStep, errors } = groupDecisions(plan.steps, files.decisions)
   const testReports = readReports(testReportFile, readTestReportFact, plan.steps, files.testReports ?? [])
   const mutationReports = readReports(mutationReportFile, readMutationReportFact, plan.steps, files.mutationReports ?? [])
-  const factLines = readReports(verifiedFactFile, readFactLineFact, plan.steps, files.verifiedFacts?.entries ?? [])
+  const factLines = readReports(verifiedFactEntryLabel, readFactLineFact, plan.steps, files.verifiedFacts?.entries ?? [])
   const verified = [...testReports.verified, ...mutationReports.verified, ...factLines.verified]
   const current = currentStepOf(plan.steps)
   return {

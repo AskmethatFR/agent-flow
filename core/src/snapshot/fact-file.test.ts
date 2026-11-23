@@ -46,7 +46,7 @@ const strykerLine = (detected: number, surviving: number): string =>
     surviving,
   })
 
-const unattachedLine =(): string =>
+const unattachedLine = (): string =>
   factLine({ step: null, attachment: 'unattached', role: null, roleFrom: null })
 
 const factsOf = (verifiedFacts: readonly { step: string; text: string }[], ...ids: string[]) =>
@@ -240,6 +240,7 @@ describe('buildSnapshot verified-facts entries', () => {
     ['an empty text', ''],
     ['a JSON text that is not a fact', '{"tool":"vitest"}'],
     ['two valid lines', `${factLine()}\n${factLine()}`],
+    ['a valid line then a line that is not JSON', `${factLine()}\nnot json`],
     ['a stryker line with no mutant', strykerLine(0, 0)],
   ])('refuses %s without throwing', (_name, text) => {
     const snapshot = factsOf([{ step: 's1', text }], 's1')

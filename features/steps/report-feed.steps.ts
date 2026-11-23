@@ -21,38 +21,27 @@ const workspaceOf = (worktreeRoot: string): WorkspaceSource => ({
   ref: () => ({ refresh: async () => ({ project: { checkout: { worktreeRoot } } }) }),
 })
 
-Given(
-  'the verified-fact file of that worktree has a vitest line of {int} passed out of {int} on step {string}',
-  function (this: ReportFeedWorld, passed: number, total: number, step: string): void {
-    const line = JSON.stringify({
-      at: '2026-11-23T12:00:00.000Z',
-      tool: 'vitest',
-      step,
-      attachment: 'role',
-      role: 'dev-a',
-      roleFrom: 'agent',
-      passed,
-      total,
-      failedSuites: 0,
-    })
-    writeFileSync(join(this.worktree, '.agent-flow', 'verified-facts.jsonl'), `${line}\n`)
-  },
-)
-
-const factFileOf = (world: ReportFeedWorld): string => join(world.worktree, '.agent-flow', 'verified-facts.jsonl')
-
-const validLine = (): string =>
+const validLine = (step = 's1', passed = 1, total = 1): string =>
   `${JSON.stringify({
     at: '2026-11-23T12:00:00.000Z',
     tool: 'vitest',
-    step: 's1',
+    step,
     attachment: 'role',
     role: 'dev-a',
     roleFrom: 'agent',
-    passed: 1,
-    total: 1,
+    passed,
+    total,
     failedSuites: 0,
   })}\n`
+
+const factFileOf = (world: ReportFeedWorld): string => join(world.worktree, '.agent-flow', 'verified-facts.jsonl')
+
+Given(
+  'the verified-fact file of that worktree has a vitest line of {int} passed out of {int} on step {string}',
+  function (this: ReportFeedWorld, passed: number, total: number, step: string): void {
+    writeFileSync(factFileOf(this), validLine(step, passed, total))
+  },
+)
 
 const obstacles: Record<string, (world: ReportFeedWorld) => void> = {
   'a directory': (world) => mkdirSync(factFileOf(world)),
@@ -133,6 +122,6 @@ Then(
   },
 )
 
-Then('the snapshot has no error',function (this: ReportFeedWorld): void {
+Then('the snapshot has no error', function (this: ReportFeedWorld): void {
   assert.deepEqual(this.snapshot.errors, [])
 })
