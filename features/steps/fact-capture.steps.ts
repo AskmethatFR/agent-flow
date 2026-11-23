@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -113,20 +113,13 @@ const endedEventOf = (outcome: string): object =>
 // tool_response.interrupted (docs/technical/decisions/evidence/verified-facts/capture-128/run.txt H2).
 const interruptOf = (outcome: string): object => (outcome === 'interrupted' ? { is_interrupt: true } : {})
 
-// The main session's events carry no agent_type (docs/technical/decisions/verified-facts.md S12 (a)).
-const runVitest = (
-  world: FactCaptureWorld,
-  agentType: string | undefined,
-  command: string,
-  outcome: string,
-  passed: number,
-  total: number,
-): void => {
-  const reportDirectory = join(world.worktree, 'reports', 'vitest')
-  mkdirSync(reportDirectory, { recursive: true })
+const reportPathOf = (world: FactCaptureWorld): string => join(world.worktree, 'reports', 'vitest', 'vitest.json')
+
+const writeReport = (world: FactCaptureWorld, passed: number, total: number): void => {
+  mkdirSync(join(world.worktree, 'reports', 'vitest'), { recursive: true })
   const failed = total - passed
   writeFileSync(
-    join(reportDirectory, 'vitest.json'),
+    reportPathOf(world),
     JSON.stringify({
       numTotalTests: total,
       numPassedTests: passed,
@@ -135,6 +128,20 @@ const runVitest = (
       testResults: [{ name: 'tests/a.test.ts', message: '', assertionResults: [] }],
     }),
   )
+}
+
+// The main session's events carry no agent_type (docs/technical/decisions/verified-facts.md S12 (a)).
+// The hook reads its own clock as the end of the run, so a report written just before the spawn is
+// inside [end - duration_ms, end]. The hook starts some 110 ms after the spawn on an idle machine,
+// seconds under CPU oversubscription: a run that must leave a fact lasts far longer than that.
+const freshRunDuration = 60_000
+const spawnHook = (
+  world: FactCaptureWorld,
+  agentType: string | undefined,
+  command: string,
+  outcome: string,
+  durationMs: number,
+): void => {
   const result = spawnSync(join(repo, 'node_modules/.bin/tsx'), [factHook], {
     cwd: world.worktree,
     input: JSON.stringify({
@@ -146,7 +153,7 @@ const runVitest = (
       tool_name: 'Bash',
       tool_input: { command, description: 'Run vitest' },
       tool_use_id: 'toolu_01',
-      duration_ms: 631,
+      duration_ms: durationMs,
     }),
     encoding: 'utf8',
     env: { ...process.env, CLAUDE_PROJECT_DIR: world.worktree },
@@ -155,6 +162,53 @@ const runVitest = (
   assert.equal(result.stdout, '')
   assert.equal(result.stderr, '')
 }
+
+const runVitest = (
+  world: FactCaptureWorld,
+  agentType: string | undefined,
+  command: string,
+  outcome: string,
+  passed: number,
+  total: number,
+): void => {
+  writeReport(world, passed, total)
+  spawnHook(world, agentType, command, outcome, freshRunDuration)
+}
+
+const sleep = (ms: number): void => {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
+// The report is prepared, then a second passes before the run is observed: longer than the
+// 631 ms the run lasts, so a report of this step cannot have been written during it.
+const pauseBeforeRun = 1000
+
+const preparations: Record<string, (world: FactCaptureWorld) => void> = {
+  'written before the run': () => {},
+  // The mtime is set 700 ms ahead, inside the run to come; the ctime stays at this step's instant.
+  'mtime moved into the run, changed before the run': (world) => {
+    const mtime = new Date(Date.now() + 700)
+    utimesSync(reportPathOf(world), mtime, mtime)
+  },
+}
+
+Given(
+  'a vitest report of {int} of {int} tests passed, {string}',
+  function (this: FactCaptureWorld, passed: number, total: number, state: string): void {
+    const prepare = preparations[state]
+    assert.ok(prepare, `unknown report state ${state}`)
+    writeReport(this, passed, total)
+    prepare(this)
+    sleep(pauseBeforeRun)
+  },
+)
+
+When(
+  'a subagent of type {string} runs {string} and it ends {word}, after {int} ms',
+  function (this: FactCaptureWorld, agentType: string, command: string, outcome: string, durationMs: number): void {
+    spawnHook(this, agentType, command, outcome, durationMs)
+  },
+)
 
 When(
   'a subagent of type {string} runs {string} and it ends {word}, {int} of {int} tests passed',

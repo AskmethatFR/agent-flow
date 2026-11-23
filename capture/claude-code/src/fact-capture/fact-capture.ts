@@ -30,6 +30,9 @@ const endedRun = (payload: object): boolean => {
   )
 }
 
+// duration_ms is the length of the run: a safe non-negative integer, or the run is not observed.
+const isDuration = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0
+
 export function captureFact(
   input: string,
   projectDir: string | undefined,
@@ -39,5 +42,7 @@ export function captureFact(
   const payload = parse(input)
   if (field(payload, 'tool_name') !== 'Bash' || !endedRun(payload)) return undefined
   if (!isVitestCommand(field(asObject(field(payload, 'tool_input')), 'command'))) return undefined
-  return appendFact(projectDir, { agentType: field(payload, 'agent_type'), at: now().toISOString() })
+  const durationMs = field(payload, 'duration_ms')
+  if (!isDuration(durationMs)) return undefined
+  return appendFact(projectDir, { agentType: field(payload, 'agent_type'), at: now().toISOString(), durationMs })
 }

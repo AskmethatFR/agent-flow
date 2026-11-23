@@ -81,7 +81,13 @@ const readBounded = (io: ReadIo, fd: number, refuse: Refuse): string | Rejected 
   return total > readLimit ? refuse('is too large') : buffer.toString('utf8', 0, total)
 }
 
-export type ContractFile = { readonly text: string; readonly mode: number }
+// mtimeMs and ctimeMs come from the fstat of the opened file, the one the text is read from.
+export type ContractFile = {
+  readonly text: string
+  readonly mode: number
+  readonly mtimeMs: number
+  readonly ctimeMs: number
+}
 
 export const readContractFile = (io: ReadIo, path: string, refuse: Refuse): ContractFile | Rejected => {
   let fd: number
@@ -94,7 +100,9 @@ export const readContractFile = (io: ReadIo, path: string, refuse: Refuse): Cont
     const stats = fstatSync(fd)
     if (!stats.isFile()) return refuse(notRegularFile)
     const text = readBounded(io, fd, refuse)
-    return typeof text === 'string' ? { text, mode: stats.mode & 0o777 } : text
+    return typeof text === 'string'
+      ? { text, mode: stats.mode & 0o777, mtimeMs: stats.mtimeMs, ctimeMs: stats.ctimeMs }
+      : text
   } catch {
     return refuse('cannot be read')
   } finally {

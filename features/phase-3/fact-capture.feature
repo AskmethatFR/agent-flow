@@ -38,6 +38,18 @@ Feature: Capture: verified facts are kept in a sixth contract file
       | a subagent of type "other:qa"      | null | null     |
       | the main session                   | null | null     |
 
+  @scenario:S5
+  Scenario Outline: A report that was not written during the run leaves no fact
+    Given a plan whose step "1" is in progress for the role qa
+    And a vitest report of 3 of 3 tests passed, "<state>"
+    When a subagent of type "qa" runs "npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json" and it ends passing, after 631 ms
+    Then verified-facts.jsonl holds no line
+
+    Examples:
+      | case                                                                         | state                                            |
+      | a report written before the run                                              | written before the run                           |
+      | a report whose mtime was moved into the run but which was changed before it | mtime moved into the run, changed before the run |
+
   @scenario:S6
   Scenario Outline: A run that is not exactly the vitest form, or that did not end, leaves no fact
     Given a plan whose step "1" is in progress for the role qa

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -6,7 +6,9 @@ import { MAX_TEXT_LENGTH } from '@agent-flow/core/contracts'
 import { captureFact } from './fact-capture'
 
 const literal = 'npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json'
-const end = new Date('2026-11-23T12:00:00.000Z')
+// The run ends five seconds after this module loads and lasts a minute: the report written in
+// beforeEach falls inside it, mtime and ctime both.
+const end = new Date(Date.now() + 5000)
 const now = () => end
 
 const qaStep = {
@@ -26,7 +28,7 @@ const passing = (overlays: Record<string, unknown> = {}, response: Record<string
     tool_name: 'Bash',
     tool_input: { command: literal, description: 'Run vitest' },
     tool_response: { stdout: 'JSON report written', stderr: '', interrupted: false, isImage: false, ...response },
-    duration_ms: 631,
+    duration_ms: 60_000,
     ...overlays,
   })
 
@@ -140,6 +142,44 @@ describe('captureFact', () => {
     const event = passing({ padding: '' })
     return event.replace('"padding":""', `"padding":"${'x'.repeat(length - event.length)}"`)
   }
+
+  const stale = {
+    accepted: false,
+    errors: [{ file: 'reports/vitest/vitest.json', location: null, field: null, message: 'was not written during the run' }],
+  }
+
+  it('takes duration_ms as the length of the run that ends at the clock: the report must fall inside it', () => {
+    const { mtimeMs, ctimeMs } = statSync(join(worktree, 'reports', 'vitest', 'vitest.json'))
+    const endAt = (duration: number) => () => new Date(Math.floor(Math.min(mtimeMs, ctimeMs)) + duration)
+    expect(captureFact(passing({ duration_ms: 4999 }), worktree, endAt(5000))).toEqual(stale)
+    expect(existsSync(factsPath)).toBe(false)
+    expect(captureFact(passing({ duration_ms: 5000 }), worktree, endAt(5000))).toEqual({ accepted: true })
+  })
+
+  it('writes nothing for a report older than the run, whatever the event says of the report', () => {
+    expect(captureFact(passing({ duration_ms: 1 }), worktree, now)).toEqual(stale)
+    expect(existsSync(factsPath)).toBe(false)
+  })
+
+  it.each([
+    ['no duration_ms', undefined],
+    ['a string', '631'],
+    ['a fraction', 631.5],
+    ['a negative integer', -1],
+    ['null (what JSON makes of NaN and Infinity)', null],
+    ['an integer past the safe range', Number.MAX_SAFE_INTEGER + 1],
+    ['an object', {}],
+  ])('writes nothing for a duration_ms that is %s', (_label, duration) => {
+    expect(captureFact(passing({ duration_ms: duration }), worktree, now)).toBeUndefined()
+    expect(existsSync(factsPath)).toBe(false)
+  })
+
+  it.each([
+    ['zero', 0, stale],
+    ['the largest safe integer', Number.MAX_SAFE_INTEGER, { accepted: true }],
+  ])('reads %s as a duration_ms', (_label, duration, expected) => {
+    expect(captureFact(passing({ duration_ms: duration }), worktree, now)).toEqual(expected)
+  })
 
   it('reads an input of exactly MAX_TEXT_LENGTH characters', () => {
     expect(captureFact(paddedTo(MAX_TEXT_LENGTH), worktree, now)).toEqual({ accepted: true })

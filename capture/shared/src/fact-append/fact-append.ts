@@ -13,9 +13,10 @@ import {
   refusalFor,
   resolveWorktree,
 } from '../shared/confinement'
-import type { Rejected } from '../shared/confinement'
+import type { ContractFile, Rejected } from '../shared/confinement'
 
-export type ObservedRun = { readonly agentType: unknown; readonly at: string }
+// The run is [at - durationMs, at]: at is its end, durationMs its length (a safe non-negative integer).
+export type ObservedRun = { readonly agentType: unknown; readonly at: string; readonly durationMs: number }
 
 type Appender = (worktree: string, run: ObservedRun) => ValidationResult
 
@@ -50,11 +51,21 @@ const confine = (worktree: string): Confined | Rejected => {
 
 type Counts = { readonly passed: number; readonly total: number; readonly failedSuites: number }
 
+// Docs verified-facts.md S12: the report is fresh only when both its modification time and its
+// change time fall in the observed run. mtime alone proves nothing (touch -d sets it to any
+// instant); the ctime stays at the real time of the change. The ends are whole milliseconds, as
+// `at` is, so a time is compared by its millisecond.
+const writtenDuring = (run: ObservedRun, file: ContractFile): boolean => {
+  const end = Date.parse(run.at)
+  return [file.mtimeMs, file.ctimeMs].every((time) => time >= end - run.durationMs && Math.floor(time) <= end)
+}
+
 // Read from the fixed path under the worktree, never from a path in the command, and parsed by
 // core's own reader, so the host holds no parsing rule.
-const vitestCountsOf = (io: AppendIo, realWorktree: string): Counts | Rejected => {
+const vitestCountsOf = (io: AppendIo, realWorktree: string, run: ObservedRun): Counts | Rejected => {
   const report = readContractFile(io, join(realWorktree, reportPath), refuseReport)
   if ('accepted' in report) return report
+  if (!writtenDuring(run, report)) return refuseReport('was not written during the run')
   const parsed = readTestReport(report.text)
   if (!parsed.accepted) return refuseReport(parsed.message)
   const { source, passed, total, failedSuites } = parsed.report
@@ -77,7 +88,7 @@ export function createFactAppender(io: AppendIo): Appender {
     if ('accepted' in plan) return plan
     const step = decisionStepOf(plan.text, role)
     if (!step.accepted) return relabelled(step)
-    const counts = vitestCountsOf(io, confined.realWorktree)
+    const counts = vitestCountsOf(io, confined.realWorktree, run)
     if ('accepted' in counts) return counts
     const line = JSON.stringify({
       at: run.at,

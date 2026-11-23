@@ -6,15 +6,23 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
+  statSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { appendFact } from './index'
+import { appendFact as appendFactOf } from './index'
 
-const at = '2026-11-23T12:00:00.000Z'
+// The run ends five seconds after this module loads and lasts a minute: the report (written in
+// beforeEach, rewritten by a few tests) falls inside the run, mtime and ctime both.
+const durationMs = 60_000
+const at = new Date(Date.now() + 5000).toISOString()
+
+const appendFact = (worktree: string, run: { agentType: unknown; at: string; durationMs?: number }) =>
+  appendFactOf(worktree, { durationMs, ...run })
 
 const stepOf = (id: string, role: string, status: string) => ({
   id,
@@ -136,7 +144,7 @@ describe('appendFact', () => {
   })
 
   it('writes nothing when the line would fail the contract check of verified-facts.jsonl', () => {
-    const result = appendFact(worktree, { agentType: 'qa', at: '+010000-01-01T00:00:00.000Z' })
+    const result = appendFact(worktree, { agentType: 'qa', at: at.replace('Z', '+00:00') })
     expect(result).toMatchObject({ accepted: false, errors: [{ file: 'verified-facts.jsonl', location: 1, field: 'at' }] })
     expect(existsSync(factsPath)).toBe(false)
   })
@@ -232,5 +240,59 @@ describe('appendFact', () => {
   ])('writes nothing when %s', (_label, arrange, expected) => {
     expect(appendFact(arrange(), { agentType: 'qa', at })).toMatchObject(expected)
     expect(existsSync(factsPath)).toBe(false)
+  })
+})
+
+// Freshness (docs/technical/decisions/verified-facts.md S12): the report counts only when its mtime
+// and its ctime, both from the fstat of the opened file, fall in [at - durationMs, at]. utimes
+// sets the mtime to any instant, but the ctime becomes the real time of that call, so a test
+// builds a window around the ctime it reads back, or puts the window away from the real clock.
+describe('appendFact report freshness', () => {
+  const stale = {
+    accepted: false,
+    errors: [{ file: 'reports/vitest/vitest.json', location: null, field: null, message: 'was not written during the run' }],
+  }
+
+  const runOf = (end: number, duration: number) => ({
+    agentType: 'qa',
+    at: new Date(end).toISOString(),
+    durationMs: duration,
+  })
+
+  // Sets the mtime (seconds are a double: the ms are only as exact as the kernel stores them) and
+  // reads both times back as the fstat of the report gives them, in whole milliseconds.
+  const touched = (mtimeMs: number) => {
+    const report = join(worktree, 'reports', 'vitest', 'vitest.json')
+    utimesSync(report, mtimeMs / 1000, mtimeMs / 1000)
+    const { mtimeMs: mtime, ctimeMs: ctime } = statSync(report)
+    return { mtime: Math.floor(mtime), ctime: Math.floor(ctime) }
+  }
+
+  it('writes nothing for a report written before the run', () => {
+    const { ctime } = touched(Date.now())
+    expect(appendFact(worktree, runOf(ctime + 10_000, 1000))).toEqual(stale)
+    expect(existsSync(factsPath)).toBe(false)
+  })
+
+  it('writes nothing for a report whose mtime was moved into the run but which was changed before it', () => {
+    const end = Date.now() + 10_000
+    touched(end - 500)
+    expect(appendFact(worktree, runOf(end, 1000))).toEqual(stale)
+    expect(existsSync(factsPath)).toBe(false)
+    expect(appendFact(worktree, runOf(end, 60_000))).toEqual({ accepted: true })
+  })
+
+  // The mtime is set to a fraction of a millisecond, except for the run start: there it is a whole
+  // second, so that it is exactly the start (a fraction would make `>` and `>=` the same).
+  it.each<[string, (now: number) => number, (mtime: number, ctime: number) => [number, number], (mtime: number, ctime: number) => [number, number]]>([
+    ['the run end is the ctime', (now) => now - 100, (_m, c) => [c, 5000], (_m, c) => [c - 1, 5000]],
+    ['the run start is the ctime', (now) => now + 2500.5, (_m, c) => [c + 5000, 5000], (_m, c) => [c + 5000, 4999]],
+    ['the run end is the mtime', (now) => now + 5000.5, (m) => [m, 60_000], (m) => [m - 1, 60_000]],
+    ['the run start is the mtime', (now) => Math.floor(now / 1000) * 1000 - 3000, (m) => [m + 60_000, 60_000], (m) => [m + 60_000, 59_999]],
+  ])('takes a report when %s, and refuses it one millisecond outside', (_label, mtimeOf, inside, outside) => {
+    const { mtime, ctime } = touched(mtimeOf(Date.now()))
+    expect(appendFact(worktree, runOf(...outside(mtime, ctime)))).toEqual(stale)
+    expect(existsSync(factsPath)).toBe(false)
+    expect(appendFact(worktree, runOf(...inside(mtime, ctime)))).toEqual({ accepted: true })
   })
 })

@@ -33,7 +33,7 @@ const eventOf = (hookEventName: string, ending: Record<string, unknown>) =>
     tool_name: 'Bash',
     tool_input: { command: literal, description: 'Run vitest' },
     tool_use_id: 'toolu_01',
-    duration_ms: 631,
+    duration_ms: 60_000,
     ...ending,
   })
 
