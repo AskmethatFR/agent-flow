@@ -70,6 +70,16 @@ describe('factEntriesOf', () => {
     expect(factEntriesOf({ unavailable: 'missing' })).toEqual({ entries: [], errors: [] })
   })
 
+  it.each([
+    ['unreadable', 'cannot be read'],
+    ['too-large', 'exceeds 1048576 characters'],
+  ] as const)('gives one verified-facts.jsonl error and no entry for a %s file', (unavailable, message) => {
+    expect(factEntriesOf({ unavailable })).toEqual({
+      entries: [],
+      errors: [{ file: 'verified-facts.jsonl', location: null, field: null, message }],
+    })
+  })
+
   it('keeps the contract error of a malformed line next to the entries of the valid ones', () => {
     const valid = factLine()
     expect(factEntriesOf(`not json\n${valid}\n`)).toEqual({
@@ -271,6 +281,92 @@ describe('buildSnapshot verified-facts entries', () => {
       now,
     )
     expect(snapshot.errors.map((error) => error.file)).toEqual(['mutation-report', 'verified-fact', 'ci-status'])
+  })
+
+  it('puts the verified-facts.jsonl errors after those of mutation-report and before verified-fact, ci-status and agent-state', () => {
+    const snapshot = buildSnapshot(
+      {
+        plan: planOf('s1'),
+        verifiedFacts: {
+          entries: [{ step: 'ghost', text: factLine() }],
+          errors: [{ file: 'verified-facts.jsonl', location: null, field: null, message: 'cannot be read' }],
+        },
+        mutationReports: [{ step: 'ghost', text: '{}' }],
+        ciStatus: 'not json',
+      },
+      now,
+      { unavailable: 'host-error' },
+    )
+    expect(snapshot.errors.map((error) => error.file)).toEqual([
+      'mutation-report',
+      'verified-facts.jsonl',
+      'verified-fact',
+      'ci-status',
+      'agent-state',
+    ])
+  })
+
+  it('keeps the steps and the other facts when the fact file cannot be read', () => {
+    const snapshot = buildSnapshot(
+      {
+        plan: planOf('s1'),
+        testReports: [
+          {
+            step: 's1',
+            text: JSON.stringify({ numTotalTests: 2, numPassedTests: 2, numFailedTestSuites: 0 }),
+          },
+        ],
+        verifiedFacts: factEntriesOf({ unavailable: 'unreadable' }),
+      },
+      now,
+    )
+    expect(snapshot.steps.map((step) => step.facts.map((fact) => fact.label))).toEqual([['2 of 2 passed']])
+    expect(snapshot.errors).toEqual([
+      { file: 'verified-facts.jsonl', location: null, field: null, message: 'cannot be read' },
+    ])
+  })
+
+  it('gives a malformed line its error while the lines around it still give facts', () => {
+    const file = `${factLine({ passed: 1, total: 1 })}\nnot json\n${factLine({ passed: 3, total: 3 })}\n`
+    const snapshot = buildSnapshot({ plan: planOf('s1'), verifiedFacts: factEntriesOf(file) }, now)
+    expect(snapshot.steps[0]?.facts.map((fact) => fact.label)).toEqual(['1 of 1 passed', '3 of 3 passed'])
+    expect(snapshot.errors).toEqual([
+      { file: 'verified-facts.jsonl', location: 2, field: null, message: 'is not valid JSON' },
+    ])
+  })
+
+  it('reads the last 200 entries and adds one bound error for 201', () => {
+    const file = Array.from({ length: 201 }, (_, index) => factLine({ passed: index, total: 300 })).join('\n')
+    const snapshot = buildSnapshot({ plan: planOf('s1'), verifiedFacts: factEntriesOf(file) }, now)
+    const labels = snapshot.steps[0]?.facts.map((fact) => fact.label)
+    expect(labels).toHaveLength(50)
+    expect(labels?.at(-1)).toBe('200 of 300 passed')
+    expect(snapshot.steps[0]?.omittedFacts).toBe(150)
+    expect(snapshot.errors).toEqual([
+      {
+        file: 'verified-fact',
+        location: null,
+        field: null,
+        message: 'too many reports, only the last 200 are read',
+      },
+    ])
+  })
+
+  it('adds no fact-file error when the plan is unusable', () => {
+    const snapshot = buildSnapshot({ plan: 'not json', verifiedFacts: factEntriesOf({ unavailable: 'unreadable' }) }, now)
+    expect(snapshot.steps).toEqual([])
+    expect(snapshot.errors.map((error) => error.file)).toEqual(['plan.json'])
+  })
+
+  it.each([
+    ['an unattached line', unattachedLine()],
+    ['a line of another step', factLine({ step: 's2' })],
+  ])('refuses an entry of s1 whose text is %s', (_name, text) => {
+    const snapshot = factsOf([{ step: 's1', text }], 's1', 's2')
+    expect(snapshot.steps.map((step) => step.facts)).toEqual([[], []])
+    expect(snapshot.errors).toEqual([
+      { file: 'verified-fact', location: 1, field: null, message: 'is not a verified-facts.jsonl line' },
+    ])
   })
 
   it('lists the facts of a step as declared, test, mutation, then file entries', () => {

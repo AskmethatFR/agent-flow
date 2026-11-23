@@ -10,6 +10,7 @@ export type ReadFactLineResult =
 const refused: ReadFactLineResult = { accepted: false, message: 'is not a verified-facts.jsonl line' }
 
 type FactLine = {
+  readonly step: string | null
   readonly tool: ParsedTestReport['source'] | ParsedMutationReport['source']
   readonly passed: number
   readonly total: number
@@ -24,9 +25,10 @@ const reportOf = (line: FactLine): ParsedTestReport | ParsedMutationReport =>
     : { source: line.tool, passed: line.passed, total: line.total, failedSuites: line.failedSuites }
 
 // The text is one line of verified-facts.jsonl, validated again here: an entry can be hand-made.
-export const readFactLine = (text: string): ReadFactLineResult => {
+export const readFactLine = (text: string, step: string): ReadFactLineResult => {
   const { records, errors } = readJsonl(verifiedFactsContract, text)
   const [only] = records
   if (errors.length > 0 || records.length !== 1) return refused
-  return { accepted: true, report: reportOf(only?.record as FactLine) }
+  const line = only?.record as FactLine
+  return line.step === step ? { accepted: true, report: reportOf(line) } : refused
 }

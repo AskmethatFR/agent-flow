@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import * as fs from 'node:fs'
-import { writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { linkSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Given, Then, When } from '@cucumber/cucumber'
 import type { Snapshot } from '@agent-flow/core/snapshot'
@@ -37,6 +38,47 @@ Given(
   },
 )
 
+const factFileOf = (world: ReportFeedWorld): string => join(world.worktree, '.agent-flow', 'verified-facts.jsonl')
+
+const validLine = (): string =>
+  `${JSON.stringify({
+    at: '2026-11-23T12:00:00.000Z',
+    tool: 'vitest',
+    step: 's1',
+    attachment: 'role',
+    role: 'dev-a',
+    roleFrom: 'agent',
+    passed: 1,
+    total: 1,
+    failedSuites: 0,
+  })}\n`
+
+const obstacles: Record<string, (world: ReportFeedWorld) => void> = {
+  'a directory': (world) => mkdirSync(factFileOf(world)),
+  'a FIFO': (world) => execFileSync('mkfifo', [factFileOf(world)]),
+  'a hard link': (world) => {
+    const original = join(world.worktree, 'original-facts.jsonl')
+    writeFileSync(original, validLine())
+    linkSync(original, factFileOf(world))
+  },
+}
+
+Given(
+  /^the verified-fact file of that worktree is (a directory|a FIFO|a hard link)$/,
+  function (this: ReportFeedWorld, obstacle: string): void {
+    obstacles[obstacle]?.(this)
+  },
+)
+
+Given(
+  'the verified-fact file of that worktree is a symlink to a file outside the worktree',
+  function (this: ReportFeedWorld): void {
+    const outside = join(this.worktree, '..', 'outside-facts.jsonl')
+    writeFileSync(outside, validLine())
+    symlinkSync(outside, factFileOf(this))
+  },
+)
+
 When(
   'the panel asks for the snapshot of that worktree without agents',
   async function (this: ReportFeedWorld): Promise<void> {
@@ -70,6 +112,13 @@ Then('the snapshot carries no verified fact', function (this: ReportFeedWorld): 
   )
 })
 
-Then('the snapshot has no error', function (this: ReportFeedWorld): void {
+Then(
+  'the snapshot has the single error {string} saying {string}',
+  function (this: ReportFeedWorld, file: string, message: string): void {
+    assert.deepEqual(this.snapshot.errors, [{ file, location: null, field: null, message }])
+  },
+)
+
+Then('the snapshot has no error',function (this: ReportFeedWorld): void {
   assert.deepEqual(this.snapshot.errors, [])
 })

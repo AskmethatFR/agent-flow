@@ -17,3 +17,27 @@ Feature: Verified facts in the snapshot
     When the panel asks for the snapshot of that worktree without agents
     Then the snapshot carries no verified fact
     And the snapshot has no error
+
+  @scenario:S3
+  Scenario Outline: An unreadable fact file adds a snapshot error and leaves the rest intact
+    Given a worktree has the step "dev-a" in progress
+    And the verified-fact file of that worktree is <obstacle>
+    When the panel asks for the snapshot of that worktree without agents
+    Then the plan steps of the snapshot are intact
+    And the snapshot carries no verified fact
+    And the snapshot has the single error "verified-facts.jsonl" saying "cannot be read"
+
+    Examples:
+      | obstacle    |
+      | a directory |
+      | a FIFO      |
+      | a hard link |
+
+  @scenario:S4
+  Scenario: A symlinked fact file is refused
+    Given a worktree has the step "dev-a" in progress
+    And the verified-fact file of that worktree is a symlink to a file outside the worktree
+    When the panel asks for the snapshot of that worktree without agents
+    Then the plan steps of the snapshot are intact
+    And the snapshot carries no verified fact
+    And the snapshot has the single error "verified-facts.jsonl" saying "cannot be read"

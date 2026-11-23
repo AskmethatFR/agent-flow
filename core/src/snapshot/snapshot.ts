@@ -53,9 +53,14 @@ export type FactEntries = {
   readonly errors: readonly ContractError[]
 }
 
+const verifiedFactsFile = 'verified-facts.jsonl'
+
 // Only the attached lines become entries, each with its own line as text, in file order.
 export const factEntriesOf = (file: AgentFlowFile): FactEntries => {
-  if (typeof file !== 'string') return { entries: [], errors: [] }
+  if (typeof file !== 'string') {
+    const errors = file.unavailable === 'missing' ? [] : [unavailableError(verifiedFactsFile, file.unavailable)]
+    return { entries: [], errors }
+  }
   const lines = file.split('\n')
   const { records, errors } = readJsonl(verifiedFactsContract, file)
   const entries = records.flatMap(({ record, location }) => {
@@ -283,7 +288,7 @@ type ReportOutcome = { readonly verified: VerifiedFact } | { readonly error: Con
 
 type FactReading = { readonly fact: SnapshotFact } | { readonly message: string }
 
-type ReportReader = (text: string) => FactReading
+type ReportReader = (text: string, step: string) => FactReading
 
 const readTestReportFact: ReportReader = (text) => {
   const result = readTestReport(text)
@@ -295,8 +300,8 @@ const readMutationReportFact: ReportReader = (text) => {
   return result.accepted ? { fact: mutationFactOf(result.report) } : { message: result.message }
 }
 
-const readFactLineFact: ReportReader = (text) => {
-  const result = readFactLine(text)
+const readFactLineFact: ReportReader = (text, step) => {
+  const result = readFactLine(text, step)
   if (!result.accepted) return { message: result.message }
   const { report } = result
   return { fact: report.source === 'stryker' ? mutationFactOf(report) : verifiedFactOf(report) }
@@ -312,7 +317,7 @@ const outcomeOfReport = (
   if (!stepIds.has(step)) {
     return { error: { file, location, field: 'step', message: 'is not a step of plan.json' } }
   }
-  const reading = read(text)
+  const reading = read(text, step)
   if ('message' in reading) {
     return { error: { file, location, field: null, message: reading.message } }
   }
@@ -408,6 +413,7 @@ export const buildSnapshot = (
       ...errors,
       ...testReports.errors,
       ...mutationReports.errors,
+      ...(files.verifiedFacts?.errors ?? []),
       ...factLines.errors,
       ...ciErrors,
       ...agentErrors,
