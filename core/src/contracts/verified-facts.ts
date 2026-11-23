@@ -1,0 +1,73 @@
+import verifiedFactsSchema from '../../schemas/verified-facts.schema.json' with { type: 'json' }
+import type { ValidationResult } from './contract-error'
+import { validateJsonl } from './jsonl'
+import type { JsonlContract } from './jsonl'
+import type { SchemaViolation } from './schema-subset'
+
+const countsByTool: Readonly<Record<string, readonly string[]>> = {
+  vitest: ['passed', 'total', 'failedSuites'],
+  'cucumber-js': ['passed', 'total', 'failedSuites'],
+  stryker: ['detected', 'surviving'],
+}
+
+const allCounts = Object.values(countsByTool).flat()
+
+const isSafeCount = (value: unknown): boolean => Number.isSafeInteger(value) && (value as number) >= 0
+
+// Runs after the schema, so `tool` is one of the keys of countsByTool.
+const countRule = (record: unknown): SchemaViolation | undefined => {
+  const fact = record as Record<string, unknown>
+  const own = countsByTool[fact.tool as string] as readonly string[]
+  for (const count of own) {
+    if (!Object.hasOwn(fact, count)) return { path: [count], message: 'is required' }
+    if (!isSafeCount(fact[count])) return { path: [count], message: 'must be a non-negative integer' }
+  }
+  const foreign = allCounts.find((count) => !own.includes(count) && Object.hasOwn(fact, count))
+  if (foreign !== undefined) return { path: [foreign], message: 'is not allowed' }
+  if (fact.tool === 'stryker') {
+    return fact.detected === 0 && fact.surviving === 0
+      ? { path: ['detected'], message: 'must not be 0 when surviving is 0' }
+      : undefined
+  }
+  return (fact.passed as number) > (fact.total as number)
+    ? { path: ['passed'], message: 'must not exceed total' }
+    : undefined
+}
+
+// Runs after the counts. The schema has already fixed the types: step, role and roleFrom are
+// strings or null, and attachment is one of role, only-step, unattached.
+const pairingRule = (record: unknown): SchemaViolation | undefined => {
+  const fact = record as Record<string, unknown>
+  const unattached = fact.attachment === 'unattached'
+  if (fact.step === null && !unattached) {
+    return { path: ['attachment'], message: 'must be unattached when step is null' }
+  }
+  if (fact.step !== null && unattached) {
+    return { path: ['attachment'], message: 'must not be unattached when step is set' }
+  }
+  if (fact.role !== null && fact.roleFrom === null) {
+    return { path: ['roleFrom'], message: 'must not be null when role is set' }
+  }
+  if (fact.role === null && fact.roleFrom !== null) {
+    return { path: ['roleFrom'], message: 'must be null when role is null' }
+  }
+  return fact.attachment === 'role' && fact.role === null
+    ? { path: ['role'], message: 'must not be null when attachment is role' }
+    : undefined
+}
+
+const recordRule = (record: unknown): SchemaViolation | undefined =>
+  countRule(record) ?? pairingRule(record)
+
+// 138 is the shortest valid compact line of any tool: the stryker line with 0 detected and 1
+// surviving, a step, attachment role, role qa and roleFrom host (the shortest vitest line is 148
+// and the shortest cucumber-js line 153). The pairings allow no shorter one.
+export const verifiedFactsContract: JsonlContract = {
+  file: 'verified-facts.jsonl',
+  schema: verifiedFactsSchema,
+  minimumRecordLength: 138,
+  recordRule,
+}
+
+export const validateVerifiedFacts = (text: string): ValidationResult =>
+  validateJsonl(verifiedFactsContract, text)

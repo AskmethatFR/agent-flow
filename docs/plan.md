@@ -67,7 +67,8 @@ The layout above is the Paseo host. A later local/standalone host reuses `core` 
 ├── decisions.jsonl   One line per decision, appended by agents
 ├── requests.jsonl    Questions and deviation approvals awaiting a human
 ├── responses.jsonl   Human answers, read back by agents
-└── scope.json        Expected files/paths for the issue
+├── scope.json        Expected files/paths for the issue
+└── verified-facts.jsonl  One line per observed tool run, appended by the capture hook
 ```
 
 ## Data contracts (draft, to freeze in Phase 0)

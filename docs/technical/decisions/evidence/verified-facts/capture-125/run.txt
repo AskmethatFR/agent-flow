@@ -1,0 +1,83 @@
+Fact-capture spike (#125, Part 1): a real Claude Code hook capture and the report sizes, 2026-11-23
+=====================================================================================================
+
+Setup
+  base commit 934d72162eba7df4af15f623d6efb14478116f37, worktree with npm ci, node v24.22.3
+  vitest 5.0.5, @cucumber/cucumber 13.3.0, @stryker-mutator/core 10.1.1 (package.json:24-30, exact pins)
+  Claude Code 2.1.330 (claude --version)
+  <repo> = the worktree; <scratch> = a temp directory outside the repo; ~ = the home directory
+  ids, transcript paths and the account are replaced by placeholders in every committed file
+
+H. Hook capture (hook-events.excerpt.json beside this file: all 14 events of the run, sanitised, in order)
+  <scratch>/proj/.claude/settings.json registers one command hook, <scratch>/bin/tee-hook.sh
+  (cat > <scratch>/events/<ns>-<pid>.json; exit 0), on:
+    PostToolUse matcher "*", PreToolUse matcher "Bash|Agent|Task", SubagentStart, SubagentStop, Stop
+  custom agent (--agents): probe-worker, tools [Bash], model haiku
+  cd <scratch>/proj && claude -p --model haiku --setting-sources project --strict-mcp-config \
+      --agents <scratch>/agents.json --allowedTools Bash Agent --output-format json \
+      "1) Bash: echo main-run 2) Bash: cat <scratch>/data/vitest.json 3) Bash: cat <scratch>/data/mutation.json
+       4) Agent, subagent_type probe-worker, prompt: Run this Bash command: echo sub-run."   -> exit 0, 14 events
+  (<scratch>/data/vitest.json and mutation.json are the reports of V and S below, byte-identical: same sha256)
+
+  H1 identity, main session (excerpt events 1-7, 9, 13-14)
+     keys: session_id, transcript_path, cwd, prompt_id, permission_mode, effort, hook_event_name, tool_name,
+           tool_input, tool_response, tool_use_id, duration_ms
+     no agent_id, no agent_type: the orchestrator's own tool runs carry no host-observed role
+  H2 identity, inside the subagent (excerpt events 10-11, PreToolUse and PostToolUse Bash "echo sub-run")
+     the same keys plus agent_id and agent_type ("probe-worker", the Agent call's tool_input.subagent_type)
+     session_id and transcript_path are the MAIN session's: they do not tell the subagent apart
+  H3 lifecycle: SubagentStart (event 8) carries agent_id and agent_type only; SubagentStop (event 12) adds
+     agent_transcript_path (~/.claude/projects/<project>/<session-id>/subagents/agent-<agent-id>.jsonl)
+     and last_assistant_message. The Agent call ran async: its PostToolUse (event 9) came 1 ms after
+     SubagentStart with tool_response.status "async_launched" and agentId, before the subagent's Bash ran
+  H4 Bash tool_response keys: stdout, stderr, interrupted, isImage, noOutputExpected; duration_ms beside it
+     small output: stdout whole ("main-run", 8 chars; "sub-run", 7 chars)
+     large output: stdout is a preview of at most 30,000 chars, plus persistedOutputPath and persistedOutputSize
+       cat vitest.json   -> stdout 30,000 chars, persistedOutputSize 579947, event 33,397 B on stdin
+       cat mutation.json -> stdout 29,958 chars, persistedOutputSize 2932594, event 36,317 B on stdin
+     persistedOutputPath = ~/.claude/projects/<project>/<session-id>/tool-results/<id>.txt, written by Claude Code,
+     outside the worktree; its sha256 equals the source report's (f2f7dd91... and d2c74942..., below)
+  H5 transcript (read once, not committed): the main transcript holds the main session's tool results
+     (user records with toolUseResult stdout, stderr, ...); the subagent's tool results are only in its own
+     agent-<agent-id>.jsonl (isSidechain true, agentId set, no agent type: the type is in agent-<agent-id>.meta.json).
+     The main transcript also carries session-owner records with the account and organisation ids
+     (6 occurrences on this short run), api-request records, and 16 record types in all (user and assistant
+     among them): an internal format, not the documented hook payload
+
+V. Full vitest run, all seven projects (vitest.config.ts:17-25)
+  <repo>/node_modules/.bin/vitest run --reporter=json --outputFile=<scratch>/vitest-full.json   -> exit 0
+  1791 tests passed, 186 suites, 48 test files, success true
+  size 579947 bytes (55.3% of MAX_TEXT_LENGTH 1048576)
+  sha256 f2f7dd91e3b82318d027faf7fb1fea0885d205b24fbd95df8024da81f3f92132
+  without --outputFile: vitest run --reporter=json > <scratch>/stdout.json -> stdout is 140 bytes, one line
+    "JSON report written to <repo>/.vitest/json/output.json"; the report (579811 bytes) is in that file
+    (node_modules/vitest/dist/chunks/cli-api.De07GUeT.js:9378-9389: outputFile, else the reporter option
+    stdout, else .vitest/json/output.json). .vitest/ is not ignored by .gitignore (git check-ignore: no match)
+  vitest run --project core --reporter=json --reporter.json.stdout -> same 140-byte line: this CLI form
+    does not reach the stdout option
+
+C. Full cucumber-js run (for the trend; #108 measured 507745 bytes for 123 scenarios)
+  <repo>/node_modules/.bin/cucumber-js --format json:<scratch>/cucumber.json   (run from <repo>)  -> exit 0
+  164 scenarios, 2346 steps passed, 27 features
+  size 689994 bytes (65.8%)
+  sha256 16e153954d95e89bf6067d753fc65e786de3142ab7dcc93752a88aa51fb23b73
+
+S. Whole-repo Stryker run (stryker.config.json at the base, no override)
+  <repo>/node_modules/.bin/stryker run --reporters json,clear-text,progress   (run from <repo>)
+  53 of 301 files mutated, 2413 mutants; initial test run 1571 tests in 11 s; done in 1 min 7 s (70 s wall)
+  Killed 2391, Timeout 19, Survived 3, score 99.88; exit 1 ("under breaking threshold 100")
+  report reports/mutation/mutation.json, 43 files with mutants, schemaVersion "1.0"
+  size 2932594 bytes (279.7%: over the bound, refused whole by #111 before JSON.parse)
+  sha256 d2c749426b6794288636fe7d800d314414d0b6895829458434533c91d121e615
+  share of the 2,928,071 chars: mutants arrays 2,181,830 (of which coveredBy + killedBy test-id lists 1,360,707),
+  testFiles 641,092, file source 93,712
+  the report also carries projectRoot (an absolute home path): not committed
+  stdout of the run is the clear-text table and the progress bar; the JSON goes only to the file
+
+Bash tool_response for each report (H4): a 30,000-char preview whatever the size (2.9% of the bound);
+  the whole output only through persistedOutputPath.
+
+Cleanup: <repo>/.vitest/ and <repo>/reports/ removed after the run; nothing under them is committed.
+Scan: no home path, id, account or email in this directory's files or in verified-facts.md (grep for the user
+  name, the session, agent, tool-use and prompt ids of the run, and an email pattern: 0 matches);
+  spikes/capture/shared/secrets.mjs findLeaks on the three files: no leak.

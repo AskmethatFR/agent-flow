@@ -3,7 +3,7 @@ id: "verified-facts"
 type: "technical"
 owner: "architect"
 status: "current"
-updated: "2026-11-11"
+updated: "2026-11-23"
 relations:
   depends-on: ["snapshot-decisions", "decisions-jsonl-schema"]
   related: ["loop-threshold", "capture-events", "real-issue-run"]
@@ -21,6 +21,7 @@ answers:
   - "What do the gh read (#115) and the CI display (#113) owe before they show a CI state?"
   - "How many verified facts does a step keep, how many reports does one build read, and what does the host owe before passing them?"
   - "How does the daemon read the CI status with gh, and what does it report when gh fails?"
+  - "How does the capture side see a tool run, take its role and report, and what does the sixth .agent-flow file hold?"
 decided_in:
   - "#108"
   - "#110"
@@ -29,6 +30,7 @@ decided_in:
   - "#114"
   - "#115"
   - "#124"
+  - "#125"
 ---
 
 # Verified facts: sources, capture-time step attachment, separator
@@ -54,16 +56,21 @@ Corrected here, not edited there (closed records and plan):
 - `cucumber-js` loads the step files of its working directory, so it must run from the project root (`run.txt`, R2).
 - AC7 of #108 says "Architect lane"; the Tech Spec lane is read-only, so the Developer ran the spike and the Architect owns this node afterwards (project-docs, Ownership).
 
+Corrected by #125 in this record, where its evidence contradicts the #108 text (`evidence/verified-facts/capture-125/run.txt`):
+- S1, vitest location: vitest 5.0.5 `--reporter=json` with no `--outputFile` does not print the report; it writes `.vitest/json/output.json` (`node_modules/vitest/dist/chunks/cli-api.De07GUeT.js:9378-9389`, `run.txt` V). The row is amended.
+- S4, Trust: "a transcript tool result" is no longer an observed run (S12 (b)), and "prefer the tool result's own stdout" cannot hold, because `stdout` is a 30,000-character preview (`run.txt` H4); the report is read from its fixed file inside the observed run instead (S12). Both bullets are amended.
+- S1 and Consequences per fact kind: "a full vitest run is not measured" and "not measured for a whole-repo run" are now measured (S12 (f)).
+
 ## Decision / Specification
 
 ### S1 Sources (AC1)
 
 | Source | Format | Writer | Location | Instant carried | Size on the run (bound `MAX_TEXT_LENGTH` = 1 MiB, `core/src/contracts/contract-error.ts:8`) |
 |---|---|---|---|---|---|
-| vitest | JSON object (`--reporter=json`): counts, `startTime`, `testResults[]` with per-suite `startTime`/`endTime` and `assertionResults[]` | vitest 5.0.5 JSON reporter | stdout, or `--outputFile`; none configured (`vitest.config.ts:15-26`) | run `startTime`, epoch ms (21:06:58.260Z) | 263,204 B, `core` project only (885 tests), 25% |
+| vitest | JSON object (`--reporter=json`): counts, `startTime`, `testResults[]` with per-suite `startTime`/`endTime` and `assertionResults[]` | vitest 5.0.5 JSON reporter | `--outputFile`, else `.vitest/json/output.json`, not stdout (corrected by #125, S12); none configured (`vitest.config.ts:15-26`) | run `startTime`, epoch ms (21:06:58.260Z) | 263,204 B, `core` project only (885 tests), 25%; full run 579,947 B (1791 tests), 55.3% (#125) |
 | cucumber-js JSON | array of features, each with `elements[].steps[].result` | `@cucumber/cucumber` 13.3.0 `lib/formatter/json_formatter.js` | `--format json:<file>`; none configured (`cucumber.js:14-18`) | none | 507,745 B, all 123 scenarios, 48% |
 | cucumber-js message | NDJSON stream of Cucumber messages | built-in `message` formatter | `--format message:<file>`; none configured | `testRunStarted.timestamp`, `testRunFinished.timestamp` | 1,535,377 B, 146%: over the bound |
-| Stryker mutation | mutation-testing-elements JSON, `schemaVersion` 1.0 | `@stryker-mutator/core` 10.1.1 JSON reporter | one path, `jsonReporter.fileName`, default `reports/mutation/mutation.json` (`stryker.config.json:1-21` sets none); `dist/src/reporters/json-reporter.js:23` | none | 93,560 B for one mutated file (51 mutants), 9%; grows with the files mutated, not measured for a whole-repo run |
+| Stryker mutation | mutation-testing-elements JSON, `schemaVersion` 1.0 | `@stryker-mutator/core` 10.1.1 JSON reporter | one path, `jsonReporter.fileName`, default `reports/mutation/mutation.json` (`stryker.config.json:1-21` sets none); `dist/src/reporters/json-reporter.js:23` | none | 93,560 B for one mutated file (51 mutants), 9%; whole-repo run 2,932,594 B (2413 mutants), 279.7%, over the bound (#125, S12) |
 | gh CI status | `gh pr view --json headRefOid,statusCheckRollup`, or `gh pr checks --json ...` | GitHub Actions (workflow `ci` job `test`, workflow `bdd` job `bdd`, `ci-pull-request-posture.md:41`), read with `gh` | the GitHub API, no file; nothing reads it today | `startedAt`, `completedAt` per check | about 0.9 KB for two checks |
 
 - **Parsed sources** (v1 candidates settled here): vitest JSON, cucumber-js JSON, Stryker mutation JSON, gh CI status. The cucumber message stream is not a parsed source: it is over the bound and the JSON format carries the pass/fail results the detector needs. The JSON format carries no instant and #110 parses none: the run-end instant is the capture instant, which #112 owns (S7).
@@ -100,14 +107,14 @@ A fact that `decisionStepOf` refuses is **kept, counted at issue level and repor
 **The separator is the source, not a field.** It is neither an existing `decisions.jsonl` field nor a new one.
 - Every `decisions.jsonl` line is declared (`snapshot-decisions.md:45`). A verified fact never enters that file: the schema requires `why` and `confidence` (`core/schemas/decisions.schema.json:6`) and refuses extra fields (`:7`). `decisions.jsonl` stays unchanged.
 - In the snapshot the origin is an additive field **per fact, inside `steps[].facts[]`** (shape owned by #109), `origin: verified|declared` (additive-only rule `snapshot-contract.md:38`; #109 AC1). It is not the frozen step field `origin: planned|proposed` (`SnapshotStep.origin`, `core/src/snapshot/snapshot.ts`, `core/schemas/plan.schema.json:23`, `snapshot-contract.md:37-38`, `:62`), which stays as it is.
-- Capture-time attachments must outlive the run, so they need a new file under `.agent-flow/`. Today the contract is five files (`core/src/contracts/contract-check.ts:9-15`, `docs/plan.md:65-71`), and any other name is refused as "is not a contract file" (`:19-27`). AC4's "new field" appears here as a new sixth file, and **that sixth file is the frozen-contract change for #109 and goes through the Security lane.** Its name and shape are not decided here. The writer is capture-side: it runs when a tool run ends, and no hook sees a tool run today (`capture/claude-code/settings.json:5` matches `TaskCreate|TaskUpdate` only). #112 stays the reader and needs re-slicing, see Consequences.
+- Capture-time attachments must outlive the run, so they need a new file under `.agent-flow/`. Today the contract is five files (`core/src/contracts/contract-check.ts:9-15`, `docs/plan.md:65-71`), and any other name is refused as "is not a contract file" (`:19-27`). AC4's "new field" appears here as a new sixth file, and **that sixth file is the frozen-contract change for #109 and goes through the Security lane.** Its name and shape were not decided by #108; #125 decides them (S12 (e)). The writer is capture-side: it runs when a tool run ends, and no hook sees a tool run today (`capture/claude-code/settings.json:5` matches `TaskCreate|TaskUpdate` only). #112 stays the reader and needs re-slicing, see Consequences.
 
 #### Trust: what "verified" means
 
 Both inputs to a verified fact are agent-reachable: the report file is written by a tool into the worktree the agent controls, and the role is supplied by the operator or the agent.
 - **MUST**: "verified" means parsed from a tool run whose end the capture host observed. It is not proof against an agent that forges output; it keeps tool facts apart from agent claims (`docs/plan.md:18`), nothing more.
-- **MUST**: take a fact only from a tool run the host observed (a runtime PostToolUse event or a transcript tool result), never from a report file merely found in the worktree. A Bash `echo` into a report path is also a tool run the host observes, so the capture side must check that the observed command is the tool itself and prefer the tool result's own stdout over a file in the worktree.
-- **MUST**: take the role from identity the host observed (hook `agent_type`, or the session) where it exists. When the role is agent-supplied (not host-observed), the attachment is marked as agent-supplied and the fact's `origin` stays `verified`, consistent with "the separator is the source".
+- **MUST**: take a fact only from a tool run the host observed (a runtime PostToolUse event; the transcript is not read, corrected by #125, S12 (b)), never from a report file merely found in the worktree. A Bash `echo` into a report path is also a tool run the host observes, so the capture side must check that the observed command is the tool itself. Corrected by #125: the tool result's stdout is a 30,000-character preview and vitest 5 and Stryker print no JSON, so the report is read from the tool's own file at its fixed path, only when that file's modification and change times both fall inside the observed run (S12, "Where the report text comes from").
+- **MUST**: take the role from identity the host observed (hook `agent_type`; the session is shared with subagents and identifies none, #125) where it exists. When the role is agent-supplied (not host-observed), the attachment is marked as agent-supplied and the fact's `origin` stays `verified`, consistent with "the separator is the source".
 - **Owner**: #112 or the capture-side slice cut from it. The Security-lane review of the sixth file checks it.
 
 ### S5 Steps that ran no tool (AC5)
@@ -123,7 +130,7 @@ Timebox: 80 tool-call turns of the executing lane, under the 200 warning ceiling
 - **Issue-level verified fact**: CI status, keyed by head commit, shown apart from the steps.
 - Epic #4's outcome now reads: every completed step that ran a test or mutation tool shows at least one verified fact with its source; a step that ran no tool shows none and says so (decision (a), ruled by the human on 2026-11-11).
 
-What the run did not show: how a live agent's tool run delivers its role to the capture step. Today no hook sees a tool run (`capture/claude-code/settings.json:5` matches `TaskCreate|TaskUpdate` only). The rule is proven with a role the operator supplies, not with an automatic one. The decision would change only if that delivery proves impossible, and then the ticket would reopen as "inconclusive + what blocks".
+What the run did not show: how a live agent's tool run delivers its role to the capture step. Today no hook sees a tool run (`capture/claude-code/settings.json:5` matches `TaskCreate|TaskUpdate` only). The rule is proven with a role the operator supplies, not with an automatic one. The decision would change only if that delivery proves impossible, and then the ticket would reopen as "inconclusive + what blocks". #125 shows the delivery on a real Claude Code run (S12 (a)): the decision holds.
 
 ### S7 Test report into a verified fact (#110)
 
@@ -219,12 +226,155 @@ Known limits, accepted:
 
 Deferred, not in #115: pin `--repo <owner/name>` from a source the agent cannot write, once one exists. Paseo's `gitRuntime.remoteUrl` is not that source: it comes from the same agent-writable git config. Until then the display's `HEAD` comparison is the only partial defence, and it is partial: it ties the result to a commit, not to a repository or its checks. An agent that can push to any GitHub repository (likely when it shares the user's `gh` auth) can push its `HEAD` there, open a pull request whose workflow always passes, and point `remote.origin.url` at it; `headRefOid` then equals `HEAD` and `passed` shows. Only the `--repo` pin closes this, or a display of the pull request's repository, which needs `url` in the JSON fields, a contract change.
 
+### S12 Capture-side writer (#125)
+
+Spike of #125 Part 1, run by the Developer (the Tech Spec lane is read-only, as for #108); the Architect owns this section afterwards. Evidence: a real Claude Code 2.1.330 headless run with command hooks on `PostToolUse`, `PreToolUse`, `SubagentStart`, `SubagentStop` and `Stop`, one Bash run in the main session and one inside a subagent, plus full-size reports: `evidence/verified-facts/capture-125/run.txt` (sections H, V, C, S) and `capture-125/hook-events.excerpt.json` (events cited as `n<k>`). Role delivery is possible: the ticket does not reopen as "inconclusive".
+
+#### What the host observes
+
+| Fact | Evidence |
+|---|---|
+| A main-session tool event carries `session_id`, `transcript_path`, `cwd`, `prompt_id`, `tool_name`, `tool_input`, `tool_response`, `tool_use_id`, `duration_ms`, and no `agent_id` or `agent_type` | `n2`; `run.txt` H1 |
+| A subagent's tool event carries the same keys plus `agent_id` and `agent_type`; `agent_type` is the Agent call's `subagent_type`. `session_id` and `transcript_path` are the main session's, so they tell no agent apart | `n11`, `n7`, `n8`; H2 |
+| `SubagentStart` carries `agent_id` and `agent_type` only; `SubagentStop` adds `agent_transcript_path`. The Agent call ran async: its `PostToolUse` (`status: async_launched`, `agentId`) came before the subagent's first tool event | `n8`, `n9`, `n12`; H3 |
+| A Bash `tool_response` holds `stdout`, `stderr`, `interrupted`, `isImage`, `noOutputExpected`. Over 30,000 characters, `stdout` is a 30,000-character preview and the whole output goes to `persistedOutputPath` (under `~/.claude/projects/`, written by Claude Code), sized by `persistedOutputSize` | `n4`, `n6`; H4 |
+| The hook's stdin stays small whatever the report: 33,397 B and 36,317 B for the 579,947 B and 2,932,594 B outputs, under the step hook's bound (`capture/claude-code/src/step-timing/step-timing.ts:48`) | `n4`, `n6` `file_bytes`; H4 |
+| vitest 5.0.5 `--reporter=json` with no `--outputFile` writes `.vitest/json/output.json` and prints one 140-byte line; only the reporter's `stdout` option (config, not the CLI form tried) prints the report | `node_modules/vitest/dist/chunks/cli-api.De07GUeT.js:9378-9389`; V |
+| Stryker writes its JSON only to its report file; its stdout is the clear-text table | `json-reporter.js:23`; S |
+
+#### (a) How the role reaches capture
+
+**Decided.** One new `PostToolUse` command hook, matcher `Bash`, beside the step hook (`capture/claude-code/settings.json:5`). It resolves the role of each observed run in this order, and records where it came from in `roleFrom`:
+1. **Host-observed** (`roleFrom: "host"`): the event's `agent_type` when it is a bare name equal to one of `ROLE_IDS` (`core/src/lifecycle/roles.ts:1`), or that name with the `agentic-team:` prefix. Any other prefix is not host-observed: `other:qa` gives no role from the host (human ruling G2, 2026-11-23, below). Present only on a subagent's events (`n11`, absent on `n2`).
+2. **Agent-supplied** (`roleFrom: "agent"`): otherwise, a leading `AGENT_FLOW_ROLE=<role-id> ` assignment on the observed command, `<role-id>` one of `ROLE_IDS`. Ignored when step 1 gave a role. A rule line tells agents to add it, as `rules/plan-steps.md` already makes them name the role in the item title.
+3. **None**: `role: null`, a role-less run, see (d). The writer passes `null` to `decisionStepOf`, never `''`: an item without a role id becomes a step whose role is the empty string (`core/src/lifecycle/step-lifecycle.ts:203`), and `''` would match it.
+
+Mapping. An `agent_type` names an agent definition, not a role id. Only a bare name that equals a role id, or that name with the `agentic-team:` prefix, counts (`architect`, `qa`, `security`); `dev-a` and `dev-b` are lanes, not agent definitions, so a dev lane's role is always agent-supplied, and the main session (the orchestrator) has no `agent_type` at all (`n2`). The namespaced form `<plugin>:<agent>` is inferred from the `subagent_type` an orchestrator passes (`n7` equals `n8`'s `agent_type`); a plugin agent's hook event was not captured. Because it was not captured, the prefix is not stripped for an arbitrary plugin: only `agentic-team:` is known, and an `agent_type` with any other prefix is not host-observed (G2).
+
+Rejected: a fixed table from agent names to roles (Agent Flow would hard-code one team's agent names and still could not tell Dev A from Dev B); a join of `agent_id` with the Agent call that launched it (`n9` carries `agentId` and the call's `description`, but the join needs state kept between hook processes, the call is async, and parallel subagents make it fragile, `docs/technical/capture/events.md:95`); `session_id` or `transcript_path` (shared with the main session, H2).
+
+#### (b) Whether capture reads the transcript
+
+**Decided: no.** The hook event carries everything the writer needs: the tool, the command, the run duration and the host-observed identity (H1 to H4). The transcript is an internal format of 16 record types, carries the account and organisation ids, and keeps a subagent's tool results in a second file (H5); reading it would bring personal data into a process held to an allowlist (`docs/technical/capture/events.md:118`). Steps keep coming from the step hook. This corrects S4 (Trust), which allowed "a transcript tool result" as an observed run.
+
+#### Where the report text comes from (Trust, corrects S4)
+
+S4 asks the writer to "prefer the tool result's own stdout". The evidence rules that out: `stdout` is a 30,000-character preview for any larger output (H4), every real report is larger (sizes in (f)), vitest 5 and Stryker do not print their JSON at all (table above). **Decided**:
+- The report is read from the tool's own report file at a fixed path derived from the worktree realpath, never from a path in the command: vitest `reports/vitest/vitest.json` (`--reporter=json --outputFile=reports/vitest/vitest.json`), cucumber-js `reports/cucumber/cucumber.json` (`--format json:reports/cucumber/cucumber.json`), Stryker `reports/mutation/mutation.json` (its default). `reports/` is git-ignored (`.gitignore:4`), so the files never reach a commit.
+- Only when the whole observed command, after the optional role assignment, matches an anchored grammar of a closed list of these tool forms, which allows what it lists and refuses everything else. A list of forbidden characters (`;`, `&`, `|`, `<`, `>`, a backquote, `$(`, a newline) is not the rule: it misses `$`, quotes, `\` and globs (Security F2 on #125). `echo x > reports/mutation/mutation.json` matches no form and yields nothing (S6 scenario). An `interrupted: true` run yields nothing. The grammar's flags and values are the MUSTs below; its exact productions are the writer slice's Tech Spec.
+- Only when both the modification time and the change time (`ctime`) of the file fall inside the observed run, `[event instant - duration_ms, event instant]` (`duration_ms`, `n2`), read with the confined read of Consequences (`O_RDONLY|O_NOFOLLOW|O_NONBLOCK`, `fstat` regular file, at most `MAX_TEXT_LENGTH`+1 bytes). `mtime` alone is not a freshness proof: `touch -d` sets it to any instant while `ctime` stays at the real time, so a forged report planted before a tool form that exits without writing would pass (CWE-345, CWE-367). `ctime` cannot be set by the agent, so a file changed before the run is outside the window. A report found in the worktree with no such run is never read (S5 scenario).
+- Only when no other run of the same tool was in flight at any point of this run's window. Parallel lanes share one worktree (S5) and every run of a tool writes the same fixed path: a second lane's run can write it inside this run's window, and its counts would go to the wrong step and role. A `PreToolUse` hook registers each run (tool, worktree, start); `PostToolUse` writes nothing when any other run of the same tool in this worktree was in flight in the window, ended or not, and a start with no end counts as in flight. Detection from `PostToolUse` alone is not enough: tools write the JSON before they exit, so a run still tearing down has written the path and has no end yet, and a `PostToolUse` landing in that gap would read its counts and append them before the overlap could be seen (Security F7 on #125). The misattribution is not accepted (MUST below).
+- Only when each folder of the fixed path (`reports/`, `reports/<tool>/`) is `lstat`ed as a directory, not a link, before the read. `O_NOFOLLOW` covers the last path component only, so a symlinked folder would send the read to a file outside the worktree, and its counts would leak (Security F5 on #125). The chain is that of `plan-writer-confinement.md:86`.
+- Rejected for now: `persistedOutputPath`. It is host-written, so stronger than a worktree file, but only cucumber-js can put its JSON on stdout, the file sits beside the transcript under `~/.claude` (outside the worktree the confinement derives from) and a second read path doubles the Security surface. A later hardening.
+- Left open by design: a process the agent runs alongside the tool can still write the report inside the window. S4 already states that "verified" is not proof against forged output.
+- The tool configs (`vitest.config.ts`, `stryker.config.json`) are code the agent writes. "The command is the tool" fixes the command's shape, not the report's content: a config can make the tool report any counts. This is the same limit as the line above, and the grammar MUSTs below narrow the command, not the config.
+
+#### (c) An only-step-fallback attachment
+
+**Decided: it stays attached, with its marker** `attachment: "only-step"`. One rule for declared and verified facts (`decision-step.ts:39-42`, used at write time by `capture/shared/src/decision-append/decision-append.ts:47`, `rules/decision-logging.md:46`); on the only real case on record the branch landed on the step that made the tested commit (S2, PR 93); unattaching it would hide the common sequential case where the orchestrator gates the one lane in progress. The marker keeps the doubt visible; showing it is the display's (#113, slice D). Rejected: unattached, which drops that case for no gain the marker does not give.
+
+#### (d) A role-less orchestrator run
+
+**Decided: unattached, never issue-level.** The writer calls `decisionStepOf(plan, null)`: with exactly one step in progress it attaches with the marker (c); otherwise the entry is written with `step: null` and `attachment: "unattached"`, kept and shown as an unattached fact (S3), never dropped and never put on the current step. CI is issue-level because a check covers a commit and `plan.json` has no commit field (S2); a test or mutation run covers what its arguments name (R3 and R4 mutated one file), so what is missing is the role, not the scope, and an issue-level kind would need a key and a new snapshot field for no new information. The orchestrator is role-less by default: the main session carries no `agent_type` (`n2`).
+
+#### (e) The sixth file
+
+**Name**: `.agent-flow/verified-facts.jsonl`. Append-only JSON Lines, one line per observed run, written only by the capture hook; two runs of the same tool are two lines. Never `decisions.jsonl`.
+
+| Field | Value | Rule |
+|---|---|---|
+| `at` | ISO-8601 UTC instant | the `PostToolUse` instant, the run end (S2) |
+| `tool` | `vitest`, `cucumber-js` or `stryker` | named `tool`: the extract has no `source` key (Stryker's per-file `source` text is what it must never carry) |
+| `step` | a step id, or `null` | `decisionStepOf(plan, role)` at the run end; `null` when refused |
+| `attachment` | `role`, `only-step` or `unattached` | `unattached` exactly when `step` is `null` |
+| `role` | a `ROLE_IDS` value, or `null` | (a) |
+| `roleFrom` | `host` or `agent`, or `null` | `null` exactly when `role` is `null` |
+| `passed`, `total`, `failedSuites` | safe non-negative integers, `passed` not above `total` | vitest and cucumber-js only |
+| `detected`, `surviving` | safe non-negative integers, sum above 0 | stryker only |
+
+The table is refined by S13: `at` is checked as a shape, `attachment: "role"` needs a non-null `role`, and the count and pairing rules are enforced in a fixed order.
+
+No other field (the validator refuses extras, as `core/schemas/decisions.schema.json:7` does): no failure message, no file `source`, no stdout, no command, no session or agent id. A line is about 190 bytes:
+
+```
+{"at":"2026-11-23T12:00:00.000Z","tool":"vitest","step":"1","attachment":"role","role":"dev-a","roleFrom":"agent","passed":1791,"total":1791,"failedSuites":0}
+{"at":"2026-11-23T12:05:00.000Z","tool":"stryker","step":null,"attachment":"unattached","role":null,"roleFrom":null,"detected":47,"surviving":1}
+```
+
+**Reconciling with core's `{step, text}`.** The counts are exactly what core's report readers already return, `ParsedTestReport` (`core/src/snapshot/test-report.ts:3-8`) and `ParsedMutationReport` (`core/src/snapshot/mutation-report.ts:3`). So:
+- At capture, the writer computes the extract with core's own `readTestReport` and `readMutationReport` (today internal to the snapshot module, `core/src/snapshot/index.ts:1`; the writer slice exports them), so the host holds no parsing rule. An over-bound report is refused by them whole, before `JSON.parse` (`test-report.ts:53`): no entry.
+- At read (#112, slice C), each attached entry reaches core as `{step, text}` with `text` the entry's own line, never the report, and a third `ReportReader` beside the two of `readReports` (S8) turns the counts into the same `SnapshotFact` through `verifiedFactOf` and `mutationLabelOf`. The label of an entry equals the label of its report by construction; core tests that property. Whether entries come in as a new `SnapshotFiles` list or through `testReports`/`mutationReports` is slice C's call. An unattached entry (`step: null`) never becomes a `{step, text}`: it is slice D's input.
+- At the bound: the file stays at most `MAX_TEXT_LENGTH` bytes. Recommendation for the writer slice's Tech Spec (AC8 leaves it there): an append that would pass the bound is refused and nothing is written, as `decision-append.ts:81-83` does for `decisions.jsonl`; at about 190 bytes a line, that is some 5,500 runs per issue.
+
+#### (f) Sizes against the 1 MiB bound (`MAX_TEXT_LENGTH` = 1,048,576)
+
+| Report | Run | Size | Share of the bound | Bash `tool_response` |
+|---|---|---|---|---|
+| vitest JSON, full run, all seven projects | 1791 tests, 48 files (V) | 579,947 B | 55.3% | 30,000-character preview (2.9%), whole only through `persistedOutputPath` |
+| cucumber-js JSON, full run | 164 scenarios (C) | 689,994 B | 65.8% | same |
+| Stryker JSON, whole repo, `stryker.config.json` | 2413 mutants, 53 files, 70 s (S) | 2,932,594 B | 279.7%: over | same; the JSON is not on stdout at all |
+
+Consequences: a whole-repo Stryker run is refused whole and yields no fact (the `mutants` arrays are 74% of its characters, their `coveredBy` and `killedBy` test-id lists 46%, S); only a scoped run (`--mutate`, 93,560 B for one file in #108) does. The test reports fit today but grow with the suite. Extrapolated linearly, not measured: about 324 B per vitest test (the bound near 3,200 tests) and 4.2 KB per cucumber-js scenario (near 250 scenarios; #108 measured 507,745 B at 123). Both are open questions below, not changes to the bound.
+
+#### AC2 ruling: fits one PR and one Dev lane: **no**
+
+Cut into two slices, in this order:
+- **Slice 1, the sixth file's contract** (Security lane, frozen-contract change): Part 2 AC3, and the stored-shape half of AC7 (the validator refuses any field outside the table above, so no failure text, `source` or stdout can be stored; nothing in `decisions.jsonl`). A core validator for `verified-facts.jsonl`, registered in `contract-check` (`core/src/contracts/contract-check.ts:9-15`), which still refuses other names; the `docs/plan.md` contract list. Scenario S9. Its caller is the contract check command.
+- **Slice 2, the Claude Code writer** (Security lane, senior): AC4, AC5, AC6, the refusal half of AC7, AC8. The `Bash` hook and its `settings.json` entry, the command check, the role resolution, the attachment through `decisionStepOf`, the extract through core's readers, the confined report read and the confined appender (`plan-writer-confinement.md:86`), the rule line for `AGENT_FLOW_ROLE`. Scenarios S1 to S8. It depends on slice 1: its lines must pass the contract check.
+
+Why not one: the two Security reviews differ in kind (a frozen contract against file I/O and command parsing), and slice 2 alone already spans `core`, `capture/shared`, `capture/claude-code` and `rules/` with eight scenarios. Part 2 AC5's "the tool result's own stdout is preferred" contradicts the evidence above and needs the PM's amendment to "the tool's own report file at its fixed path, written inside the observed run".
+
+### S13 The contract check of `verified-facts.jsonl` (#125, slices S1 to S6)
+
+S12 (e) fixed the table of the sixth file; this section records how the contract check enforces it and where it is stricter than the table. Where the two differ, S13 rules.
+
+**Schema form plus a hook.** The check is the schema `core/schemas/verified-facts.schema.json` (names, types, required keys, `additionalProperties: false`) followed by one optional hook on the JSONL contract, `recordRule` (`core/src/contracts/jsonl.ts:11`, called after the schema at `:64`), for the rules a schema cannot say: the counts and the pairings (`core/src/contracts/verified-facts.ts:18-35`, `:39-57`). A violation is reported with its line and field like a schema one, in the same read loop. The schema's `description` states these code-checked rules (`verified-facts.schema.json:5`), and a test pins it. Rejected: extending `schema-subset` with conditional or cross-field keywords (a second validator language for one file, in a frozen shared module); a second read loop for this file (it would repeat the size bound, the flood guard and the line numbering); merging rule errors after `readJsonl` (the error cap and the flood guard would see a different error list than the one reported); `// Stryker disable` (the rules must be killed by tests, not excused); a runtime check of `role` against `ROLE_IDS` (the pattern below pins it by test, and the schema stays the one place that names the values).
+
+**`at` is a shape, not a date.** The pattern `^YYYY-MM-DDTHH:MM:SS.mmmZ$` with month 01-12, day 01-31, hour 00-23, minute and second 00-59 (`verified-facts.schema.json:10-13`), the `toISOString` shape the writer produces. It is checked as a shape only: a calendar-impossible date such as `2026-02-30T12:00:00.000Z` passes the contract. The consumer's `instantTime` (`core/src/lifecycle/instant.ts:1-5`) round-trips the value through `toISOString` and rejects it, so the check at read time is the calendar's. The other contracts check `at` only as `minLength 1` (`requests.schema.json:11`, `responses.schema.json:10`, `decisions.schema.json:9`); this file checks the shape because its writer is a host process and its `at` is the run-end instant (S2).
+
+**`role` and `roleFrom`.** `role` matches `^(pm|architect|dev-a|dev-b|qa|security)$`, equal to `ROLE_IDS` (`core/src/lifecycle/roles.ts:1`); a test pins the pattern to `ROLE_IDS.join('|')` (`core/src/contracts/verified-facts.test.ts:113`), so a new role id fails the test until the schema follows. `roleFrom` is `^(host|agent)$` (S12 (a)). Both use `pattern`, not `enum`, because they are `["string", "null"]`: `schema-subset` applies `enum` to a null value and refuses it (`core/src/contracts/schema-subset.ts:77`), while `pattern` applies to strings only, so null passes.
+
+**The attachment-role tightening (human decision, 2026-11-23).** S12 (e) says `role` may be `null` and `attachment` is `role`, `only-step` or `unattached`. The human accepted a tightening on 2026-11-23: `attachment: "role"` needs a non-null `role`. A fact attached "by role" with no role names no role. `only-step` keeps a null role (S12 (c), (d): a role-less run attaches to the one step in progress). It is the only pairing rule that goes beyond S12 (e)'s table.
+
+**The pairing rules**, after the counts, first failure wins (`verified-facts.ts:39-57`), each with the field named in the error:
+1. `step` is `null` exactly when `attachment` is `unattached`: otherwise `attachment` ("must be unattached when step is null", "must not be unattached when step is set"). An unattached line may still carry a role.
+2. `roleFrom` is `null` exactly when `role` is `null`: otherwise `roleFrom` ("must not be null when role is set", "must be null when role is null").
+3. `attachment: "role"` with a null `role`: `role` ("must not be null when attachment is role").
+
+**The count rules**, per tool, in this order, first failure wins (`verified-facts.ts:18-35`): each of the tool's own counts is required (`vitest` and `cucumber-js`: `passed`, `total`, `failedSuites`; `stryker`: `detected`, `surviving`); then a safe non-negative integer (`Number.isSafeInteger`, at least 0; `1e999` parses to `Infinity` and is refused); then no other tool's count is present; then the relations: `passed` not above `total` (field `passed`), and for Stryker not both `detected` and `surviving` 0 (field `detected`: a run with no mutant is no run, S12 (e) "sum above 0"). `-0` is accepted as 0: it is a safe integer, not below 0, and `JSON.stringify` writes it as `0`, so no writer produces it. The schema runs first, so a schema violation on a line hides its count and pairing violations until fixed.
+
+**The flood-guard minimum is 138.** Past `MAX_ERRORS` (100) errors, `readJsonl` skips a line shorter than `minimumRecordLength` without parsing it (`jsonl.ts:56`). The value is derived, never chosen: the shortest valid compact line of any tool, `JSON.stringify` with `step` `"1"`, `attachment` `role`, `role` `qa` or `pm`, `roleFrom` `host`, is 138 characters for a Stryker line with 0 detected and 1 surviving; the shortest vitest line (zero counts) is 148 and the shortest cucumber-js line 153, so the 138-character line is the Stryker one (`verified-facts.ts:62-69`). A test derives it as the minimum over every step, attachment, role and `roleFrom` combination the pairings accept and every tool, checking each combination against the rules written out independently (`verified-facts.test.ts:205`), so a literal cannot hide a change. The pairings of this section allow no valid line shorter than 138: `only-step` or `unattached` is longer than `role`, and the role fields `null,null` (8 characters) are 2 shorter than `"qa","host"` (10) but a null `role` forces `only-step` (5 more), so the shortest such line is 141. The 136-character line with `role: "qa"` and `roleFrom: null` (the base schema accepted it) is now refused as a pairing, with its line and field, and stays named by its line number below the cap. A minimum above 138 would be wrong: it would skip a valid 138-character line once the cap is passed, so a flooded file would lose a line the check should have kept. A minimum below 138 is safe but parses lines that cannot be valid.
+
+**Human rulings of 2026-11-23 (#125).**
+- **G1**: a whole-repo Stryker report is never a fact; only scoped `--mutate` runs count. It closes the open question on whole-repo report size below, and S12 (e)'s example above now carries scoped-run counts.
+- **G2**: an `agent_type` is host-observed only when it is a bare role id or carries the `agentic-team:` prefix. Any other prefix is not host-observed. It amends S12 (a) and its mapping paragraph. `roleFrom: "host"` means the host saw an agent definition's name, not who the agent is: a bare `qa` also comes from a project agent file `.claude/agents/qa.md` that the agent can write itself, or from a user-level agent (Security F6 on #125). `host` is stronger than `agent` only in that the agent does not type it in the command.
+- **G3**: #125 kills the Stryker survivor at `capture/shared/src/contract-check/contract-check.ts:25:80`. `checkStray` passed `''` to `checkContractFile` and Stryker mutated it to `"Stryker was here!"`; the text is ignored for a name that is not a contract file, so the mutant was equivalent. It is not in core: core `contract-check.ts` has no survivor. It is killed by construction: core exports `notContractFileError(name)` (`core/src/contracts/contract-check.ts:21-23`, `core/src/contracts/index.ts:3`), the capture side maps its stray names to it, and `checkStray` is gone.
+- **G4**: with `plan.json` missing or contract-invalid, the hook writes nothing and exits 0. This is a MUST owed to #128 (the hook), not a choice left to its Tech Spec.
+
+**What the stored shape does not bound (Security F3 and F4 on #125).**
+- `step` is a free string of at least one character, like the `id` of `plan.json` (`core/schemas/plan.schema.json:19`). The validator bounds the keys of a line, not this value: a line with `"step":"AssertionError: expected 3 to be 4 at /home/u/..."` passes. So "no failure text can be stored" (AC7, slice 1) holds for keys and not for `step`. The risk is low: the reader matches `step` against the ids of `plan.json` and never echoes it (S7). The writer MUST write only the id `decisionStepOf` returns, or `null`.
+- A refusal names the offending key as `field` and never its value. A key that passes `safeLabel` (`core/src/contracts/contract-error.ts:23-27`: 1 to 64 characters of letters, digits, `.`, `_`, `:`, `-`) is echoed as `field`, so a key written as a failure text in that alphabet appears in the error. The error goes to whoever runs the contract check, today the agent's CLI (`capture/shared/src/contract-check/command.ts:19`), and a later snapshot reader would carry it to the panel (`core/src/snapshot/snapshot.ts:90`); what leaks is at most 64 characters of the safe alphabet, never a value. A key with spaces or `/` gives `field: null`. The claim "the failure text is never echoed" (S10) is about values, and about keys outside that alphabet.
+
+**MUSTs owed to #128–#131 (Security, 2026-11-23).** The writer slices inherit these as their spec; none is a choice left to a Tech Spec.
+- **Scope**: leave the worktree alone when the event's `realpath(cwd)` is not the worktree root.
+- **Env**: allow only `AGENT_FLOW_ROLE` as a leading environment assignment, so `NODE_OPTIONS=` and `VITEST_*` are refused.
+- **Grammar**: match the whole command against an anchored grammar (S12, report text).
+- **Flags**: refuse `--config`, `-c`, `--configFile`, `--root`, `--dir`, `--reporters`, and any `--outputFile` or `--format json:` other than the fixed path of the tool. Allow `--mutate` values only from a fixed character set.
+- **Freshness**: require the report's `mtime` and `ctime` both inside the observed run's window (F1(a)).
+- **Overlap**: a `PreToolUse` hook registers each run of the tool (tool, worktree, start). `PostToolUse` writes nothing if any other run of the same tool in this worktree was in flight at any point of this run's window, whether it has ended or not; a start with no end counts as in flight. This registry is the single mechanism: the `ctime` window already shows that the file changed, and cannot tell this run's write from another's, so an inode and `ctime` record is no alternative to it (it may only be an extra check beside the registry). Recording the misattribution as accepted is not an option (F1(b), F7).
+- **Test owed by #128**: a Gherkin scenario with two runs of one tool where the second is still in flight at the first's `PostToolUse`; it expects no line.
+- **Folders**: `lstat` each folder of the fixed report path (F5).
+- **Appender**: bounded and confined. An append past `MAX_TEXT_LENGTH` is refused and nothing is written; `.agent-flow` is `lstat`ed, then opened with no-follow (`plan-writer-confinement.md:86`).
+- **Step**: write only the id `decisionStepOf` returns, or `null` (S13, `step` above).
+- **Exit**: G4, exit 0 whatever is refused.
+- **Reads**: read no transcript and no `persistedOutputPath` (S12 (b)).
+
 ### Consequences per fact kind (AC6)
 
 | Fact kind | Consequence |
 |---|---|
-| Test report (vitest, cucumber-js JSON) | Step-level. #110 parses it; every run is attached at capture time, which the loop counter needs (keyed by plan step and test id over consecutive runs, `loop-threshold.md:48-49`). The parser input is bounded (1 MiB); an over-bound report is refused whole, as a size error with no fact, never truncated or partly parsed. Sizes above are for the `core` project and for all scenarios, a full vitest run is not measured |
-| Stryker report | Step-level only when the role that ran it has a step. #111 parses it (S8); the single report path is overwritten on every run, so it must be captured at run end, never read on poll (`json-reporter.js:23`). Carries no instant: the run-end instant is the capture instant. The same size rule applies |
+| Test report (vitest, cucumber-js JSON) | Step-level. #110 parses it; every run is attached at capture time, which the loop counter needs (keyed by plan step and test id over consecutive runs, `loop-threshold.md:48-49`). The parser input is bounded (1 MiB); an over-bound report is refused whole, as a size error with no fact, never truncated or partly parsed. A full vitest run is 55.3% of the bound and a full cucumber-js run 65.8% (#125, S12 (f)) |
+| Stryker report | Step-level only when the role that ran it has a step. #111 parses it (S8); the single report path is overwritten on every run, so it must be captured at run end, never read on poll (`json-reporter.js:23`). Carries no instant: the run-end instant is the capture instant. The same size rule applies: a whole-repo report is 279.7% of the bound and yields no fact (#125, S12 (f)) |
 | CI status | Issue-level, keyed by head commit, shown apart from the steps. #114 maps every check run of `statusCheckRollup` to the top-level `ci` fact (S9); #115 reads it with `gh` for the head commit. It is never attached to a step by instant |
 | Declared fact | Unchanged: `decisions.jsonl`, attached by `decisionStepOf` at write time |
 | Unattached fact | Counted at issue level and reported; the slice that first produces one shapes where, additively (#112 re-slice) |
@@ -245,7 +395,7 @@ Per slice:
 | Attach by the report's instant alone | Rejected | With parallel lanes it picks a step by time, not by who ran the tool (R1) |
 | Attach to the current step (`currentStepOf`, `snapshot.ts`) | Rejected | Misattaches in the real #40 run and on R1 |
 | Daemon reads reports at their default paths on poll | Rejected | Loses overwritten runs (Stryker, two runs, one path), and takes a report the host did not observe being produced |
-| Write reports under `.agent-flow/` as they are | Rejected | The contract check refuses unknown files (`contract-check.ts:25`) and a report is unbounded |
+| Write reports under `.agent-flow/` as they are | Rejected | The contract check refuses unknown files (`core/src/contracts/contract-check.ts:21-23`) and a report is unbounded |
 | A `verified` flag in `decisions.jsonl` | Rejected | The schema forces `why` and `confidence`, refuses extra fields, would need a version bump and mixes sources |
 | Infer the role from the open subagent call | Rejected | Fragile with parallel subagents (`events.md:95`) |
 | A full live agent run of a whole issue | Rejected | The user rejects manual capture procedures; #40 already gives the real evidence |
@@ -264,21 +414,24 @@ Per slice:
 - **MUST** (owed to #112, its host adapter; Security S2 on #124): pass reports oldest first, in capture order. "Latest" in S10 means last in the passed order: core reads no instant, so any other order keeps and drops the wrong reports and facts.
 - **MUST** (owed to #112, its host adapter): hand `buildSnapshot` only well-typed reports, a `{step: string, text: string}` per entry in an array. A failed read is an error the adapter reports, never an entry with a `null` text. Today `buildSnapshot` throws on a `null` text, a `null` entry, or a non-array `testReports`/`mutationReports`; no host passes these and TypeScript forbids them (Security S1, low, on #111, inherited from #110). If #112 cannot guarantee the shape at the boundary, core hardens `outcomeOfReport` and `readReports` instead, in #112. The omitted count, deferred from #110 (frozen surface: 4 elements declared, 4 `required_by_hypothesis: false`, S7), is delivered by #124 as `omittedFacts` (S10).
 - **MUST** (owed to #112 or the capture-side slice cut from it, and #109 where it applies): the trust rules of S4 hold for every fact.
-- **MUST** (owed to #112 or the capture-side slice cut from it): an attachment made through the only-step fallback (no step of the role was in progress) carries the marker that says so (rule in S2). Whether such a fact stays attached or becomes unattached is an open question below.
+- **MUST** (owed to #112 or the capture-side slice cut from it): an attachment made through the only-step fallback (no step of the role was in progress) carries the marker that says so (rule in S2). Such a fact stays attached with its marker (S12 (c), #125).
 - **MUST** (whoever shows a CI state as the state of the current work, #113 or #115): `headCommit` is the PR head commit on GitHub, not the local `HEAD`. Compare the two before showing `passed` for the current work, or a stale green shows for unpushed commits (Security observation on #114). The same comparison is a partial guard against a wrong pull request (it does not cover a pull request in a repository the agent controls, see S11 Deferred): the daemon's `gh` read takes its repository and branch from the worktree's git config, which the agent can write, so the agent can make another pull request's checks (a third-party fork PR reusing the branch name) the CI fact (Security F1 on #115, S11 row Branch to PR). Compare `headCommit` (`headRefOid`) with the local `HEAD` and show `passed` only when they are equal; otherwise show the CI state as not belonging to the current work. This is owed by the display (#113 or the CI display slice); #115 does not implement it.
 - **MUST**, met by #115 (S11): validate `headRefOid` as a 40- or 64-hex object id before it reaches any `git` or `gh` argument (CWE-88). Met by never putting it in an argument: the argv is fixed. Any later argument built from it validates first. Core accepts any string (Security S1 on #114, low, deferred: the committed Gherkin uses a short fixture value); for display it is untrusted text (`snapshot-contract.md:66`).
 - **MUST**, met by #115 (S11): the raw `gh pr view --json headRefOid,statusCheckRollup` shape, `__typename` presence included, was not recorded in-repo (`evidence/verified-facts/gh-checks-pr93.json` is a curated excerpt). The live read is committed as `evidence/verified-facts/gh-pr-view-raw-pr127.json`: `__typename` is present, `CheckRun`. Core accepts an absent `__typename` and refuses any value other than `CheckRun`.
 - **MUST**, met by #115 (S11): a failed or missing `gh` read (no PR, no auth, a `gh` error) is #115's error to report; core never reports it. Pass the `gh` stdout string or nothing: core reads a non-string as absent, so a `null` would hide the failure (Security S2 on #114, closed in core).
 - **MUST** (owed to #112 or the capture-side slice cut from it): report reads are confined. Open the file with `O_RDONLY|O_NOFOLLOW|O_NONBLOCK`, require an `fstat` regular file, read at most `MAX_TEXT_LENGTH`+1 bytes, derive the path from the worktree realpath. The fact-file writer follows `plan-writer-confinement.md:86`. #112 AC1 still says "at the paths from #108" on poll, which this record rejects (Considered options): its body needs updating.
-- **Out of scope**: the name and shape of the new `.agent-flow` fact file (#112 and Security), snapshot facts (#109), the role-delivery mechanism (#112), glossary terms "verified fact", "declared fact", "unattached fact" (PM gap, `docs/functional/glossary.md:43-58`), the Security-lane routing of the sixth file (carried by #112's re-slice, which does not carry it today; the orchestrator adds it there), ruling on (b).
+- **Out of scope**: snapshot facts (#109); the name and shape of the new `.agent-flow` fact file and the role-delivery mechanism, out of #108 and decided by #125 (S12), the file still reviewed by the Security lane; glossary terms "verified fact", "declared fact", "unattached fact" (PM gap, `docs/functional/glossary.md:43-58`), the Security-lane routing of the sixth file (carried by #112's re-slice, which does not carry it today; the orchestrator adds it there), ruling on (b).
 
 ## Open questions / Gaps
 
 - [x] **(a)** steps that run no tools: ruled by the human, 2026-11-11 (exempt; epic #4's outcome amended).
 - [ ] **Pending (b)**: drop TRX and fix `docs/plan.md:126` and the scenario at `docs/plan.md:163`. Recommendation: confirm the drop, open a follow-up ticket for the `plan.md` fixes. Human decision.
-- [ ] Does a fact attached through the only-step fallback stay attached (with its marker) or become unattached? Not decided here.
-- [ ] Is a role-less orchestrator mutation run unattached, or an issue-level fact like CI? Not decided here; the run showed only that the only-step fallback attaches it by luck (R4) and refuses it with no step in progress.
-- [ ] How the role reaches the capture step when an agent runs a tool (#112). The run used an operator-supplied role.
-- [ ] Whether capture reads the agent transcript for steps and tool runs; the transcript could carry the role and the tool result. This record does not decide the direction; #112 settles it with the capture design.
-- [ ] A full vitest run size and a whole-repo Stryker report size against the 1 MiB bound: #110 and #111 enforce the bound (S7, S8) but measured neither; owed to #112, the capture side, with the stop-at-the-bound read.
+- [x] Does a fact attached through the only-step fallback stay attached (with its marker) or become unattached? **Answered by #125 (S12 (c))**: it stays attached, with `attachment: "only-step"`, the rule declared records already follow (`decision-step.ts:39-42`).
+- [x] Is a role-less orchestrator mutation run unattached, or an issue-level fact like CI? **Answered by #125 (S12 (d))**: unattached (`step: null`), unless exactly one step is in progress, where (c) applies; never issue-level, because the run misses a role, not a scope. The main session carries no `agent_type` (`capture-125/hook-events.excerpt.json` `n2`).
+- [x] How the role reaches the capture step when an agent runs a tool (#112). **Answered by #125 (S12 (a))**: a `PostToolUse` hook on `Bash`; the role is the event's `agent_type` when it names a role id (host-observed, present only inside a subagent, `n11`), else a leading `AGENT_FLOW_ROLE=<role-id>` on the command (agent-supplied, marked), else none.
+- [x] Whether capture reads the agent transcript for steps and tool runs; the transcript could carry the role and the tool result. **Answered by #125 (S12 (b))**: no. The hook event carries what the writer needs; the transcript is an internal format carrying account ids, and a subagent's results sit in a second file (`capture-125/run.txt` H5).
+- [x] A full vitest run size and a whole-repo Stryker report size against the 1 MiB bound. **Measured by #125 (S12 (f))**: vitest 579,947 B (55.3%), cucumber-js 689,994 B (65.8%), whole-repo Stryker 2,932,594 B (279.7%, refused whole); a Bash `tool_response` carries a 30,000-character preview of each (`capture-125/run.txt` V, C, S, H4).
+- [x] The sixth file's name and shape, and how an entry meets core's `{step, text}` input. **Answered by #125 (S12 (e))**: `.agent-flow/verified-facts.jsonl`, one bounded extract per observed run (the counts core's readers return), handed to core as `{step, text}` with `text` the entry line, never the report.
+- [x] A whole-repo Stryker run yields no verified fact: its report is 279.7% of the bound (S12 (f)). **Ruled by the human, 2026-11-23 (G1)**: accepted. A whole-repo Stryker report is never a fact; only scoped `--mutate` runs count. The bound stays as AC7 states; no larger capture-side read bound.
+- [ ] The test reports grow with the suite: extrapolated, vitest reaches the bound near 3,200 tests and cucumber-js near 250 scenarios (S12 (f)); past that a full run yields no fact. Owner and remedy not decided here.
 - [ ] Each decision shows twice in step detail. With real `.agent-flow/` files every decision is also a Declared fact (`declaredFactOf`, `toSnapshotStep`, `core/src/snapshot/snapshot.ts`), so its title appears once as a decision and once as `Declared` with `Source: decisions.jsonl`. The panel must not filter it (it computes nothing); deduplication, if wanted, belongs to the producer or core. Product call for the human, not decided here.
