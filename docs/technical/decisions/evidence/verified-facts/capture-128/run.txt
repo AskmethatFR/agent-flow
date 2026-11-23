@@ -1,0 +1,94 @@
+Hook spike (#128, S1 #142): which hook event a failing vitest run fires in a real subagent, 2026-11-23
+=======================================================================================================
+
+Setup
+  base commit 4e832fa745fa97abcc44b02ddbc7284877864012, worktree with npm ci, node v24.22.3
+  vitest 5.0.5 (package.json:30, exact pin), Claude Code 2.1.330 (claude --version)
+  <repo> = the worktree; <scratch> = a directory in the worktree, untracked and deleted after the run
+  (the dev lane's lane-scope hook refuses writes outside the worktree and under any .claude/ path, so the
+   precedent's temp directory and proj/.claude/settings.json were not possible: two deviations, below);
+  ids, transcript paths, tmp paths and the account are replaced by placeholders in every committed file
+  <scratch>/vt = a tiny vitest project (package.json type module, no config): tests/pass.test.js (1+1 toBe 2),
+  tests/fail.test.js (1+1 toBe 3), tests/slow.test.js (a 60 s test); vitest resolves from <repo>/node_modules
+  (the scratch sits in the worktree)
+
+H. Hook capture (hook-events.excerpt.json beside this file: all 18 events of the two runs, sanitised, in order)
+  <scratch>/settings.json registers one command hook, <scratch>/bin/tee-hook.sh
+  (cat > <scratch>/events/<ns>-<pid>.json; exit 0), on:
+    PostToolUse matcher "*", PostToolUseFailure matcher "*", PreToolUse matcher "Bash", SubagentStart, SubagentStop
+  Claude Code 2.1.330 accepts the event name PostToolUseFailure: it fired (events 6 and 17).
+  custom agent (--agents): qa, tools [Bash], model haiku
+  deviation 1: the settings file is passed with --settings <scratch>/settings.json (not a project .claude/settings.json)
+  deviation 2: the session cwd is <scratch>/vt itself (the vitest project), not a separate proj directory
+  Run 1, from <scratch>/vt:
+    claude -p --model haiku --setting-sources project --settings <scratch>/settings.json --strict-mcp-config \
+        --agents <scratch>/agents.json --allowedTools Bash Agent --output-format json \
+        "Call the Agent tool once, subagent_type qa, prompt: run these three Bash commands one after the other:
+         (1) npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json tests/pass.test.js
+         (2) the same on tests/fail.test.js  (3) the same on tests/slow.test.js with the Bash timeout 3000 ms"
+    -> exit 0, 11 events (excerpt 1-11)
+  Run 2, same flags: (1) the pass command with --outputFile=reports/vitest/pass2.json, (2) the fail command with
+    --outputFile=reports/vitest/fail2.json (a file per run, to keep each report's mtime) -> exit 0, 7 events (12-18)
+    (the agent issued the two Bash calls in one batch, so they overlapped in time; each pair is still ordered)
+  Both runs use the same command shape as the feature's, with a test-file filter added so one project holds
+  all three cases; the Agent call ran async, as in #125 (event 2 / 13: status "async_launched").
+
+H1 passing run: event 4 (run 1) and 15 (run 2), hook_event_name "PostToolUse", tool_name "Bash"
+     keys: session_id, transcript_path, cwd, prompt_id, permission_mode, agent_id, agent_type, effort,
+           hook_event_name, tool_name, tool_input, tool_response, tool_use_id, duration_ms
+     agent_type "qa" (the Agent call's subagent_type), cwd <scratch>/vt, tool_input.command the exact command
+     tool_response keys: stdout, stderr, interrupted, isImage, noOutputExpected
+     tool_response.interrupted false; duration_ms 631 and 670 (present, a number, top level beside tool_response)
+     there is NO exit-code field: a PostToolUse is the success path, exit 0 is implied by the event name
+     stdout is the one line "JSON report written to <path>" (vitest with --outputFile prints only that)
+
+H2 failing run (vitest exits 1): event 6 (run 1) and 17 (run 2), hook_event_name "PostToolUseFailure"
+     NOT PostToolUse: no PostToolUse event fired for the failing command (checked in both runs: the
+     only events after its PreToolUse are the PostToolUseFailure and, later, the next command's PreToolUse)
+     keys: session_id, transcript_path, cwd, prompt_id, permission_mode, agent_id, agent_type, effort,
+           hook_event_name, tool_name, tool_input, tool_use_id, error, is_interrupt, duration_ms
+     versus H1: NO tool_response (so no tool_response.interrupted, stdout or stderr); instead
+       error: a string "Exit code 1\n" + the command's output ("JSON report written to <path>"):
+              the exit code is only in this prefix, and stdout and stderr arrive merged in it
+       is_interrupt: boolean, false here (the stand-in for tool_response.interrupted)
+     agent_type "qa", cwd, tool_input.command and duration_ms (473 and 440) are present as in H1
+
+H3 interrupted run (run 1, the 60 s test with a 3000 ms Bash timeout): event 8, hook_event_name "PostToolUse"
+     tool_response keys: the five of H1 plus backgroundTaskId and timedOutAfterMs (3000); stdout "", interrupted
+     false, duration_ms 3004. Claude Code moved the command to the background instead of killing it: the vitest
+     run had NOT ended and no report was written by then (SubagentStop lists the shell task as "running").
+     A real user interrupt (is_interrupt true, or tool_response.interrupted true) was not produced: only the
+     timeout path was observed. The later end of a backgrounded run was not observed (claude -p exited first).
+
+H4 report written before the event (file mtime against the hook script's timestamp, from the event file name)
+     run 1 fail:  vitest.json mtime 18:28:00.959, PostToolUseFailure 18:28:01.018 -> report 59 ms before the event
+     run 2 pass:  pass2.json  mtime 18:28:45.193, PostToolUse        18:28:45.225 -> report 32 ms before the event
+     run 2 fail:  fail2.json  mtime 18:28:45.655, PostToolUseFailure 18:28:45.686 -> report 31 ms before the event
+     (run 1 pass: the report was overwritten by the next command, so its mtime was not kept; hence run 2)
+     the file is complete when either event is delivered: vitest has exited by then
+
+H5 other events (as #125): SubagentStart (agent_id, agent_type only), PostToolUse of the Agent call 0-1 ms
+     after it (async_launched), PreToolUse Bash inside the subagent carries agent_id and agent_type, SubagentStop
+     adds agent_transcript_path and last_assistant_message; session_id and transcript_path are the main session's
+
+Closed answer for S2
+     A vitest run that fails (exit 1) is delivered as PostToolUseFailure, never as PostToolUse; a passing run
+     as PostToolUse. S2 must register BOTH, matcher "Bash", on the same writer command.
+     Keys the writer reads, by event:
+       field                 PostToolUse (pass)                  PostToolUseFailure (fail)
+       agent_type            agent_type                          agent_type
+       cwd                   cwd                                 cwd
+       command               tool_input.command                  tool_input.command
+       duration              duration_ms                         duration_ms
+       interrupted           tool_response.interrupted           is_interrupt  (no tool_response)
+       exit code             implied 0                           "Exit code N" prefix of error
+       tool_use_id           tool_use_id                         tool_use_id
+     A PostToolUse with tool_response.backgroundTaskId (and timedOutAfterMs) is a run that has not ended:
+     the writer must not treat it as a finished run, whatever its interrupted value.
+     No PostToolUse key says a run failed, so the pass/fail of a run is the event name, not a payload field.
+
+Cleanup: <scratch> (events, settings, vitest project, reports) removed after the run; <repo>/node_modules is
+  not committed (.gitignore). Nothing else is committed.
+Scan: no home path, id, account or email in this directory's files (grep for the user name, the session, agent,
+  prompt, tool-use and task ids of both runs, and an email pattern: 0 matches);
+  spikes/capture/shared/secrets.mjs findLeaks on the two files: no leak.
