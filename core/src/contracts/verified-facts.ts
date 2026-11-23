@@ -34,11 +34,39 @@ const countRule = (record: unknown): SchemaViolation | undefined => {
     : undefined
 }
 
+// Runs after the counts. The schema has already fixed the types: step, role and roleFrom are
+// strings or null, and attachment is one of role, only-step, unattached.
+const pairingRule = (record: unknown): SchemaViolation | undefined => {
+  const fact = record as Record<string, unknown>
+  const unattached = fact.attachment === 'unattached'
+  if (fact.step === null && !unattached) {
+    return { path: ['attachment'], message: 'must be unattached when step is null' }
+  }
+  if (fact.step !== null && unattached) {
+    return { path: ['attachment'], message: 'must not be unattached when step is set' }
+  }
+  if (fact.role !== null && fact.roleFrom === null) {
+    return { path: ['roleFrom'], message: 'must not be null when role is set' }
+  }
+  if (fact.role === null && fact.roleFrom !== null) {
+    return { path: ['roleFrom'], message: 'must be null when role is null' }
+  }
+  return fact.attachment === 'role' && fact.role === null
+    ? { path: ['role'], message: 'must not be null when attachment is role' }
+    : undefined
+}
+
+const recordRule = (record: unknown): SchemaViolation | undefined =>
+  countRule(record) ?? pairingRule(record)
+
+// 138 is the shortest valid compact line of any tool: a vitest or cucumber-js line with zero
+// counts, or a stryker line with 0 detected and 1 surviving, a step, attachment role, role qa
+// and roleFrom host. The pairings allow no shorter one.
 export const verifiedFactsContract: JsonlContract = {
   file: 'verified-facts.jsonl',
   schema: verifiedFactsSchema,
   minimumRecordLength: 138,
-  recordRule: countRule,
+  recordRule,
 }
 
 export const validateVerifiedFacts = (text: string): ValidationResult =>

@@ -41,15 +41,29 @@ const lineText = (value: unknown): string => JSON.stringify(value)
 const toolFact = (tool: string): Record<string, unknown> =>
   tool === 'stryker' ? { ...unattachedStryker } : { ...attachedVitest, tool }
 
-const shortestLine = (counts: Record<string, unknown>): string =>
-  lineText({
-    at: '2026-11-23T12:00:00.000Z',
-    step: '1',
-    attachment: 'role',
-    role: 'qa',
-    roleFrom: 'host',
-    ...counts,
-  })
+interface Pairing {
+  step: string | null
+  attachment: string
+  role: string | null
+  roleFrom: string | null
+}
+
+// Every step, attachment, role and roleFrom combination, valid or not: the shortest valid line is
+// found among them, never assumed.
+const everyPairing = (): Pairing[] =>
+  ['1', null].flatMap((step) =>
+    ['role', 'only-step', 'unattached'].flatMap((attachment) =>
+      [...ROLE_IDS, null].flatMap((role) =>
+        ['host', 'agent', null].map((roleFrom) => ({ step, attachment, role, roleFrom })),
+      ),
+    ),
+  )
+
+// The rules of the ticket, written independently of the code under test.
+const isValidPairing = ({ step, attachment, role, roleFrom }: Pairing): boolean =>
+  (attachment === 'unattached') === (step === null) &&
+  (role === null) === (roleFrom === null) &&
+  (attachment !== 'role' || role !== null)
 
 const fileText = (...lines: string[]): string => lines.join('\n')
 
@@ -152,13 +166,118 @@ describe('validateVerifiedFacts', () => {
   )
 
   it('sizes the post-cap prefilter on the shortest valid compact line of any tool', () => {
-    const shortest = [
+    const smallest = [
       { tool: 'vitest', passed: 0, total: 0, failedSuites: 0 },
       { tool: 'cucumber-js', passed: 0, total: 0, failedSuites: 0 },
       { tool: 'stryker', detected: 0, surviving: 1 },
-    ].map((counts) => shortestLine(counts))
-    for (const line of shortest) expect(validateVerifiedFacts(line)).toEqual({ accepted: true })
-    expect(verifiedFactsContract.minimumRecordLength).toBe(Math.min(...shortest.map((line) => line.length)))
+    ]
+    const valid: string[] = []
+    for (const counts of smallest) {
+      for (const pairing of everyPairing()) {
+        const line = lineText({ at: '2026-11-23T12:00:00.000Z', ...pairing, ...counts })
+        const decision = validateVerifiedFacts(line)
+        expect(decision.accepted).toBe(isValidPairing(pairing))
+        if (decision.accepted) valid.push(line)
+      }
+    }
+    expect(verifiedFactsContract.minimumRecordLength).toBe(Math.min(...valid.map((line) => line.length)))
+  })
+
+  it.each([
+    ['role', 'dev-a', 'agent'],
+    ['only-step', 'dev-a', 'agent'],
+    ['only-step', null, null],
+  ])('refuses a null step with attachment %s, naming its line number and the field attachment', (attachment, role, roleFrom) => {
+    const text = fileText(
+      lineText(attachedVitest),
+      lineText(factWith({ step: null, attachment, role, roleFrom })),
+    )
+    expect(validateVerifiedFacts(text)).toEqual(
+      rejection(2, 'attachment', 'must be unattached when step is null'),
+    )
+  })
+
+  it.each([
+    ['dev-a', 'agent'],
+    [null, null],
+  ])('refuses an unattached line with a step, naming its line number and the field attachment', (role, roleFrom) => {
+    const text = fileText(
+      lineText(attachedVitest),
+      lineText(factWith({ attachment: 'unattached', role, roleFrom })),
+    )
+    expect(validateVerifiedFacts(text)).toEqual(
+      rejection(2, 'attachment', 'must not be unattached when step is set'),
+    )
+  })
+
+  it.each([
+    ['role', 'dev-a', 'agent'],
+    ['only-step', 'dev-a', 'agent'],
+    ['only-step', null, null],
+  ])('accepts a step with attachment %s, role %j and roleFrom %j', (attachment, role, roleFrom) => {
+    expect(validateVerifiedFacts(lineText(factWith({ attachment, role, roleFrom })))).toEqual({
+      accepted: true,
+    })
+  })
+
+  it.each([
+    [{ role: 'dev-a', roleFrom: null }, 'roleFrom', 'must not be null when role is set'],
+    [{ role: null, roleFrom: 'host' }, 'roleFrom', 'must be null when role is null'],
+    [{ attachment: 'only-step', role: null, roleFrom: 'agent' }, 'roleFrom', 'must be null when role is null'],
+  ])('refuses the pairing %j, naming its line number and the field %s', (overlay, field, message) => {
+    const text = fileText(lineText(attachedVitest), lineText(factWith(overlay)))
+    expect(validateVerifiedFacts(text)).toEqual(rejection(2, field, message))
+  })
+
+  it('refuses a role with no roleFrom on the shortest line, shorter than the minimum, naming its line number', () => {
+    const roleOnly = lineText({
+      at: '2026-11-23T12:00:00.000Z',
+      tool: 'stryker',
+      step: '1',
+      attachment: 'role',
+      role: 'qa',
+      roleFrom: null,
+      detected: 0,
+      surviving: 1,
+    })
+    expect(roleOnly).toHaveLength(136)
+    expect(roleOnly.length).toBeLessThan(verifiedFactsContract.minimumRecordLength)
+    const text = fileText(lineText(attachedVitest), roleOnly)
+    expect(validateVerifiedFacts(text)).toEqual(
+      rejection(2, 'roleFrom', 'must not be null when role is set'),
+    )
+  })
+
+  it('refuses attachment role without a role, naming its line number and the field role', () => {
+    const text = fileText(
+      lineText(attachedVitest),
+      lineText(factWith({ attachment: 'role', role: null, roleFrom: null })),
+    )
+    expect(validateVerifiedFacts(text)).toEqual(
+      rejection(2, 'role', 'must not be null when attachment is role'),
+    )
+  })
+
+  it('checks step and attachment first, then role and roleFrom, then attachment role', () => {
+    const stepAndRole = factWith({ step: null, attachment: 'role', role: 'qa', roleFrom: null })
+    expect(validateVerifiedFacts(lineText(stepAndRole))).toEqual(
+      rejection(1, 'attachment', 'must be unattached when step is null'),
+    )
+    const roleAndAttachment = factWith({ attachment: 'role', role: null, roleFrom: 'host' })
+    expect(validateVerifiedFacts(lineText(roleAndAttachment))).toEqual(
+      rejection(1, 'roleFrom', 'must be null when role is null'),
+    )
+  })
+
+  it('checks the counts before the pairings', () => {
+    const text = lineText(factWith({ step: null, passed: -1 }))
+    expect(validateVerifiedFacts(text)).toEqual(rejection(1, 'passed', 'must be a non-negative integer'))
+  })
+
+  it('states the pairing rules in the schema description', () => {
+    expect(verifiedFactsSchema.description).toContain('attachment is unattached exactly when step is null')
+    expect(verifiedFactsSchema.description).toContain('roleFrom is null exactly when role is null')
+    expect(verifiedFactsSchema.description).toContain('attachment role needs a role')
   })
 
   it('refuses the shortest line without its counts, naming its line number and the first missing count', () => {
