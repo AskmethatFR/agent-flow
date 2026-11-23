@@ -1,3 +1,5 @@
+import { realpathSync } from 'node:fs'
+import { isAbsolute } from 'node:path'
 import { MAX_TEXT_LENGTH } from '@agent-flow/core/contracts'
 import type { ValidationResult } from '@agent-flow/core/contracts'
 import { appendFact } from '@agent-flow/capture-shared/fact-append'
@@ -33,6 +35,25 @@ const endedRun = (payload: object): boolean => {
 // duration_ms is the length of the run: a safe non-negative integer, or the run is not observed.
 const isDuration = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0
 
+// Scope (docs/technical/decisions/verified-facts.md): the event belongs to the worktree only when
+// the realpath of its cwd is the realpath of the worktree root. A missing, relative or unresolvable
+// cwd, or a subdirectory or another tree, is not that root. A project directory that does not
+// resolve is not judged here: the writer refuses it, as it always did.
+const isElsewhere = (cwd: unknown, projectDir: string): boolean => {
+  if (typeof cwd !== 'string' || !isAbsolute(cwd)) return true
+  let root: string
+  try {
+    root = realpathSync(projectDir)
+  } catch {
+    return false
+  }
+  try {
+    return realpathSync(cwd) !== root
+  } catch {
+    return true
+  }
+}
+
 export function captureFact(
   input: string,
   projectDir: string | undefined,
@@ -42,6 +63,7 @@ export function captureFact(
   const payload = parse(input)
   if (field(payload, 'tool_name') !== 'Bash' || !endedRun(payload)) return undefined
   if (!isVitestCommand(field(asObject(field(payload, 'tool_input')), 'command'))) return undefined
+  if (isElsewhere(field(payload, 'cwd'), projectDir)) return undefined
   const durationMs = field(payload, 'duration_ms')
   if (!isDuration(durationMs)) return undefined
   return appendFact(projectDir, { agentType: field(payload, 'agent_type'), at: now().toISOString(), durationMs })

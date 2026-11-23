@@ -1,20 +1,30 @@
 import {
+  closeSync,
   existsSync,
+  fstatSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
+  readSync,
   readdirSync,
   realpathSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
   utimesSync,
   writeFileSync,
+  writeSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { createFactAppender } from './fact-append'
 import { appendFact as appendFactOf } from './index'
+
+const realIo = { openSync, readSync, writeSync, closeSync, fstatSync, lstatSync }
 
 // The run ends five seconds after this module loads and lasts a minute: the report (written in
 // beforeEach, rewritten by a few tests) falls inside the run, mtime and ctime both.
@@ -169,6 +179,102 @@ describe('appendFact', () => {
     expect(readdirSync(elsewhere)).toEqual(['plan.json'])
   })
 
+  // Folders (docs verified-facts.md S12, F5): reports/ and reports/vitest/ are lstat'ed, and O_NOFOLLOW
+  // covers the last component only, so a linked folder would send the read outside the worktree.
+  const outsideReport = () => {
+    const outside = join(root, 'outside')
+    mkdirSync(join(outside, 'vitest'), { recursive: true })
+    writeFileSync(join(outside, 'vitest', 'vitest.json'), vitestReport(100, 99, 0))
+    return outside
+  }
+
+  it.each<[string, string[], (outside: string) => string, string]>([
+    ['reports/', ['reports'], (outside) => outside, 'reports must be a real directory'],
+    ['reports/vitest/', ['reports', 'vitest'], (outside) => join(outside, 'vitest'), 'reports/vitest must be a real directory'],
+  ])('refuses %s as a link, reads nothing through it and leaves its target untouched', (_label, folder, target, message) => {
+    const outside = outsideReport()
+    rmSync(join(worktree, ...folder), { recursive: true })
+    symlinkSync(target(outside), join(worktree, ...folder))
+    expect(appendFact(worktree, { agentType: 'qa', at })).toEqual({
+      accepted: false,
+      errors: [{ file: 'reports/vitest/vitest.json', location: null, field: null, message }],
+    })
+    expect(existsSync(factsPath)).toBe(false)
+    expect(readdirSync(join(outside, 'vitest'))).toEqual(['vitest.json'])
+  })
+
+  it('refuses reports/vitest as a file', () => {
+    rmSync(join(worktree, 'reports', 'vitest'), { recursive: true })
+    writeFileSync(join(worktree, 'reports', 'vitest'), '')
+    expect(appendFact(worktree, { agentType: 'qa', at })).toMatchObject({
+      accepted: false,
+      errors: [{ file: 'reports/vitest/vitest.json', message: 'reports/vitest must be a real directory' }],
+    })
+  })
+
+  it('refuses a folder it cannot lstat, naming it', () => {
+    const failing = createFactAppender({
+      ...realIo,
+      lstatSync: ((path: string, ...rest: never[]) => {
+        if (path === join(worktree, 'reports')) throw Object.assign(new Error('denied'), { code: 'EACCES' })
+        return (realIo.lstatSync as (path: string, ...rest: never[]) => unknown)(path, ...rest)
+      }) as typeof lstatSync,
+    })
+    expect(failing(worktree, { agentType: 'qa', at, durationMs })).toMatchObject({
+      accepted: false,
+      errors: [{ file: 'reports/vitest/vitest.json', message: 'reports cannot be read' }],
+    })
+    expect(existsSync(factsPath)).toBe(false)
+  })
+
+  // TOCTOU: a folder swapped for a link between its lstat and the open of the report. The folder
+  // chain is resolved again after the open, as confined-append does for .agent-flow, and the
+  // counts are dropped when it is no longer the real one.
+  it.each([
+    ['reports/', ['reports'], (outside: string) => outside],
+    ['reports/vitest/', ['reports', 'vitest'], (outside: string) => join(outside, 'vitest')],
+  ])('refuses a report read after %s was swapped for a link once checked', (_label, folder, target) => {
+    const outside = outsideReport()
+    const swapping = createFactAppender({
+      ...realIo,
+      openSync: ((path: string, ...rest: never[]) => {
+        if (path.endsWith('vitest.json')) {
+          renameSync(join(worktree, ...folder), join(root, 'moved'))
+          symlinkSync(target(outside), join(worktree, ...folder))
+        }
+        return (realIo.openSync as (path: string, ...rest: never[]) => number)(path, ...rest)
+      }) as typeof openSync,
+    })
+    expect(swapping(worktree, { agentType: 'qa', at, durationMs })).toMatchObject({
+      accepted: false,
+      errors: [{ file: 'reports/vitest/vitest.json', message: 'reports/vitest must be a real directory' }],
+    })
+    expect(existsSync(factsPath)).toBe(false)
+  })
+
+  it('refuses a report whose folder is gone once read', () => {
+    let reportOpened = false
+    const moving = createFactAppender({
+      ...realIo,
+      openSync: ((path: string, ...rest: never[]) => {
+        reportOpened ||= path.endsWith('vitest.json')
+        return (realIo.openSync as (path: string, ...rest: never[]) => number)(path, ...rest)
+      }) as typeof openSync,
+      readSync: ((fd: number, ...rest: never[]) => {
+        const count = (realIo.readSync as (fd: number, ...rest: never[]) => number)(fd, ...rest)
+        if (reportOpened && existsSync(join(worktree, 'reports', 'vitest'))) {
+          renameSync(join(worktree, 'reports', 'vitest'), join(root, 'moved'))
+        }
+        return count
+      }) as typeof readSync,
+    })
+    expect(moving(worktree, { agentType: 'qa', at, durationMs })).toMatchObject({
+      accepted: false,
+      errors: [{ file: 'reports/vitest/vitest.json', message: 'reports/vitest cannot be read' }],
+    })
+    expect(existsSync(factsPath)).toBe(false)
+  })
+
   it.each([
     ['a .. segment', () => `${worktree}/reports/..`],
     ['a . segment', () => `${root}/./worktree`],
@@ -231,6 +337,16 @@ describe('appendFact', () => {
       'the report is missing',
       () => (rmSync(join(worktree, 'reports', 'vitest', 'vitest.json')), worktree),
       refusedBy('reports/vitest/vitest.json', 'is missing'),
+    ],
+    [
+      'reports/ is missing',
+      () => (rmSync(join(worktree, 'reports'), { recursive: true }), worktree),
+      refusedBy('reports/vitest/vitest.json', 'reports is missing'),
+    ],
+    [
+      'reports/vitest/ is missing',
+      () => (rmSync(join(worktree, 'reports', 'vitest'), { recursive: true }), worktree),
+      refusedBy('reports/vitest/vitest.json', 'reports/vitest is missing'),
     ],
     [
       'the report is not JSON',

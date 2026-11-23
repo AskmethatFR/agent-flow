@@ -44,15 +44,26 @@ export const resolveWorktree = (worktree: string, refuse: Refuse): string | Reje
   }
 }
 
-export const inspectAgentFlowDirectory = (directory: string, refuse: Refuse): Rejected | undefined => {
+type Lstat = (path: string) => { isDirectory(): boolean }
+
+// lstat, not stat: a link is not a directory. The label names the folder in the refusal.
+export const inspectFolder = (
+  lstat: Lstat,
+  directory: string,
+  label: string,
+  refuse: Refuse,
+): Rejected | undefined => {
   let isDirectory: boolean
   try {
-    isDirectory = lstatSync(directory).isDirectory()
+    isDirectory = lstat(directory).isDirectory()
   } catch (error) {
-    return refuse(codeOf(error) === 'ENOENT' ? '.agent-flow is missing' : '.agent-flow cannot be read')
+    return refuse(`${label} ${codeOf(error) === 'ENOENT' ? 'is missing' : 'cannot be read'}`)
   }
-  return isDirectory ? undefined : refuse('.agent-flow must be a real directory')
+  return isDirectory ? undefined : refuse(`${label} must be a real directory`)
 }
+
+export const inspectAgentFlowDirectory = (directory: string, refuse: Refuse): Rejected | undefined =>
+  inspectFolder(lstatSync, directory, '.agent-flow', refuse)
 
 export const confirmAgentFlowDirectory = (directory: string, refuse: Refuse): Rejected | undefined => {
   try {

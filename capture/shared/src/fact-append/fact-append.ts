@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs'
 import { join } from 'node:path'
 import { checkContractFile } from '@agent-flow/core/contracts'
 import type { ValidationResult } from '@agent-flow/core/contracts'
@@ -7,6 +8,7 @@ import { appendLine } from '../shared/confined-append'
 import type { AppendIo } from '../shared/confined-append'
 import {
   inspectAgentFlowDirectory,
+  inspectFolder,
   isConfinableWorktree,
   readContractFile,
   readPlan,
@@ -60,11 +62,42 @@ const writtenDuring = (run: ObservedRun, file: ContractFile): boolean => {
   return [file.mtimeMs, file.ctimeMs].every((time) => time >= end - run.durationMs && Math.floor(time) <= end)
 }
 
+// Docs verified-facts.md S12 (Security F5): each folder of the fixed path is lstat'ed as a directory,
+// not a link, before the read, since O_NOFOLLOW covers the last component only. Same chain as
+// docs/technical/decisions/plan-writer-confinement.md:86.
+const reportFolders = ['reports', 'reports/vitest']
+
+const inspectReportFolders = (io: AppendIo, realWorktree: string): Rejected | undefined => {
+  for (const folder of reportFolders) {
+    const refusal = inspectFolder(io.lstatSync, join(realWorktree, folder), folder, refuseReport)
+    if (refusal !== undefined) return refusal
+  }
+  return undefined
+}
+
+// A folder swapped for a link after its lstat is caught here, once the report is open: the folder
+// chain must still resolve to itself, as confined-append checks .agent-flow after its open. A swap
+// undone before this check cannot be seen: the counts it let through stay bound by freshness and
+// by the report parser (docs verified-facts.md S12, residual risk).
+const confirmReportFolder = (realWorktree: string): Rejected | undefined => {
+  const folder = join(realWorktree, 'reports/vitest')
+  try {
+    if (realpathSync(folder) !== folder) return refuseReport('reports/vitest must be a real directory')
+  } catch {
+    return refuseReport('reports/vitest cannot be read')
+  }
+  return undefined
+}
+
 // Read from the fixed path under the worktree, never from a path in the command, and parsed by
 // core's own reader, so the host holds no parsing rule.
 const vitestCountsOf = (io: AppendIo, realWorktree: string, run: ObservedRun): Counts | Rejected => {
+  const unsafe = inspectReportFolders(io, realWorktree)
+  if (unsafe !== undefined) return unsafe
   const report = readContractFile(io, join(realWorktree, reportPath), refuseReport)
   if ('accepted' in report) return report
+  const swapped = confirmReportFolder(realWorktree)
+  if (swapped !== undefined) return swapped
   if (!writtenDuring(run, report)) return refuseReport('was not written during the run')
   const parsed = readTestReport(report.text)
   if (!parsed.accepted) return refuseReport(parsed.message)

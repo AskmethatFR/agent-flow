@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { MAX_TEXT_LENGTH } from '@agent-flow/core/contracts'
 import { captureFact } from './fact-capture'
@@ -24,6 +24,7 @@ const qaStep = {
 const passing = (overlays: Record<string, unknown> = {}, response: Record<string, unknown> = {}) =>
   JSON.stringify({
     hook_event_name: 'PostToolUse',
+    cwd: worktree,
     agent_type: 'qa',
     tool_name: 'Bash',
     tool_input: { command: literal, description: 'Run vitest' },
@@ -32,14 +33,13 @@ const passing = (overlays: Record<string, unknown> = {}, response: Record<string
     ...overlays,
   })
 
-let root: string
-let worktree: string
-let factsPath: string
+// The paths are fixed at load: the event tables below are built at collection, before any test runs,
+// and each event carries the worktree as its cwd. The tree itself is made and removed per test.
+const root = realpathSync(mkdtempSync(join(tmpdir(), 'fact-capture-')))
+const worktree = join(root, 'worktree')
+const factsPath = join(worktree, '.agent-flow', 'verified-facts.jsonl')
 
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'fact-capture-')))
-  worktree = join(root, 'worktree')
-  factsPath = join(worktree, '.agent-flow', 'verified-facts.jsonl')
   mkdirSync(join(worktree, '.agent-flow'), { recursive: true })
   mkdirSync(join(worktree, 'reports', 'vitest'), { recursive: true })
   writeFileSync(join(worktree, '.agent-flow', 'plan.json'), JSON.stringify({ issue: '#128', title: 'Facts', steps: [qaStep] }))
@@ -132,6 +132,40 @@ describe('captureFact', () => {
   ])('writes nothing with %s', (_label, projectDir) => {
     expect(captureFact(passing(), projectDir, now)).toBeUndefined()
     expect(existsSync(factsPath)).toBe(false)
+  })
+
+  // Scope (docs verified-facts.md): the hook leaves the worktree alone unless the realpath of the
+  // event's cwd is the worktree root, so a subagent run in a subdirectory or elsewhere leaves no line.
+  it.each<[string, () => unknown]>([
+    ['no cwd', () => undefined],
+    ['an empty cwd', () => ''],
+    ['a non-string cwd', () => 42],
+    ['a cwd that does not resolve', () => join(root, 'missing')],
+    ['a subdirectory of the worktree', () => join(worktree, 'reports')],
+    ['the parent of the worktree', () => root],
+    ['another directory', () => tmpdir()],
+    ['a relative path to the worktree', () => relative(process.cwd(), worktree)],
+  ])('writes nothing for %s', (_label, cwdOf) => {
+    expect(captureFact(passing({ cwd: cwdOf() }), worktree, now)).toBeUndefined()
+    expect(existsSync(factsPath)).toBe(false)
+  })
+
+  it('writes nothing with an empty project directory, even for a cwd that the empty path resolves to', () => {
+    expect(captureFact(passing({ cwd: process.cwd() }), '', now)).toBeUndefined()
+  })
+
+  it('leaves a project directory that does not resolve to the refusal of the writer', () => {
+    expect(captureFact(passing(), join(root, 'missing'), now)).toEqual({
+      accepted: false,
+      errors: [{ file: 'verified-facts.jsonl', location: null, field: null, message: 'worktree cannot be resolved' }],
+    })
+  })
+
+  it('appends one fact when the cwd or the project directory is a link that resolves to the worktree root', () => {
+    const link = join(root, 'link')
+    symlinkSync(worktree, link)
+    expect(captureFact(passing({ cwd: link }), worktree, now)).toEqual({ accepted: true })
+    expect(captureFact(passing({ cwd: worktree }), link, now)).toEqual({ accepted: true })
   })
 
   it.each(['garbage', '', 'null', '[]', '42', '"text"', passing({ tool_input: 'text' })])('writes nothing for the input %j', (input) => {
