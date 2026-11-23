@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildSnapshot, factEntriesOf } from './index'
+import { readMutationReport } from './mutation-report'
+import { readTestReport } from './test-report'
 
 const now = new Date('2026-11-23T12:00:00Z')
 
@@ -32,7 +34,19 @@ const factLine = (overlay: Record<string, unknown> = {}): string =>
     ...overlay,
   })
 
-const unattachedLine = (): string =>
+const strykerLine = (detected: number, surviving: number): string =>
+  JSON.stringify({
+    at: '2026-11-23T12:00:00.000Z',
+    tool: 'stryker',
+    step: 's1',
+    attachment: 'role',
+    role: 'dev-a',
+    roleFrom: 'agent',
+    detected,
+    surviving,
+  })
+
+const unattachedLine =(): string =>
   factLine({ step: null, attachment: 'unattached', role: null, roleFrom: null })
 
 const factsOf = (verifiedFacts: readonly { step: string; text: string }[], ...ids: string[]) =>
@@ -65,11 +79,111 @@ describe('factEntriesOf', () => {
   })
 })
 
+describe('the fact of an entry against the fact of its report', () => {
+  const range = (length: number): number[] => Array.from({ length }, (_, index) => index)
+
+  const vitestReport = (total: number, passed: number, failedSuites: number): string =>
+    JSON.stringify({ numTotalTests: total, numPassedTests: passed, numFailedTestSuites: failedSuites })
+
+  const cucumberReport = (passed: number, total: number): string =>
+    JSON.stringify([
+      {
+        elements: range(total).map((index) => ({
+          steps: [{ result: { status: index < passed ? 'passed' : 'failed' } }],
+        })),
+      },
+    ])
+
+  const strykerReport = (detected: number, surviving: number): string =>
+    JSON.stringify({
+      schemaVersion: '1.0',
+      files: {
+        'src/a.ts': {
+          mutants: [
+            ...range(detected).map(() => ({ status: 'Killed' })),
+            ...range(surviving).map(() => ({ status: 'Survived' })),
+          ],
+        },
+      },
+    })
+
+  // The line the capture writer makes: the counts core's own readers extract, plus the attachment fields.
+  const lineOfReport = (kind: 'test' | 'mutation', text: string): string => {
+    const result = kind === 'test' ? readTestReport(text) : readMutationReport(text)
+    if (!result.accepted) throw new Error(`the report was refused: ${result.message}`)
+    const { source, ...counts } = result.report
+    return factLine({ tool: source, passed: undefined, total: undefined, failedSuites: undefined, ...counts })
+  }
+
+  const reports: { name: string; kind: 'test' | 'mutation'; text: string }[] = [
+    ...range(6).flatMap((total) =>
+      range(total + 1).flatMap((passed) =>
+        range(3).map((failedSuites) => ({
+          name: `vitest ${passed} of ${total}, ${failedSuites} failed suites`,
+          kind: 'test' as const,
+          text: vitestReport(total, passed, failedSuites),
+        })),
+      ),
+    ),
+    ...range(5).flatMap((total) =>
+      range(total + 1).map((passed) => ({
+        name: `cucumber-js ${passed} of ${total}`,
+        kind: 'test' as const,
+        text: cucumberReport(passed, total),
+      })),
+    ),
+    ...range(12).flatMap((detected) =>
+      range(12)
+        .filter((surviving) => detected + surviving > 0)
+        .map((surviving) => ({
+          name: `stryker ${detected} detected, ${surviving} surviving`,
+          kind: 'mutation' as const,
+          text: strykerReport(detected, surviving),
+        })),
+    ),
+  ]
+
+  it('gives the entry of a line the fact its report gives, over every report of the grid', () => {
+    const mismatches = reports.flatMap(({ name, kind, text }) => {
+      const fromReport = buildSnapshot(
+        { plan: planOf('s1'), [kind === 'test' ? 'testReports' : 'mutationReports']: [{ step: 's1', text }] },
+        now,
+      )
+      const { entries, errors } = factEntriesOf(`${lineOfReport(kind, text)}\n`)
+      const fromLine = factsOf(entries, 's1')
+      const same =
+        fromReport.steps[0]?.facts.length === 1 &&
+        errors.length === 0 &&
+        fromLine.errors.length === 0 &&
+        JSON.stringify(fromLine.steps[0]?.facts) === JSON.stringify(fromReport.steps[0]?.facts)
+      return same ? [] : [name]
+    })
+    expect(reports).toHaveLength(63 + 15 + 143)
+    expect(mismatches).toEqual([])
+  })
+})
+
 describe('buildSnapshot verified-facts entries', () => {
   it('gives a step the fact of its vitest line', () => {
     const snapshot = factsOf([{ step: 's1', text: factLine() }], 's1')
     expect(snapshot.steps[0]?.facts).toEqual([
       { origin: 'verified', source: 'vitest', label: '5 of 5 passed' },
+    ])
+    expect(snapshot.errors).toEqual([])
+  })
+
+  it('accepts a valid line followed by a trailing newline', () => {
+    const snapshot = factsOf([{ step: 's1', text: `${factLine()}\n` }], 's1')
+    expect(snapshot.steps[0]?.facts).toEqual([
+      { origin: 'verified', source: 'vitest', label: '5 of 5 passed' },
+    ])
+    expect(snapshot.errors).toEqual([])
+  })
+
+  it('gives a stryker line the fact of its mutation score', () => {
+    const snapshot = factsOf([{ step: 's1', text: strykerLine(9, 2) }], 's1')
+    expect(snapshot.steps[0]?.facts).toEqual([
+      { origin: 'verified', source: 'stryker', label: '81.81% mutation score, 2 surviving' },
     ])
     expect(snapshot.errors).toEqual([])
   })
@@ -116,6 +230,7 @@ describe('buildSnapshot verified-facts entries', () => {
     ['an empty text', ''],
     ['a JSON text that is not a fact', '{"tool":"vitest"}'],
     ['two valid lines', `${factLine()}\n${factLine()}`],
+    ['a stryker line with no mutant', strykerLine(0, 0)],
   ])('refuses %s without throwing', (_name, text) => {
     const snapshot = factsOf([{ step: 's1', text }], 's1')
     expect(snapshot.steps[0]?.facts).toEqual([])

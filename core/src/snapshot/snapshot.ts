@@ -11,6 +11,7 @@ import { readCiStatus } from './ci-status'
 import type { CiState } from './ci-status'
 import { readFactLine } from './fact-line'
 import { mutationLabelOf, readMutationReport } from './mutation-report'
+import type { ParsedMutationReport } from './mutation-report'
 import { readTestReport } from './test-report'
 import type { ParsedTestReport } from './test-report'
 import { instantOf, timeSpentOf } from './time-spent'
@@ -126,6 +127,12 @@ const verifiedFactOf = (report: ParsedTestReport): SnapshotFact => ({
   origin: 'verified',
   source: report.source,
   label: `${report.passed} of ${report.total} passed${runFailedSuffixOf(report)}`,
+})
+
+const mutationFactOf = (report: ParsedMutationReport): SnapshotFact => ({
+  origin: 'verified',
+  source: report.source,
+  label: mutationLabelOf(report),
 })
 
 const latestVerifiedFacts = (
@@ -285,14 +292,14 @@ const readTestReportFact: ReportReader = (text) => {
 
 const readMutationReportFact: ReportReader = (text) => {
   const result = readMutationReport(text)
-  return result.accepted
-    ? { fact: { origin: 'verified', source: result.report.source, label: mutationLabelOf(result.report) } }
-    : { message: result.message }
+  return result.accepted ? { fact: mutationFactOf(result.report) } : { message: result.message }
 }
 
 const readFactLineFact: ReportReader = (text) => {
   const result = readFactLine(text)
-  return result.accepted ? { fact: verifiedFactOf(result.report) } : { message: result.message }
+  if (!result.accepted) return { message: result.message }
+  const { report } = result
+  return { fact: report.source === 'stryker' ? mutationFactOf(report) : verifiedFactOf(report) }
 }
 
 const outcomeOfReport = (
