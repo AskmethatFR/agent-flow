@@ -7,6 +7,7 @@ import { After, Given, Then, When } from '@cucumber/cucumber'
 import { applyStepEvent } from '@agent-flow/capture-shared/plan-writer'
 import { createGetSnapshot } from '@agent-flow/daemon/snapshot'
 import type { AgentSource, ReadIo, SnapshotReply, WorkspaceSource } from '@agent-flow/daemon/snapshot'
+import { passingCiOf } from './passing-ci'
 
 type WorktreeWatchWorld = {
   root: string
@@ -81,7 +82,11 @@ const worktreeNamed = (world: WorktreeWatchWorld, name: string): string => {
 }
 
 const requestSnapshot = (world: WorktreeWatchWorld, workspaceId: string): Promise<SnapshotReply> =>
-  createGetSnapshot({ io: recordingIo(world.paths), now: clock })(
+  createGetSnapshot({
+    io: recordingIo(world.paths),
+    now: clock,
+    ciStatus: passingCiOf('678b2c7355d66c094c072c5dcc2cb8ec26d70c68'),
+  })(
     { workspaceId },
     world.source,
     noAgents,

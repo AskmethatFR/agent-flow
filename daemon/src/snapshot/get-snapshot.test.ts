@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createGetSnapshot } from './get-snapshot'
 import type { AgentEntry, AgentListOptions, AgentSource } from './agent-status'
 import type { WorkspaceReading, WorkspaceSource } from './get-snapshot'
+import type { CiStatusRead } from './ci-status'
 import type { ReadIo } from './read-agent-flow-file'
 
 const now = new Date('2026-11-01T10:00:00.000Z')
@@ -14,6 +15,17 @@ let root: string
 let opened: string[]
 let resolved: string[]
 let listed: AgentListOptions[]
+let ciAsked: string[]
+let ciRead: () => Promise<CiStatusRead>
+
+const headCommit = '678b2c7355d66c094c072c5dcc2cb8ec26d70c68'
+
+const passingRollup = JSON.stringify({
+  headRefOid: headCommit,
+  statusCheckRollup: [{ __typename: 'CheckRun', status: 'COMPLETED', conclusion: 'SUCCESS' }],
+})
+
+const passingCi = { origin: 'verified', source: 'gh', headCommit, state: 'passed' }
 
 const io: ReadIo = {
   ...fs,
@@ -27,7 +39,12 @@ const io: ReadIo = {
   }) as ReadIo['openSync'],
 }
 
-const handler = createGetSnapshot({ io, now: () => now })
+const ciStatus = async (worktree: string): Promise<CiStatusRead> => {
+  ciAsked.push(worktree)
+  return ciRead()
+}
+
+const handler = createGetSnapshot({ io, now: () => now, ciStatus })
 
 const agentsOf = (entries: readonly AgentEntry[]): AgentSource => ({
   list: async (options) => {
@@ -46,6 +63,8 @@ beforeEach(() => {
   opened = []
   resolved = []
   listed = []
+  ciAsked = []
+  ciRead = async () => ({ status: passingRollup })
 })
 
 afterEach(() => {
@@ -119,7 +138,7 @@ describe('getSnapshot', () => {
         ],
         currentStepId: 's1',
         currentAgent: null,
-        ci: null,
+        ci: passingCi,
         errors: [],
       },
     })
@@ -155,7 +174,7 @@ describe('getSnapshot', () => {
         steps: [],
         currentStepId: null,
         currentAgent: null,
-        ci: null,
+        ci: passingCi,
         errors: [{ file: 'plan.json', location: null, field: null, message: 'is missing' }],
       },
     })
@@ -163,7 +182,7 @@ describe('getSnapshot', () => {
 
   it('uses the clock it is given', async () => {
     const worktree = worktreeWith('a', planWith('#1', 'in_progress'))
-    const later = createGetSnapshot({ io, now: () => new Date('2026-11-01T11:00:00.000Z') })
+    const later = createGetSnapshot({ io, now: () => new Date('2026-11-01T11:00:00.000Z'), ciStatus })
     const reply = await later({ workspaceId: 'w1' }, sourceOf({ w1: at(worktree) }), noAgents)
     expect(reply).toMatchObject({
       snapshot: { steps: [{ timeSpent: { label: '2 h', milliseconds: 7_200_000 } }] },
@@ -396,6 +415,93 @@ describe('getSnapshot', () => {
       const reply = await getSnapshot({ workspaceId: 'w1' }, sourceOf({ w1: at(worktree) }), agentsOf([planted]))
       expect(JSON.stringify(reply)).not.toContain('sentinel')
       expect(reply).toMatchObject({ snapshot: { currentAgent: { role: 'dev-a', state: 'running' } } })
+    })
+  })
+
+  describe('CI status', () => {
+    const snapshotOf = async (worktree: string, agents: AgentSource = noAgents) => {
+      const reply = await getSnapshot({ workspaceId: 'w1' }, sourceOf({ w1: at(worktree) }), agents)
+      if (reply.kind !== 'snapshot') throw new Error('expected a snapshot')
+      return reply.snapshot
+    }
+
+    const inProgressWorktree = (): string => worktreeWith('a', planWith('#1', 'in_progress'))
+
+    const rollupWith = (conclusion: string): string =>
+      JSON.stringify({
+        headRefOid: headCommit,
+        statusCheckRollup: [{ __typename: 'CheckRun', status: 'COMPLETED', conclusion }],
+      })
+
+    it('hands the raw status of gh to core, which maps it to the CI fact', async () => {
+      ciRead = async () => ({ status: rollupWith('FAILURE') })
+      const snapshot = await snapshotOf(inProgressWorktree())
+      expect(snapshot.ci).toEqual({ ...passingCi, state: 'failed' })
+      expect(snapshot.errors).toEqual([])
+    })
+
+    it('asks for the status once, from the resolved worktree', async () => {
+      const worktree = inProgressWorktree()
+      const link = join(root, 'link')
+      symlinkSync(worktree, link)
+      await getSnapshot({ workspaceId: 'w1' }, sourceOf({ w1: at(link) }))
+      expect(ciAsked).toEqual([worktree])
+    })
+
+    it('does not ask for the status when the worktree is refused', async () => {
+      await getSnapshot({ workspaceId: 'unknown' }, sourceOf({ w1: at(inProgressWorktree()) }))
+      expect(ciAsked).toEqual([])
+    })
+
+    it('lets core report a status it cannot use, as the only CI error', async () => {
+      ciRead = async () => ({ status: 'not json' })
+      const snapshot = await snapshotOf(inProgressWorktree())
+      expect(snapshot.ci).toBeNull()
+      expect(snapshot.errors).toEqual([
+        { file: 'ci-status', location: null, field: null, message: 'is not valid JSON' },
+      ])
+    })
+
+    const failures: [string, () => Promise<CiStatusRead>, string][] = [
+      ['gh is missing', async () => ({ unavailable: 'gh-missing' }), 'gh is not installed'],
+      ['gh fails', async () => ({ unavailable: 'gh-failed' }), 'cannot be read from gh'],
+      ['the runner rejects', () => Promise.reject(new Error('boom /secret/path')), 'cannot be read from gh'],
+      [
+        'the runner throws synchronously',
+        () => {
+          throw new Error('boom /secret/path')
+        },
+        'cannot be read from gh',
+      ],
+    ]
+    it.each(failures)('keeps the snapshot intact and adds one error when %s', async (_, read, message) => {
+      const worktree = inProgressWorktree()
+      const baseline = await snapshotOf(worktree)
+      ciRead = read
+      const reply = await getSnapshot({ workspaceId: 'w1' }, sourceOf({ w1: at(worktree) }), noAgents)
+      expect(reply).toEqual({
+        kind: 'snapshot',
+        snapshot: { ...baseline, ci: null, errors: [{ file: 'ci-status', location: null, field: null, message }] },
+      })
+      expect(JSON.stringify(reply)).not.toContain('secret')
+    })
+
+    it('adds the CI error after the agent state error when both reads fail', async () => {
+      const worktree = inProgressWorktree()
+      ciRead = async () => ({ unavailable: 'gh-failed' })
+      const failing: AgentSource = { list: async () => Promise.reject(new Error('boom')) }
+      const snapshot = await snapshotOf(worktree, failing)
+      expect(snapshot.errors.map(({ file }) => file)).toEqual(['agent-state', 'ci-status'])
+      expect(snapshot.steps).toHaveLength(1)
+    })
+
+    it('still reads the agent state and the CI status when the other one fails', async () => {
+      const worktree = inProgressWorktree()
+      ciRead = async () => ({ unavailable: 'gh-failed' })
+      const running: AgentEntry = { agent: { status: 'running' }, project: at(worktree).project }
+      const snapshot = await snapshotOf(worktree, agentsOf([running]))
+      expect(snapshot.currentAgent).toEqual({ role: 'dev-a', state: 'running' })
+      expect(snapshot.errors.map(({ file }) => file)).toEqual(['ci-status'])
     })
   })
 
