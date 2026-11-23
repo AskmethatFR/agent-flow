@@ -93,9 +93,20 @@ When('the agent marks the step as done', function (this: TimingWorld): void {
   this.runtime.finish(this, running.title)
 })
 
+// The runtimes stamp instants with the real clock, so two events in the same millisecond
+// record equal instants. Waiting until the clock has moved past this step's recorded start
+// makes any later event strictly after it, without loosening the "after" check.
+const waitPastInstant = (instant: string): void => {
+  const sleeper = new Int32Array(new SharedArrayBuffer(4))
+  while (Date.now() <= Date.parse(instant)) Atomics.wait(sleeper, 0, 0, 1)
+}
+
 When('the agent starts the step {string}', function (this: TimingWorld, title: string): void {
   this.runtime.start(this, title)
   this.started = title
+  const { startedAt } = stepTitled(this, title)
+  assert.equal(typeof startedAt, 'string', `step "${title}" has no startedAt after its start`)
+  waitPastInstant(startedAt as string)
 })
 
 Then('plan.json contains startedAt and endedAt for that step', function (this: TimingWorld): void {
