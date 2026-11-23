@@ -3,10 +3,13 @@ import type { AgentDisplayState } from '../agent-state/agent-state'
 import { MAX_TEXT_LENGTH, capErrors } from '../contracts/contract-error'
 import type { ContractError } from '../contracts/contract-error'
 import { readLocatedDecisions } from '../contracts/decisions'
+import { readJsonl } from '../contracts/jsonl'
 import { readPlan } from '../contracts/plan'
 import type { PlanStep, ReadPlanResult } from '../contracts/plan'
+import { verifiedFactsContract } from '../contracts/verified-facts'
 import { readCiStatus } from './ci-status'
 import type { CiState } from './ci-status'
+import { readFactLine } from './fact-line'
 import { mutationLabelOf, readMutationReport } from './mutation-report'
 import { readTestReport } from './test-report'
 import type { ParsedTestReport } from './test-report'
@@ -33,12 +36,32 @@ export type TestReport = StepReport
 
 export type MutationReport = StepReport
 
+export type VerifiedFactEntry = StepReport
+
 export type SnapshotFiles = {
   readonly plan: AgentFlowFile
   readonly decisions?: AgentFlowFile
   readonly testReports?: readonly TestReport[]
   readonly mutationReports?: readonly MutationReport[]
+  readonly verifiedFacts?: readonly VerifiedFactEntry[]
   readonly ciStatus?: string
+}
+
+export type FactEntries = {
+  readonly entries: readonly VerifiedFactEntry[]
+  readonly errors: readonly ContractError[]
+}
+
+// Only the attached lines become entries, each with its own line as text, in file order.
+export const factEntriesOf = (file: AgentFlowFile): FactEntries => {
+  if (typeof file !== 'string') return { entries: [], errors: [] }
+  const lines = file.split('\n')
+  const { records, errors } = readJsonl(verifiedFactsContract, file)
+  const entries = records.flatMap(({ record, location }) => {
+    const { step } = record as { step: string | null }
+    return step === null ? [] : [{ step, text: lines[location - 1] as string }]
+  })
+  return { entries, errors }
 }
 
 export type SnapshotDecision = {
@@ -240,6 +263,7 @@ const groupDecisions = (
 
 const testReportFile = 'test-report'
 const mutationReportFile = 'mutation-report'
+const verifiedFactFile = 'verified-fact'
 
 type VerifiedFact = { readonly step: string; readonly fact: SnapshotFact }
 
@@ -264,6 +288,11 @@ const readMutationReportFact: ReportReader = (text) => {
   return result.accepted
     ? { fact: { origin: 'verified', source: result.report.source, label: mutationLabelOf(result.report) } }
     : { message: result.message }
+}
+
+const readFactLineFact: ReportReader = (text) => {
+  const result = readFactLine(text)
+  return result.accepted ? { fact: verifiedFactOf(result.report) } : { message: result.message }
 }
 
 const outcomeOfReport = (
@@ -358,7 +387,8 @@ export const buildSnapshot = (
   const { perStep, errors } = groupDecisions(plan.steps, files.decisions)
   const testReports = readReports(testReportFile, readTestReportFact, plan.steps, files.testReports ?? [])
   const mutationReports = readReports(mutationReportFile, readMutationReportFact, plan.steps, files.mutationReports ?? [])
-  const verified = [...testReports.verified, ...mutationReports.verified]
+  const factLines = readReports(verifiedFactFile, readFactLineFact, plan.steps, files.verifiedFacts ?? [])
+  const verified = [...testReports.verified, ...mutationReports.verified, ...factLines.verified]
   const current = currentStepOf(plan.steps)
   return {
     issue: plan.issue,
@@ -367,6 +397,13 @@ export const buildSnapshot = (
     currentStepId: current?.id ?? null,
     currentAgent: currentAgentOf(current, status),
     ci,
-    errors: [...errors, ...testReports.errors, ...mutationReports.errors, ...ciErrors, ...agentErrors],
+    errors: [
+      ...errors,
+      ...testReports.errors,
+      ...mutationReports.errors,
+      ...factLines.errors,
+      ...ciErrors,
+      ...agentErrors,
+    ],
   }
 }
