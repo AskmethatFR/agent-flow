@@ -7,6 +7,7 @@ import { After, Given, Then, When } from '@cucumber/cucumber'
 import type { Snapshot } from '@agent-flow/core/snapshot'
 import { createGetSnapshot } from '@agent-flow/daemon/snapshot'
 import type { AgentSource, WorkspaceSource } from '@agent-flow/daemon/snapshot'
+import { passingCiOf } from './passing-ci'
 
 type AgentStateRpcWorld = {
   root: string
@@ -111,7 +112,11 @@ Then(
 When(
   'the panel asks for the snapshot of that worktree',
   async function (this: AgentStateRpcWorld): Promise<void> {
-    const getSnapshot = createGetSnapshot({ io: fs, now: () => new Date('2026-11-01T10:00:00.000Z') })
+    const getSnapshot = createGetSnapshot({
+      io: fs,
+      now: () => new Date('2026-11-01T10:00:00.000Z'),
+      ciStatus: passingCiOf('678b2c7355d66c094c072c5dcc2cb8ec26d70c68'),
+    })
     const reply = await getSnapshot({ workspaceId }, workspaceOf(this.worktree), this.agents)
     assert.equal(reply.kind, 'snapshot')
     this.snapshot = reply.snapshot
