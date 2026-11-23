@@ -21,6 +21,12 @@ const businessTokens = [
   "'done'",
   'timeSpent',
   'currentStepId',
+  'JSON.parse',
+  'passed',
+  'surviving',
+  'detected',
+  'failedSuites',
+  'attachment',
 ]
 
 describe('daemon boundary', () => {

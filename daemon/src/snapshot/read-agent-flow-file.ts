@@ -29,30 +29,33 @@ const descriptorMoved = (io: ReadIo, fd: number, path: string): boolean => {
   }
 }
 
-const readLimit = 4 * MAX_TEXT_LENGTH
+type FileName = 'plan.json' | 'decisions.jsonl' | 'verified-facts.jsonl'
+
+const readLimits: Record<FileName, number> = {
+  'plan.json': 4 * MAX_TEXT_LENGTH,
+  'decisions.jsonl': 4 * MAX_TEXT_LENGTH,
+  'verified-facts.jsonl': MAX_TEXT_LENGTH,
+}
 const openFlags = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK
 
 const chunkSize = 64 * 1024
 
-const readBounded = (io: ReadIo, fd: number): AgentFlowFile => {
+const readBounded = (io: ReadIo, fd: number, limit: number): AgentFlowFile => {
   const chunks: Buffer[] = []
   let total = 0
   for (;;) {
-    const chunk = Buffer.allocUnsafe(chunkSize)
-    const count = io.readSync(fd, chunk, 0, chunkSize, null)
+    const wanted = Math.min(chunkSize, limit + 1 - total)
+    const chunk = Buffer.allocUnsafe(wanted)
+    const count = io.readSync(fd, chunk, 0, wanted, null)
     if (count === 0) break
     total += count
-    if (total > readLimit) return { unavailable: 'too-large' }
+    if (total > limit) return { unavailable: 'too-large' }
     chunks.push(chunk.subarray(0, count))
   }
   return Buffer.concat(chunks).toString('utf8')
 }
 
-export const readAgentFlowFile = (
-  io: ReadIo,
-  realWorktree: string,
-  name: 'plan.json' | 'decisions.jsonl',
-): AgentFlowFile => {
+export const readAgentFlowFile = (io: ReadIo, realWorktree: string, name: FileName): AgentFlowFile => {
   const directory = join(realWorktree, '.agent-flow')
   const path = join(directory, name)
   let fd: number | undefined
@@ -72,7 +75,7 @@ export const readAgentFlowFile = (
     ) {
       return { unavailable: 'unreadable' }
     }
-    return readBounded(io, fd)
+    return readBounded(io, fd, readLimits[name])
   } catch (error) {
     return { unavailable: (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'missing' : 'unreadable' }
   } finally {

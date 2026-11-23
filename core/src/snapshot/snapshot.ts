@@ -3,14 +3,16 @@ import type { AgentDisplayState } from '../agent-state/agent-state'
 import { MAX_TEXT_LENGTH, capErrors } from '../contracts/contract-error'
 import type { ContractError } from '../contracts/contract-error'
 import { readLocatedDecisions } from '../contracts/decisions'
+import { firstViolation, readJsonl } from '../contracts/jsonl'
+import type { JsonlContract } from '../contracts/jsonl'
 import { readPlan } from '../contracts/plan'
 import type { PlanStep, ReadPlanResult } from '../contracts/plan'
-import { firstViolation } from '../contracts/jsonl'
-import type { JsonlContract } from '../contracts/jsonl'
 import { verifiedFactsContract } from '../contracts/verified-facts'
 import { readCiStatus } from './ci-status'
 import type { CiState } from './ci-status'
+import { readFactLine } from './fact-line'
 import { mutationLabelOf, readMutationReport } from './mutation-report'
+import type { ParsedMutationReport } from './mutation-report'
 import { readTestReport } from './test-report'
 import type { ParsedTestReport } from './test-report'
 import { instantOf, timeSpentOf } from './time-spent'
@@ -37,13 +39,42 @@ export type TestReport = StepReport
 
 export type MutationReport = StepReport
 
+export type VerifiedFactEntry = StepReport
+
 export type SnapshotFiles = {
   readonly plan: AgentFlowFile
   readonly decisions?: AgentFlowFile
   readonly testReports?: readonly TestReport[]
   readonly mutationReports?: readonly MutationReport[]
+  readonly verifiedFacts?: FactEntries
   readonly ciStatus?: string
   readonly unattachedEntries?: readonly string[]
+}
+
+export type FactEntries = {
+  readonly entries: readonly VerifiedFactEntry[]
+  readonly unattached: readonly string[]
+  readonly errors: readonly ContractError[]
+}
+
+// Each valid line keeps its own text, in file order: an attached line becomes a step-level entry,
+// a step: null line goes to unattached, the input of SnapshotFiles.unattachedEntries.
+export const factEntriesOf = (file: AgentFlowFile): FactEntries => {
+  if (typeof file !== 'string') {
+    const errors = file.unavailable === 'missing' ? [] : [unavailableError(verifiedFactsContract.file, file.unavailable)]
+    return { entries: [], unattached: [], errors }
+  }
+  const lines = file.split('\n')
+  const { records, errors } = readJsonl(verifiedFactsContract, file)
+  const entries: VerifiedFactEntry[] = []
+  const unattached: string[] = []
+  for (const { record, location } of records) {
+    const { step } = record as { step: string | null }
+    const text = lines[location - 1] as string
+    if (step === null) unattached.push(text)
+    else entries.push({ step, text })
+  }
+  return { entries, unattached, errors }
 }
 
 export type SnapshotDecision = {
@@ -111,6 +142,12 @@ const verifiedFactOf = (report: ParsedTestReport): SnapshotFact => ({
   origin: 'verified',
   source: report.source,
   label: `${report.passed} of ${report.total} passed${runFailedSuffixOf(report)}`,
+})
+
+const mutationFactOf = (report: ParsedMutationReport): SnapshotFact => ({
+  origin: 'verified',
+  source: report.source,
+  label: mutationLabelOf(report),
 })
 
 const latestVerifiedFacts = (
@@ -250,6 +287,7 @@ const groupDecisions = (
 
 const testReportFile = 'test-report'
 const mutationReportFile = 'mutation-report'
+const verifiedFactEntryLabel = 'verified-fact'
 
 type VerifiedFact = { readonly step: string; readonly fact: SnapshotFact }
 
@@ -263,7 +301,7 @@ type ReportOutcome = { readonly verified: VerifiedFact } | { readonly error: Con
 
 type FactReading = { readonly fact: SnapshotFact } | { readonly message: string }
 
-type ReportReader = (text: string) => FactReading
+type ReportReader = (text: string, step: string) => FactReading
 
 const readTestReportFact: ReportReader = (text) => {
   const result = readTestReport(text)
@@ -272,9 +310,14 @@ const readTestReportFact: ReportReader = (text) => {
 
 const readMutationReportFact: ReportReader = (text) => {
   const result = readMutationReport(text)
-  return result.accepted
-    ? { fact: { origin: 'verified', source: result.report.source, label: mutationLabelOf(result.report) } }
-    : { message: result.message }
+  return result.accepted ? { fact: mutationFactOf(result.report) } : { message: result.message }
+}
+
+const readFactLineFact: ReportReader = (text, step) => {
+  const result = readFactLine(text, step)
+  if (!result.accepted) return { message: result.message }
+  const { report } = result
+  return { fact: report.source === 'stryker' ? mutationFactOf(report) : verifiedFactOf(report) }
 }
 
 const outcomeOfReport = (
@@ -287,7 +330,7 @@ const outcomeOfReport = (
   if (!stepIds.has(step)) {
     return { error: { file, location, field: 'step', message: 'is not a step of plan.json' } }
   }
-  const reading = read(text)
+  const reading = read(text, step)
   if ('message' in reading) {
     return { error: { file, location, field: null, message: reading.message } }
   }
@@ -450,8 +493,9 @@ export const buildSnapshot = (
   const { perStep, errors } = groupDecisions(plan.steps, files.decisions)
   const testReports = readReports(testReportFile, readTestReportFact, plan.steps, files.testReports ?? [])
   const mutationReports = readReports(mutationReportFile, readMutationReportFact, plan.steps, files.mutationReports ?? [])
-  const verified = [...testReports.verified, ...mutationReports.verified]
-  const ranSteps = new Set([...testReports.ranSteps, ...mutationReports.ranSteps])
+  const factLines = readReports(verifiedFactEntryLabel, readFactLineFact, plan.steps, files.verifiedFacts?.entries ?? [])
+  const verified = [...testReports.verified, ...mutationReports.verified, ...factLines.verified]
+  const ranSteps = new Set([...testReports.ranSteps, ...mutationReports.ranSteps, ...factLines.ranSteps])
   const current = currentStepOf(plan.steps)
   return {
     issue: plan.issue,
@@ -466,6 +510,8 @@ export const buildSnapshot = (
       ...errors,
       ...testReports.errors,
       ...mutationReports.errors,
+      ...(files.verifiedFacts?.errors ?? []),
+      ...factLines.errors,
       ...unattached.errors,
       ...ciErrors,
       ...agentErrors,

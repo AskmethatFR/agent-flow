@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { buildSnapshot } from '@agent-flow/core/snapshot'
+import { buildSnapshot, factEntriesOf } from '@agent-flow/core/snapshot'
 import type { Snapshot } from '@agent-flow/core/snapshot'
 import { agentStatusOf } from './agent-status'
 import type { AgentSource } from './agent-status'
@@ -61,11 +61,18 @@ export const createGetSnapshot =
     if (realWorktree === null) return refused
     const plan = readAgentFlowFile(io, realWorktree, 'plan.json')
     const decisions = readAgentFlowFile(io, realWorktree, 'decisions.jsonl')
+    const verifiedFacts = factEntriesOf(readAgentFlowFile(io, realWorktree, 'verified-facts.jsonl'))
     const [agentStatus, ci] = await Promise.all([
       agentStatusOf(agents, io, realWorktree),
       ciStatusOf(ciStatus, realWorktree),
     ])
-    const files = { plan, decisions, ...('status' in ci ? { ciStatus: ci.status } : {}) }
+    const files = {
+      plan,
+      decisions,
+      verifiedFacts,
+      unattachedEntries: verifiedFacts.unattached,
+      ...('status' in ci ? { ciStatus: ci.status } : {}),
+    }
     const snapshot = buildSnapshot(files, now(), agentStatus)
     return {
       kind: 'snapshot',
