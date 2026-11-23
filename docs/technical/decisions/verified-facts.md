@@ -20,12 +20,14 @@ answers:
   - "How does core turn a gh CI status text into the issue-level CI fact, and what does it refuse?"
   - "What do the gh read (#115) and the CI display (#113) owe before they show a CI state?"
   - "How many verified facts does a step keep, how many reports does one build read, and what does the host owe before passing them?"
+  - "How does the daemon read the CI status with gh, and what does it report when gh fails?"
 decided_in:
   - "#108"
   - "#110"
   - "#111"
   - "#113"
   - "#114"
+  - "#115"
   - "#124"
 ---
 
@@ -193,6 +195,30 @@ Two bounds, both in `core/src/snapshot/snapshot.ts` and observed through `buildS
 
 Frozen surface of #124: `SnapshotStep.omittedFacts`, required by the hypothesis; the wire mirror, kept now because the type pin fails without it. `MAX_REPORTS_PER_BUILD`'s name and value, the bound-error message and the location numbering are not frozen.
 
+### S11 CI status read through gh (#115)
+
+The daemon reads the CI status of the worktree's pull request and passes the raw stdout to core (S9); it computes nothing and parses nothing. Code: `daemon/src/snapshot/ci-status.ts` (the runner and the error), `get-snapshot.ts` (the wiring), `index.ts` (the real `execFile`).
+
+| Concern | Rule | Anchor |
+|---|---|---|
+| Command | `gh pr view --json headRefOid,statusCheckRollup`, a fixed argv, run through `execFile` (no shell). No other `gh` subcommand, no other `git` or `gh` call | `GH_ARGS` |
+| Executable | `gh` is resolved once, when the daemon wiring loads (`index.ts`), to an absolute path, looking only at the absolute entries of `PATH`; an empty, `.` or relative entry is never looked at, so a `gh` an agent drops in the worktree (the cwd) is never run (CWE-427). Found nothing: the read reports `gh-missing` and runs nothing. `execFile` gets that path, and the child's `PATH` is cut to its absolute entries too. A `gh` installed after the daemon started is not seen until it restarts | `resolveGh`, `createGhRunner` |
+| Branch to PR | the cwd is the worktree realpath the RPC already resolved (`realPathOf`), and no branch name, PR number or repository name is read or put in an argument. This does NOT make the choice of pull request trusted: `gh` takes the repository and the branch from the worktree's git config, which the agent can write (`remote.*.url`, `remote.*.gh-resolved`, `branch.<b>.*`, `@{push}`, or the worktree's `.git` file), and its own `git` subprocesses obey that config. The agent can therefore pick which pull request's checks become the "verified" CI fact, for example a third-party fork PR that reuses the branch name (CWE-15, CWE-345). The fixed argv closes argument injection only. Mitigation owed to the display, see the MUST on the local `HEAD` below; it is partial (an agent-controlled repository whose pull request carries the same commit passes it, see Deferred below) | `createGhRunner` |
+| Bounds | timeout 10 s (`GH_TIMEOUT_MS`); `maxBuffer` is `MAX_TEXT_LENGTH`+1 (core's bound), so a larger output kills the child and is a failure, a stdout of exactly `MAX_TEXT_LENGTH`+1 reaches core, which refuses it with its size error. `GH_PROMPT_DISABLED=1` on top of the daemon's own environment | `createGhRunner` |
+| Success | the stdout string, untouched, as `files.ciStatus` | `get-snapshot.ts` |
+| Failure | one error `{file: 'ci-status', location: null, field: null, message}` and no `ciStatus` input (never `null`). Closed codes: `gh-missing` (no absolute `gh` resolved, or `error.code === 'ENOENT'`) gives `gh is not installed`; every other failure (non-zero exit: no auth, no PR, a `gh` error; timeout; buffer overflow; a throw) gives `cannot be read from gh`. Neither the stderr, the stdout nor `error.message` is read, so no host text reaches the snapshot; auth is not told apart from the other failures | `ciStatusErrorOf`, `ciStatusOf` |
+| Isolation | the rest of the snapshot (steps, decisions, agent state and their errors) is unchanged; the `gh` read and the agent read run together and fail on their own | `createGetSnapshot` |
+| Order | the host error is appended after core's errors, so after the agent-state error when both fail. S9 puts core's own `ci-status` error before the agent-state one; the host error cannot sit there without the daemon locating core's agent error in the list, which is a rule on core's output. The two never co-occur: a host failure passes no status, so core adds none | `createGetSnapshot` |
+| Evidence | the raw stdout of `gh pr view 127 --json headRefOid,statusCheckRollup`, read once from the repository on 2026-11-23: `evidence/verified-facts/gh-pr-view-raw-pr127.json`. Every entry has `__typename: "CheckRun"`, plus `completedAt`, `conclusion`, `detailsUrl`, `name`, `startedAt`, `status`, `workflowName`; `headRefOid` is a 40-hex string. Core reads only `headRefOid`, `__typename`, `status`, `conclusion`, so the shape matches S9 | |
+
+MUSTs met: the `headRefOid` MUST holds because no `git` or `gh` argument is built from any value: the argv is a constant and `headRefOid` is only copied by core into the snapshot as display text; any later argument built from it must validate it first (40 or 64 lowercase hex). The raw-shape MUST is met by the evidence above. The failed-read MUST is met by the Failure row. Read-only: the command only reads; the daemon never passes agent-written text (plan, decisions, role, title, branch) to a process. Which pull request `gh` picks is not covered by that: see the Branch to PR row.
+
+Known limits, accepted:
+- Cost per poll: no cache; `gh` runs once per snapshot request, about one call per 2 s per open panel, against the shared 5000 requests per hour budget of the token. The user dropped the cache from #115.
+- A vanished worktree: `ENOENT` is also what a missing cwd gives at spawn, so a worktree removed between the realpath and the spawn is reported as `gh is not installed`. Accepted.
+
+Deferred, not in #115: pin `--repo <owner/name>` from a source the agent cannot write, once one exists. Paseo's `gitRuntime.remoteUrl` is not that source: it comes from the same agent-writable git config. Until then the display's `HEAD` comparison is the only partial defence, and it is partial: it ties the result to a commit, not to a repository or its checks. An agent that can push to any GitHub repository (likely when it shares the user's `gh` auth) can push its `HEAD` there, open a pull request whose workflow always passes, and point `remote.origin.url` at it; `headRefOid` then equals `HEAD` and `passed` shows. Only the `--repo` pin closes this, or a display of the pull request's repository, which needs `url` in the JSON fields, a contract change.
+
 ### Consequences per fact kind (AC6)
 
 | Fact kind | Consequence |
@@ -239,10 +265,10 @@ Per slice:
 - **MUST** (owed to #112, its host adapter): hand `buildSnapshot` only well-typed reports, a `{step: string, text: string}` per entry in an array. A failed read is an error the adapter reports, never an entry with a `null` text. Today `buildSnapshot` throws on a `null` text, a `null` entry, or a non-array `testReports`/`mutationReports`; no host passes these and TypeScript forbids them (Security S1, low, on #111, inherited from #110). If #112 cannot guarantee the shape at the boundary, core hardens `outcomeOfReport` and `readReports` instead, in #112. The omitted count, deferred from #110 (frozen surface: 4 elements declared, 4 `required_by_hypothesis: false`, S7), is delivered by #124 as `omittedFacts` (S10).
 - **MUST** (owed to #112 or the capture-side slice cut from it, and #109 where it applies): the trust rules of S4 hold for every fact.
 - **MUST** (owed to #112 or the capture-side slice cut from it): an attachment made through the only-step fallback (no step of the role was in progress) carries the marker that says so (rule in S2). Whether such a fact stays attached or becomes unattached is an open question below.
-- **MUST** (whoever shows a CI state as the state of the current work, #113 or #115): `headCommit` is the PR head commit on GitHub, not the local `HEAD`. Compare the two before showing `passed` for the current work, or a stale green shows for unpushed commits (Security observation on #114).
-- **MUST** (owed to #115): validate `headRefOid` as a 40- or 64-hex object id before it reaches any `git` or `gh` argument (CWE-88). Core accepts any string (Security S1 on #114, low, deferred: the committed Gherkin uses a short fixture value); for display it is untrusted text (`snapshot-contract.md:66`).
-- **MUST** (owed to #115): the raw `gh pr view --json headRefOid,statusCheckRollup` shape, `__typename` presence included, is not recorded in-repo (`evidence/verified-facts/gh-checks-pr93.json` is a curated excerpt). #115's live read confirms it and commits the evidence. Core accepts an absent `__typename` and refuses any value other than `CheckRun`.
-- **MUST** (owed to #115): a failed or missing `gh` read (no PR, no auth, a `gh` error) is #115's error to report; core never reports it. Pass the `gh` stdout string or nothing: core reads a non-string as absent, so a `null` would hide the failure (Security S2 on #114, closed in core).
+- **MUST** (whoever shows a CI state as the state of the current work, #113 or #115): `headCommit` is the PR head commit on GitHub, not the local `HEAD`. Compare the two before showing `passed` for the current work, or a stale green shows for unpushed commits (Security observation on #114). The same comparison is a partial guard against a wrong pull request (it does not cover a pull request in a repository the agent controls, see S11 Deferred): the daemon's `gh` read takes its repository and branch from the worktree's git config, which the agent can write, so the agent can make another pull request's checks (a third-party fork PR reusing the branch name) the CI fact (Security F1 on #115, S11 row Branch to PR). Compare `headCommit` (`headRefOid`) with the local `HEAD` and show `passed` only when they are equal; otherwise show the CI state as not belonging to the current work. This is owed by the display (#113 or the CI display slice); #115 does not implement it.
+- **MUST**, met by #115 (S11): validate `headRefOid` as a 40- or 64-hex object id before it reaches any `git` or `gh` argument (CWE-88). Met by never putting it in an argument: the argv is fixed. Any later argument built from it validates first. Core accepts any string (Security S1 on #114, low, deferred: the committed Gherkin uses a short fixture value); for display it is untrusted text (`snapshot-contract.md:66`).
+- **MUST**, met by #115 (S11): the raw `gh pr view --json headRefOid,statusCheckRollup` shape, `__typename` presence included, was not recorded in-repo (`evidence/verified-facts/gh-checks-pr93.json` is a curated excerpt). The live read is committed as `evidence/verified-facts/gh-pr-view-raw-pr127.json`: `__typename` is present, `CheckRun`. Core accepts an absent `__typename` and refuses any value other than `CheckRun`.
+- **MUST**, met by #115 (S11): a failed or missing `gh` read (no PR, no auth, a `gh` error) is #115's error to report; core never reports it. Pass the `gh` stdout string or nothing: core reads a non-string as absent, so a `null` would hide the failure (Security S2 on #114, closed in core).
 - **MUST** (owed to #112 or the capture-side slice cut from it): report reads are confined. Open the file with `O_RDONLY|O_NOFOLLOW|O_NONBLOCK`, require an `fstat` regular file, read at most `MAX_TEXT_LENGTH`+1 bytes, derive the path from the worktree realpath. The fact-file writer follows `plan-writer-confinement.md:86`. #112 AC1 still says "at the paths from #108" on poll, which this record rejects (Considered options): its body needs updating.
 - **Out of scope**: the name and shape of the new `.agent-flow` fact file (#112 and Security), snapshot facts (#109), the role-delivery mechanism (#112), glossary terms "verified fact", "declared fact", "unattached fact" (PM gap, `docs/functional/glossary.md:43-58`), the Security-lane routing of the sixth file (carried by #112's re-slice, which does not carry it today; the orchestrator adds it there), ruling on (b).
 
