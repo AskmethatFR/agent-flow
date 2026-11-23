@@ -5,7 +5,9 @@ import type { ContractError } from '../contracts/contract-error'
 import { readLocatedDecisions } from '../contracts/decisions'
 import { readPlan } from '../contracts/plan'
 import type { PlanStep, ReadPlanResult } from '../contracts/plan'
-import { validateVerifiedFacts } from '../contracts/verified-facts'
+import { firstViolation } from '../contracts/jsonl'
+import type { JsonlContract } from '../contracts/jsonl'
+import { verifiedFactsContract } from '../contracts/verified-facts'
 import { readCiStatus } from './ci-status'
 import type { CiState } from './ci-status'
 import { mutationLabelOf, readMutationReport } from './mutation-report'
@@ -360,6 +362,19 @@ const factOfEntry = (entry: UnattachedEntry): SnapshotFact =>
         failedSuites: entry.failedSuites,
       })
 
+// verifiedFactsContract always sets its recordRule; the shared JsonlContract type leaves it optional.
+const { schema: entrySchema, recordRule: entryRule } = verifiedFactsContract as Required<
+  Pick<JsonlContract, 'schema' | 'recordRule'>
+>
+
+// readJsonl's check of one line, run on the document already parsed. readJsonl splits on '\n'
+// and drops one trailing empty line, so a '\n' before the last character makes more than one line.
+const isVerifiedFactsLine = (text: string, document: unknown): boolean =>
+  !text.slice(0, -1).includes('\n') &&
+  firstViolation(entrySchema, document) === undefined &&
+  entryRule(document) === undefined
+
+// Each entry is parsed once (CWE-400): the line check reuses that document.
 const outcomeOfEntry = (text: string, location: number): EntryOutcome => {
   if (text.length > MAX_TEXT_LENGTH) return entryError(location, null, `exceeds ${MAX_TEXT_LENGTH} characters`)
   let document: unknown
@@ -368,7 +383,7 @@ const outcomeOfEntry = (text: string, location: number): EntryOutcome => {
   } catch {
     return entryError(location, null, 'is not valid JSON')
   }
-  if (!validateVerifiedFacts(text).accepted) {
+  if (!isVerifiedFactsLine(text, document)) {
     return entryError(location, null, 'is not a verified-facts.jsonl entry')
   }
   const entry = document as UnattachedEntry

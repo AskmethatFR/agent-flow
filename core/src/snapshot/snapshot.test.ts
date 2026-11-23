@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, it } from 'vitest'
+import { describe, expect, expectTypeOf, it, vi } from 'vitest'
 import { MAX_DECISIONS_PER_STEP, MAX_REPORTS_PER_BUILD, MAX_UNATTACHED_FACTS, buildSnapshot } from './index'
 import type { AgentStatusUnavailable, Snapshot, SnapshotStep } from './index'
 
@@ -1862,6 +1862,40 @@ describe('buildSnapshot with unattached entries', () => {
     const snapshot = unattachedOf(vitestEntry(), entry)
     expect(snapshot.errors).toStrictEqual([entryError(2, message)])
     expect(snapshot.unattachedFacts).toStrictEqual([{ origin: 'verified', source: 'vitest', label: '3 of 5 passed' }])
+  })
+
+  it.each([
+    ['a valid line after a leading newline', `\n${vitestEntry()}`, notAnEntry],
+    ['a valid line followed by an empty line', `${vitestEntry()}\n\n`, notAnEntry],
+    ['a valid entry spread over several lines', JSON.stringify(JSON.parse(vitestEntry()), null, 2), notAnEntry],
+    ['a lone newline', '\n', 'is not valid JSON'],
+  ])('refuses %s as one line would be read', (_, entry, message) => {
+    const snapshot = unattachedOf(vitestEntry(), entry)
+    expect(snapshot.errors).toStrictEqual([entryError(2, message)])
+    expect(snapshot.unattachedFacts).toStrictEqual([{ origin: 'verified', source: 'vitest', label: '3 of 5 passed' }])
+  })
+
+  it.each([
+    ['a trailing newline', '\n'],
+    ['a trailing carriage return and newline', '\r\n'],
+  ])('accepts a valid line with %s', (_, ending) => {
+    const snapshot = unattachedOf(`${strykerEntry(7, 0)}${ending}`)
+    expect(snapshot.errors).toStrictEqual([])
+    expect(snapshot.unattachedFacts).toStrictEqual([{ origin: 'verified', source: 'stryker', label: '100.00% mutation score, 0 surviving' }])
+  })
+
+  it.each([
+    ['a valid line', vitestEntry()],
+    ['a line with an extra key', vitestEntry({ stdout: 'x' })],
+    ['an attached line', vitestEntry({ step: 's1', attachment: 'only-step' })],
+  ])('parses %s once', (_, entry) => {
+    const parse = vi.spyOn(JSON, 'parse')
+    try {
+      unattachedOf(entry)
+      expect(parse.mock.calls.filter(([text]) => text === entry)).toHaveLength(1)
+    } finally {
+      parse.mockRestore()
+    }
   })
 
   it('refuses a valid attached line as not unattached and puts it on no step', () => {
