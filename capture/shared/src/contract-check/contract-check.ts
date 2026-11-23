@@ -1,6 +1,6 @@
 import type * as NodeFs from 'node:fs'
 import { join } from 'node:path'
-import { capErrors, checkContractFile, contractFileNames } from '@agent-flow/core/contracts'
+import { capErrors, checkContractFile, contractFileNames, notContractFileError } from '@agent-flow/core/contracts'
 import type { ContractError, ValidationResult } from '@agent-flow/core/contracts'
 import {
   confirmAgentFlowDirectory,
@@ -22,8 +22,6 @@ const refuse = refusalFor('.agent-flow')
 
 const isContractName = (name: string): boolean => contractFileNames.includes(name)
 
-const checkStray = (name: string): ValidationResult => checkContractFile(name, '')
-
 const checkEntry = (io: ContractCheckIo, directory: string, name: string): ValidationResult => {
   const file = readContractFile(io, join(directory, name), refusalFor(name))
   return 'accepted' in file ? file : checkContractFile(name, file.text)
@@ -43,16 +41,16 @@ const errorsOf = (results: readonly ValidationResult[]): ContractError[] =>
 const report = (
   checked: readonly string[],
   results: readonly ValidationResult[],
-  strays: readonly ValidationResult[],
+  strays: readonly ContractError[],
 ): CheckResult => {
-  const [first, ...others] = [...errorsOf(results), ...capErrors('.agent-flow', errorsOf(strays))]
+  const [first, ...others] = [...errorsOf(results), ...capErrors('.agent-flow', strays)]
   return first === undefined ? { accepted: true, checked } : { accepted: false, errors: [first, ...others] }
 }
 
 const checkEntries = (io: ContractCheckIo, directory: string, names: readonly string[]): CheckResult => {
   const contractNames = names.filter(isContractName)
   const results = contractNames.map((name) => checkEntry(io, directory, name))
-  const strays = names.filter((name) => !isContractName(name)).map(checkStray)
+  const strays = names.filter((name) => !isContractName(name)).map(notContractFileError)
   return confirmAgentFlowDirectory(directory, refuse) ?? report(contractNames, results, strays)
 }
 
