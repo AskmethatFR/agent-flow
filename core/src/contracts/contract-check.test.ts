@@ -7,13 +7,14 @@ const notContract = (location: string | null) => ({
 })
 
 describe('checkContractFile', () => {
-  it('knows the five contract files, sorted', () => {
+  it('knows the six contract files, sorted', () => {
     expect(contractFileNames).toEqual([
       'decisions.jsonl',
       'plan.json',
       'requests.jsonl',
       'responses.jsonl',
       'scope.json',
+      'verified-facts.jsonl',
     ])
   })
 

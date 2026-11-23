@@ -5,6 +5,7 @@ import { validatePlan } from './plan'
 import { validateRequests } from './requests'
 import { validateResponses } from './responses'
 import { validateScope } from './scope'
+import { validateVerifiedFacts } from './verified-facts'
 
 const validators = new Map<string, (text: string) => ValidationResult>([
   ['decisions.jsonl', validateDecisions],
@@ -12,6 +13,7 @@ const validators = new Map<string, (text: string) => ValidationResult>([
   ['requests.jsonl', validateRequests],
   ['responses.jsonl', validateResponses],
   ['scope.json', validateScope],
+  ['verified-facts.jsonl', validateVerifiedFacts],
 ])
 
 export const contractFileNames: readonly string[] = [...validators.keys()]

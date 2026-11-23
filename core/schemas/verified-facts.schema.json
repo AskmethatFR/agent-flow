@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agent-flow:schema:verified-fact:1",
+  "title": "verified-facts.jsonl",
+  "description": "one line per observed tool run",
+  "type": "object",
+  "required": ["at", "tool", "step", "attachment", "role", "roleFrom"],
+  "additionalProperties": false,
+  "properties": {
+    "at": { "type": "string", "minLength": 1 },
+    "tool": { "type": "string", "enum": ["vitest", "cucumber-js", "stryker"] },
+    "step": { "type": ["string", "null"], "minLength": 1 },
+    "attachment": { "type": "string", "enum": ["role", "only-step", "unattached"] },
+    "role": { "type": ["string", "null"], "minLength": 1 },
+    "roleFrom": { "type": ["string", "null"], "minLength": 1 },
+    "passed": {},
+    "total": {},
+    "failedSuites": {},
+    "detected": {},
+    "surviving": {}
+  }
+}
