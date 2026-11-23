@@ -95,3 +95,14 @@ To deliver there:
   Exit 1 covers invalid input and crashes alike, so it cannot tell them apart.
 - Follow-up: clearing a finished ticket's `.agent-flow/` so a slot can be reused for
   the next ticket.
+
+## 2026-11-23 — Stryker never mutates the JSON schemas, so a loosened keyword goes unseen (observed on #125)
+
+`core/schemas/*.schema.json` carry rules (`pattern` anchors and ranges, `type`,
+`minLength`, `enum`) that Stryker cannot mutate: it mutates source files only.
+QA hand-mutated `verified-facts.schema.json` on #125 and 14 mutants survived the
+core tests. Fix: a script that, for each `core/schemas/*.schema.json`, removes
+each keyword in turn and loosens each anchor and character range (`^`, `$`,
+`[0-5]` to `[0-9]`, `\\.` to `.`), runs the core tests after each change,
+restores the file, and reports every mutant the tests did not kill. Run it from
+the target repo at the feature barrier of a ticket that adds or changes a schema.

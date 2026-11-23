@@ -22,8 +22,8 @@ const unattachedStryker = {
   attachment: 'unattached',
   role: null,
   roleFrom: null,
-  detected: 2410,
-  surviving: 3,
+  detected: 47,
+  surviving: 1,
 }
 
 const factWith = (overlays: Record<string, unknown> = {}): Record<string, unknown> => ({
@@ -148,6 +148,46 @@ describe('validateVerifiedFacts', () => {
     const text = fileText(lineText(attachedVitest), lineText(factWith({ at })))
     expect(validateVerifiedFacts(text)).toEqual(rejection(2, 'at', expect.any(String)))
   })
+
+  it.each([
+    ['a day past 31', '2026-11-32T12:00:00.000Z'],
+    ['an hour of 24', '2026-11-23T24:00:00.000Z'],
+    ['a minute of 60', '2026-11-23T12:60:00.000Z'],
+    ['a second of 60', '2026-11-23T12:00:60.000Z'],
+    ['a prefix', 'x2026-11-23T12:00:00.000Z'],
+    ['a suffix', '2026-11-23T12:00:00.000Zx'],
+    ['a character in place of the dot', '2026-11-23T12:00:00a000Z'],
+    ['a five-digit year', '20261-11-23T12:00:00.000Z'],
+    ['a month of 00', '2026-00-23T12:00:00.000Z'],
+    ['a day of 00', '2026-11-00T12:00:00.000Z'],
+    ['a final character other than Z', '2026-11-23T12:00:00.000Q'],
+  ])('refuses an at with %s, naming its line number and field', (_why, at) => {
+    const text = fileText(lineText(attachedVitest), lineText(factWith({ at })))
+    expect(validateVerifiedFacts(text)).toEqual(rejection(2, 'at', expect.any(String)))
+  })
+
+  it.each([
+    ['at', 0, 'must be string'],
+    ['step', 5, 'must be string or null'],
+    ['role', 5, 'must be string or null'],
+    ['roleFrom', 5, 'must be string or null'],
+  ])('refuses a %s of %j, which is not a string, naming its line number and field', (key, value, message) => {
+    const text = fileText(lineText(attachedVitest), lineText(factWith({ [key]: value })))
+    expect(validateVerifiedFacts(text)).toEqual(rejection(2, key, message))
+  })
+
+  it('refuses a roleFrom that only starts with host', () => {
+    const text = fileText(lineText(attachedVitest), lineText(factWith({ roleFrom: 'hostx' })))
+    expect(validateVerifiedFacts(text)).toEqual(rejection(2, 'roleFrom', expect.any(String)))
+  })
+
+  it.each([[5], [[]], [null], ['x']])(
+    'refuses a line that is the JSON value %j rather than an object, naming its line number',
+    (value) => {
+      const text = fileText(lineText(attachedVitest), lineText(value))
+      expect(validateVerifiedFacts(text)).toEqual(rejection(2, null, 'must be object'))
+    },
+  )
 
   it('refuses an empty step, naming its line number and field', () => {
     const text = fileText(lineText(attachedVitest), lineText(factWith({ step: '' })))

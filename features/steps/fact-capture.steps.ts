@@ -33,8 +33,8 @@ const unattachedStrykerLine = JSON.stringify({
   attachment: 'unattached',
   role: null,
   roleFrom: null,
-  detected: 2410,
-  surviving: 3,
+  detected: 47,
+  surviving: 1,
 })
 
 Given(

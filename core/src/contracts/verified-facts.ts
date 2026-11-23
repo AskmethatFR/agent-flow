@@ -59,9 +59,9 @@ const pairingRule = (record: unknown): SchemaViolation | undefined => {
 const recordRule = (record: unknown): SchemaViolation | undefined =>
   countRule(record) ?? pairingRule(record)
 
-// 138 is the shortest valid compact line of any tool: a vitest or cucumber-js line with zero
-// counts, or a stryker line with 0 detected and 1 surviving, a step, attachment role, role qa
-// and roleFrom host. The pairings allow no shorter one.
+// 138 is the shortest valid compact line of any tool: the stryker line with 0 detected and 1
+// surviving, a step, attachment role, role qa and roleFrom host (the shortest vitest line is 148
+// and the shortest cucumber-js line 153). The pairings allow no shorter one.
 export const verifiedFactsContract: JsonlContract = {
   file: 'verified-facts.jsonl',
   schema: verifiedFactsSchema,
