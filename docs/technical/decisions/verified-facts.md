@@ -369,6 +369,27 @@ S12 (e) fixed the table of the sixth file; this section records how the contract
 - **Exit**: G4, exit 0 whatever is refused.
 - **Reads**: read no transcript and no `persistedOutputPath` (S12 (b)).
 
+### S14 Claude Code vitest writer (#128)
+
+How the first writer of `verified-facts.jsonl` is built, for the vitest form only. Cucumber-js and Stryker forms are #131; `AGENT_FLOW_ROLE` is #130.
+
+**The command grammar** (`capture/claude-code/src/fact-capture/vitest-command.ts:22-28`). The observed `tool_input.command` is untrusted text. It is split on single spaces only, then matched whole against these productions, and anything they do not produce is refused:
+- `command := ["npx "] "vitest run" (" " token)*`
+- `token := "--reporter=json" | "--outputFile=reports/vitest/vitest.json" | "--project=" [A-Za-z0-9_-]{1,64} | filter`
+- `filter := [A-Za-z0-9_] [A-Za-z0-9_./-]{0,255}`, containing no `..` anywhere (`a..b` included: no test filter needs two dots, and one rule is simpler to check than a segment rule)
+- exactly one `--reporter=json` and exactly one `--outputFile=reports/vitest/vitest.json`; any number of `--project=` and of filters, repeats included
+- after `vitest run`, tokens come in any order (the observed runs put the filter last, `capture-128/run.txt:27`; an agent may put it first).
+
+Consequences, each pinned by a test (`vitest-command.test.ts`): no leading environment assignment at all, `AGENT_FLOW_ROLE=` included until #130, so `NODE_OPTIONS=` and `VITEST_*` are refused (Env MUST); `--config`, `-c`, `--configFile`, `--root`, `--dir`, `--reporters`, `--format`, another `--outputFile` or a split `--outputFile <path>` produce no token (Flags MUST); an empty token (two spaces, a leading or trailing space), a tab, a newline, a quote, `$`, `\`, a backquote, a glob and `;&|<>` appear in no production, so no character list is kept (S12, report text). A filter cannot start with `.`, `/` or `-`, so it is never a flag nor an absolute path.
+
+**The two hook events.** The writer is registered on `PostToolUse` and on `PostToolUseFailure`, matcher `Bash`, with one command (`capture/claude-code/settings.json`, pinned by `capture/claude-code/src/fact-capture/hook.test.ts`, which also runs both registered commands through `sh`). A passing run arrives as `PostToolUse` with `tool_response.interrupted` false; a failing run as `PostToolUseFailure` with `is_interrupt` false and no `tool_response` (`evidence/verified-facts/capture-128/run.txt` H1, H2). A `PostToolUse` whose `tool_response` carries `backgroundTaskId` is a run moved to the background, not an ended one, and writes nothing whatever its `interrupted` value (H3). An interrupted run writes nothing on either event (`fact-capture.ts:22-31`; `fact-capture/S6`). The matcher `Bash` itself was inferred, not captured: the spike registered `"*"`.
+
+**Attachment.** The writer asks `decisionStepOf(plan, role)` (`core/src/lifecycle/decision-step.ts:37-47`) and writes the kind it returns: `role` when a step in progress carries the run's role, `only-step` when exactly one step is in progress and it is another role's or the run has none (S12 (c)). It writes only the step id that call returns (Step MUST).
+
+**Role resolution** sits in `capture/shared` (`capture/shared/src/fact-append/fact-append.ts:31-35`): the event's `agent_type` gives the role when it is a bare `ROLE_IDS` value or one with the `agentic-team:` prefix (G2), with `roleFrom: "host"`. Otherwise the role is `null`, never `''`, and `roleFrom` is `null`.
+
+**Not met by #128: the Overlap MUST and its "Test owed by #128"** (S13 MUSTs). By the user's ruling of 2026-11-23 both move to a new ticket in the Security lane that blocks #112: nothing reads `verified-facts.jsonl` before #112, so a misattributed line written meanwhile reaches no reader.
+
 ### Consequences per fact kind (AC6)
 
 | Fact kind | Consequence |

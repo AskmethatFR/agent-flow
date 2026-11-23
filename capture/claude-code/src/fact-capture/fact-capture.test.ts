@@ -66,9 +66,18 @@ describe('captureFact', () => {
   })
 
   it.each([
+    ['a project and a path filter', `${literal} --project=core capture/claude-code/src`],
+    ['the fixed flags after the filters', 'vitest run --project=core --outputFile=reports/vitest/vitest.json tests --reporter=json'],
+  ])('appends one fact for a command of the vitest grammar with %s', (_label, command) => {
+    expect(captureFact(passing({ tool_input: { command } }), worktree, now)).toEqual({ accepted: true })
+    expect(JSON.parse(readFileSync(factsPath, 'utf8'))).toMatchObject({ step: '7', passed: 8, total: 9 })
+  })
+
+  it.each([
     ['an echo into the report path', 'echo {} > reports/vitest/vitest.json'],
+    ['a configuration file', `${literal} --config x`],
     ['a chained command', `${literal}; true`],
-    ['an extra argument', `${literal} tests/a.test.ts`],
+    ['an extra argument', `${literal} --watch`],
     ['a trailing space', `${literal} `],
     ['a leading environment assignment', `NODE_OPTIONS=--require=x ${literal}`],
     ['another output file', 'npx vitest run --reporter=json --outputFile=reports/vitest/other.json'],

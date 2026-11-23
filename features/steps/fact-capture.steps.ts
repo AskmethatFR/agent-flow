@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -109,6 +109,10 @@ const endedEventOf = (outcome: string): object =>
       }
     : { hook_event_name: 'PostToolUseFailure', error: 'Exit code 1', is_interrupt: false }
 
+// An interrupted run is a failing one whose is_interrupt is true: the host's stand-in for
+// tool_response.interrupted (docs/technical/decisions/evidence/verified-facts/capture-128/run.txt H2).
+const interruptOf = (outcome: string): object => (outcome === 'interrupted' ? { is_interrupt: true } : {})
+
 // The main session's events carry no agent_type (docs/technical/decisions/verified-facts.md S12 (a)).
 const runVitest = (
   world: FactCaptureWorld,
@@ -135,6 +139,7 @@ const runVitest = (
     cwd: world.worktree,
     input: JSON.stringify({
       ...endedEventOf(outcome),
+      ...interruptOf(outcome),
       cwd: world.worktree,
       agent_id: 'a1b2c3',
       agent_type: agentType,
@@ -228,6 +233,10 @@ Then(
     assert.ok(facts[0].at <= facts[1].at, 'the second line was written after the first')
   },
 )
+
+Then('verified-facts.jsonl holds no line', function (this: FactCaptureWorld): void {
+  assert.equal(existsSync(factsPathOf(this)), false, 'verified-facts.jsonl was written')
+})
 
 Then('that line passes the contract check', function (this: FactCaptureWorld): void {
   assert.deepEqual(checkContractFile('verified-facts.jsonl', readFileSync(factsPathOf(this), 'utf8')), { accepted: true })

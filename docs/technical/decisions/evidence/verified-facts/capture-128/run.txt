@@ -16,6 +16,9 @@ H. Hook capture (hook-events.excerpt.json beside this file: all 18 events of the
   <scratch>/settings.json registers one command hook, <scratch>/bin/tee-hook.sh
   (cat > <scratch>/events/<ns>-<pid>.json; exit 0), on:
     PostToolUse matcher "*", PostToolUseFailure matcher "*", PreToolUse matcher "Bash", SubagentStart, SubagentStop
+  matcher "Bash" on PostToolUse and PostToolUseFailure is inferred, not captured: this run registered "*" on both
+  (the PreToolUse matcher "Bash" fired for the subagent's Bash calls; S2's hook.test.ts runs both registered
+   commands through sh, which covers the writer at process level, not the host's matching)
   Claude Code 2.1.330 accepts the event name PostToolUseFailure: it fired (events 6 and 17).
   custom agent (--agents): qa, tools [Bash], model haiku
   deviation 1: the settings file is passed with --settings <scratch>/settings.json (not a project .claude/settings.json)
@@ -29,7 +32,8 @@ H. Hook capture (hook-events.excerpt.json beside this file: all 18 events of the
     -> exit 0, 11 events (excerpt 1-11)
   Run 2, same flags: (1) the pass command with --outputFile=reports/vitest/pass2.json, (2) the fail command with
     --outputFile=reports/vitest/fail2.json (a file per run, to keep each report's mtime) -> exit 0, 7 events (12-18)
-    (the agent issued the two Bash calls in one batch, so they overlapped in time; each pair is still ordered)
+    (the model batched the two Bash calls, but they ran sequentially: events 14-17 alternate PreToolUse,
+     PostToolUse, PreToolUse, PostToolUseFailure)
   Both runs use the same command shape as the feature's, with a test-file filter added so one project holds
   all three cases; the Agent call ran async, as in #125 (event 2 / 13: status "async_launched").
 
@@ -74,6 +78,7 @@ H5 other events (as #125): SubagentStart (agent_id, agent_type only), PostToolUs
 Closed answer for S2
      A vitest run that fails (exit 1) is delivered as PostToolUseFailure, never as PostToolUse; a passing run
      as PostToolUse. S2 must register BOTH, matcher "Bash", on the same writer command.
+     (matcher "Bash" on these two events is inferred, not captured: this run registered "*", see H)
      Keys the writer reads, by event:
        field                 PostToolUse (pass)                  PostToolUseFailure (fail)
        agent_type            agent_type                          agent_type

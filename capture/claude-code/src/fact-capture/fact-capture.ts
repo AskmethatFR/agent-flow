@@ -1,6 +1,7 @@
 import { MAX_TEXT_LENGTH } from '@agent-flow/core/contracts'
 import type { ValidationResult } from '@agent-flow/core/contracts'
 import { appendFact } from '@agent-flow/capture-shared/fact-append'
+import { isVitestCommand } from './vitest-command'
 
 const asObject = (value: unknown): object => (typeof value === 'object' && value !== null ? value : {})
 
@@ -13,10 +14,6 @@ const parse = (input: string): object => {
     return {}
   }
 }
-
-// The literal form only; the full grammar of the tool forms comes later (S6 of #128).
-const vitestCommand = 'vitest run --reporter=json --outputFile=reports/vitest/vitest.json'
-const literalCommands: ReadonlySet<unknown> = new Set([vitestCommand, `npx ${vitestCommand}`])
 
 // The host delivers a passing run as PostToolUse and a failing one as PostToolUseFailure, which
 // has no tool_response and carries is_interrupt. A PostToolUse that carries backgroundTaskId is a
@@ -41,6 +38,6 @@ export function captureFact(
   if (projectDir === undefined || projectDir === '' || input.length > MAX_TEXT_LENGTH) return undefined
   const payload = parse(input)
   if (field(payload, 'tool_name') !== 'Bash' || !endedRun(payload)) return undefined
-  if (!literalCommands.has(field(asObject(field(payload, 'tool_input')), 'command'))) return undefined
+  if (!isVitestCommand(field(asObject(field(payload, 'tool_input')), 'command'))) return undefined
   return appendFact(projectDir, { agentType: field(payload, 'agent_type'), at: now().toISOString() })
 }

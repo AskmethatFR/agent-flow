@@ -38,6 +38,20 @@ Feature: Capture: verified facts are kept in a sixth contract file
       | a subagent of type "other:qa"      | null | null     |
       | the main session                   | null | null     |
 
+  @scenario:S6
+  Scenario Outline: A run that is not exactly the vitest form, or that did not end, leaves no fact
+    Given a plan whose step "1" is in progress for the role qa
+    When a subagent of type "qa" runs "<command>" and it ends <outcome>, 3 of 3 tests passed
+    Then verified-facts.jsonl holds no line
+
+    Examples:
+      | case                         | command                                                                                                | outcome     |
+      | an echo into the report path | echo {} > reports/vitest/vitest.json                                                                   | passing     |
+      | a chained command            | npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json && echo done                    | passing     |
+      | an interrupted run           | npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json                                 | interrupted |
+      | a configuration file         | npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json --config x                      | passing     |
+      | a leading NODE_OPTIONS       | NODE_OPTIONS=--require=./x.cjs npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json | passing     |
+
   @scenario:S9
   Scenario: The contract check accepts the sixth file and still refuses other names
     Given a worktree whose .agent-flow holds a valid verified-facts.jsonl and a stray verified-facts.json
