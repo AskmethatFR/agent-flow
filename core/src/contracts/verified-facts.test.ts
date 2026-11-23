@@ -155,7 +155,7 @@ describe('validateVerifiedFacts', () => {
     const shortest = [
       { tool: 'vitest', passed: 0, total: 0, failedSuites: 0 },
       { tool: 'cucumber-js', passed: 0, total: 0, failedSuites: 0 },
-      { tool: 'stryker', detected: 0, surviving: 0 },
+      { tool: 'stryker', detected: 0, surviving: 1 },
     ].map((counts) => shortestLine(counts))
     for (const line of shortest) expect(validateVerifiedFacts(line)).toEqual({ accepted: true })
     expect(verifiedFactsContract.minimumRecordLength).toBe(Math.min(...shortest.map((line) => line.length)))
@@ -219,7 +219,7 @@ describe('validateVerifiedFacts', () => {
   it.each([0, 1, Number.MAX_SAFE_INTEGER])('accepts a count of %d', (value) => {
     const vitest = factWith({ passed: value, total: value, failedSuites: value })
     expect(validateVerifiedFacts(lineText(vitest))).toEqual({ accepted: true })
-    const stryker = { ...unattachedStryker, detected: value, surviving: value }
+    const stryker = { ...unattachedStryker, detected: value, surviving: Math.max(value, 1) }
     expect(validateVerifiedFacts(lineText(stryker))).toEqual({ accepted: true })
   })
 
@@ -247,6 +247,47 @@ describe('validateVerifiedFacts', () => {
     )
   })
 
+  it.each(['vitest', 'cucumber-js'])(
+    'refuses a %s line with more passed than total, naming its line number and the field passed',
+    (tool) => {
+      const text = fileText(lineText(attachedVitest), lineText({ ...toolFact(tool), passed: 2, total: 1 }))
+      expect(validateVerifiedFacts(text)).toEqual(rejection(2, 'passed', 'must not exceed total'))
+    },
+  )
+
+  it.each(['vitest', 'cucumber-js'])('accepts a %s line with fewer passed than total', (tool) => {
+    expect(validateVerifiedFacts(lineText({ ...toolFact(tool), passed: 1, total: 2 }))).toEqual({
+      accepted: true,
+    })
+  })
+
+  it('refuses a stryker line with no mutant at all, naming its line number and the field detected', () => {
+    const text = fileText(lineText(unattachedStryker), lineText({ ...unattachedStryker, detected: 0, surviving: 0 }))
+    expect(validateVerifiedFacts(text)).toEqual(
+      rejection(2, 'detected', 'must not be 0 when surviving is 0'),
+    )
+  })
+
+  it.each([
+    [1, 0],
+    [0, 1],
+  ])('accepts a stryker line with %d detected and %d surviving', (detected, surviving) => {
+    expect(validateVerifiedFacts(lineText({ ...unattachedStryker, detected, surviving }))).toEqual({
+      accepted: true,
+    })
+  })
+
+  it('checks the count relations only after the presence, type and foreign checks', () => {
+    const missing = { ...factWithout('failedSuites'), passed: 2, total: 1 }
+    expect(validateVerifiedFacts(lineText(missing))).toEqual(rejection(1, 'failedSuites', 'is required'))
+    const invalid = factWith({ passed: 2, total: 1, failedSuites: -1 })
+    expect(validateVerifiedFacts(lineText(invalid))).toEqual(
+      rejection(1, 'failedSuites', 'must be a non-negative integer'),
+    )
+    const foreign = factWith({ passed: 2, total: 1, detected: 1 })
+    expect(validateVerifiedFacts(lineText(foreign))).toEqual(rejection(1, 'detected', 'is not allowed'))
+  })
+
   it('keeps a schema violation ahead of a count violation on the same line', () => {
     const text = lineText(factWith({ role: 'intern', passed: -1 }))
     expect(validateVerifiedFacts(text)).toEqual(rejection(1, 'role', expect.any(String)))
@@ -255,5 +296,10 @@ describe('validateVerifiedFacts', () => {
   it('states the count rules in the schema description', () => {
     expect(verifiedFactsSchema.description).toContain('passed, total and failedSuites')
     expect(verifiedFactsSchema.description).toContain('detected and surviving')
+  })
+
+  it('states the count relations in the schema description', () => {
+    expect(verifiedFactsSchema.description).toContain('passed never exceeds total')
+    expect(verifiedFactsSchema.description).toContain('detected and surviving are never both 0')
   })
 })

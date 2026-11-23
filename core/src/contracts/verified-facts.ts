@@ -23,7 +23,15 @@ const countRule = (record: unknown): SchemaViolation | undefined => {
     if (!isSafeCount(fact[count])) return { path: [count], message: 'must be a non-negative integer' }
   }
   const foreign = allCounts.find((count) => !own.includes(count) && Object.hasOwn(fact, count))
-  return foreign === undefined ? undefined : { path: [foreign], message: 'is not allowed' }
+  if (foreign !== undefined) return { path: [foreign], message: 'is not allowed' }
+  if (fact.tool === 'stryker') {
+    return fact.detected === 0 && fact.surviving === 0
+      ? { path: ['detected'], message: 'must not be 0 when surviving is 0' }
+      : undefined
+  }
+  return (fact.passed as number) > (fact.total as number)
+    ? { path: ['passed'], message: 'must not exceed total' }
+    : undefined
 }
 
 export const verifiedFactsContract: JsonlContract = {

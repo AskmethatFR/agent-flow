@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:agent-flow:schema:verified-fact:1",
   "title": "verified-facts.jsonl",
-  "description": "one line per observed tool run; checked in code, not in this schema: vitest and cucumber-js lines carry passed, total and failedSuites as safe non-negative integers and no detected or surviving, stryker lines carry detected and surviving as safe non-negative integers and no passed, total or failedSuites",
+  "description": "one line per observed tool run; checked in code, not in this schema: vitest and cucumber-js lines carry passed, total and failedSuites as safe non-negative integers and no detected or surviving, stryker lines carry detected and surviving as safe non-negative integers and no passed, total or failedSuites; passed never exceeds total, and detected and surviving are never both 0",
   "type": "object",
   "required": ["at", "tool", "step", "attachment", "role", "roleFrom"],
   "additionalProperties": false,
