@@ -4,7 +4,11 @@ import type { PlanStep } from '../contracts/plan'
 import { instantTime } from './instant'
 
 export type DecisionStepResult =
-  | { readonly accepted: true; readonly stepId: string }
+  | {
+      readonly accepted: true
+      readonly stepId: string
+      readonly attachment: 'role' | 'only-step'
+    }
   | { readonly accepted: false; readonly errors: readonly [ContractError, ...ContractError[]] }
 
 const refused = (field: string, message: string): DecisionStepResult => ({
@@ -35,9 +39,9 @@ export function decisionStepOf(plan: string, role: unknown): DecisionStepResult 
   if (!read.accepted) return read
   const inProgress = read.plan.steps.filter((step) => step.status === 'in_progress')
   const own = latestStarted(inProgress.filter((step) => step.role === role))
-  if (own !== undefined) return { accepted: true, stepId: own.id }
+  if (own !== undefined) return { accepted: true, stepId: own.id, attachment: 'role' }
   const [only, ...others] = inProgress
   if (only === undefined) return refused('step', 'no step is in progress')
   if (others.length > 0) return refused('role', 'has no step in progress')
-  return { accepted: true, stepId: only.id }
+  return { accepted: true, stepId: only.id, attachment: 'only-step' }
 }

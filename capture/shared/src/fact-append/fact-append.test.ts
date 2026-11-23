@@ -66,6 +66,20 @@ describe('appendFact', () => {
     )
   })
 
+  it('marks the line only-step, keeping the host role, when the only step in progress is another role', () => {
+    writeFileSync(join(agentFlow, 'plan.json'), planWith([stepOf('1', 'dev-a', 'in_progress')]))
+    expect(appendFact(worktree, { agentType: 'qa', at })).toEqual({ accepted: true })
+    expect(readFileSync(factsPath, 'utf8')).toBe(
+      `${JSON.stringify({ at, tool: 'vitest', step: '1', attachment: 'only-step', role: 'qa', roleFrom: 'host', passed: 4, total: 5, failedSuites: 1 })}\n`,
+    )
+  })
+
+  it('marks the line role when the only step in progress is the role own step', () => {
+    writeFileSync(join(agentFlow, 'plan.json'), planWith([stepOf('1', 'qa', 'in_progress')]))
+    expect(appendFact(worktree, { agentType: 'qa', at })).toEqual({ accepted: true })
+    expect(JSON.parse(readFileSync(factsPath, 'utf8'))).toMatchObject({ step: '1', attachment: 'role' })
+  })
+
   it('reads the role of an agent type with the agentic-team: prefix as host-observed', () => {
     expect(appendFact(worktree, { agentType: 'agentic-team:dev-a', at })).toEqual({ accepted: true })
     expect(JSON.parse(readFileSync(factsPath, 'utf8'))).toMatchObject({ step: '1', role: 'dev-a', roleFrom: 'host' })
@@ -164,17 +178,23 @@ describe('appendFact', () => {
     [
       'plan.json is contract-invalid',
       () => (writeFileSync(join(agentFlow, 'plan.json'), '{"steps":"none"}'), worktree),
-      { accepted: false },
+      { accepted: false, errors: [{ file: 'plan.json' }, { file: 'plan.json' }, { file: 'plan.json' }] },
     ],
     [
       'the role has no step in progress and several others are',
       () => (writeFileSync(join(agentFlow, 'plan.json'), planWith([stepOf('1', 'dev-a', 'in_progress'), stepOf('2', 'dev-b', 'in_progress')])), worktree),
-      { accepted: false, errors: [{ field: 'role', message: 'has no step in progress' }] },
+      {
+        accepted: false,
+        errors: [{ file: 'verified-facts.jsonl', field: 'role', message: 'has no step in progress' }],
+      },
     ],
     [
       'no step is in progress',
       () => (writeFileSync(join(agentFlow, 'plan.json'), planWith([stepOf('1', 'qa', 'todo')])), worktree),
-      { accepted: false, errors: [{ field: 'step', message: 'no step is in progress' }] },
+      {
+        accepted: false,
+        errors: [{ file: 'verified-facts.jsonl', field: 'step', message: 'no step is in progress' }],
+      },
     ],
     [
       'the report is missing',

@@ -80,14 +80,14 @@ const repo = fileURLToPath(new URL('../../', import.meta.url))
 const factHook = join(repo, 'capture/claude-code/src/fact-capture/hook.ts')
 const factsPathOf = (world: FactCaptureWorld): string => join(world.worktree, '.agent-flow', 'verified-facts.jsonl')
 
-Given('a plan whose step {string} is in progress for the role qa', function (this: FactCaptureWorld, id: string): void {
+Given('a plan whose step {string} is in progress for the role {word}', function (this: FactCaptureWorld, id: string, role: string): void {
   this.root = realpathSync(mkdtempSync(join(tmpdir(), 'fact-capture-')))
   this.worktree = join(this.root, 'worktree')
   mkdirSync(join(this.worktree, '.agent-flow'), { recursive: true })
   const step = {
     id,
-    title: 'qa: review the slice',
-    role: 'qa',
+    title: `${role}: work on the slice`,
+    role,
     status: 'in_progress',
     origin: 'planned',
     startedAt: '2026-11-23T11:00:00.000Z',
@@ -147,8 +147,15 @@ When(
 )
 
 Then(
-  'verified-facts.jsonl holds one line on step {string}, attachment role, role qa, roleFrom host, with {int} passed of {int} and {int} failed suites',
-  function (this: FactCaptureWorld, step: string, passed: number, total: number, failedSuites: number): void {
+  'verified-facts.jsonl holds one line on step {string}, attachment {word}, role qa, roleFrom host, with {int} passed of {int} and {int} failed suites',
+  function (
+    this: FactCaptureWorld,
+    step: string,
+    attachment: string,
+    passed: number,
+    total: number,
+    failedSuites: number,
+  ): void {
     const lines = readFileSync(factsPathOf(this), 'utf8').split('\n')
     assert.equal(lines.length, 2, 'one line ending with a newline')
     assert.equal(lines[1], '')
@@ -157,7 +164,7 @@ Then(
     assert.deepEqual(rest, {
       tool: 'vitest',
       step,
-      attachment: 'role',
+      attachment,
       role: 'qa',
       roleFrom: 'host',
       passed,

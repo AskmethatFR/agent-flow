@@ -26,7 +26,9 @@ const done = (id: string, role: string) =>
 const planText = (...steps: Record<string, unknown>[]): string =>
   JSON.stringify({ issue: '#89', title: 'Decision step', steps })
 
-const found = (stepId: string) => ({ accepted: true, stepId })
+const found = (stepId: string) => ({ accepted: true, stepId, attachment: 'role' })
+
+const foundByFallback = (stepId: string) => ({ accepted: true, stepId, attachment: 'only-step' })
 
 const refusal = (field: string, message: string) => ({
   accepted: false,
@@ -38,23 +40,28 @@ const late = '2026-01-01T10:05:00.000Z'
 
 describe('decisionStepOf', () => {
   describe('with one step in progress', () => {
+    it('answers the step of the role as attached by the role', () => {
+      expect(decisionStepOf(planText(step('s0'), running('s1', 'dev-a', early)), 'dev-a')).toEqual(
+        found('s1'),
+      )
+    })
+
     it.each<[string, unknown]>([
-      ['the role of that step', 'dev-a'],
       ['another role', 'qa'],
       ['an empty role', ''],
       ['a missing role', undefined],
       ['a null role', null],
       ['a number as role', 1],
       ['an object as role', { role: 'dev-a' }],
-    ])('answers that step for %s', (_name, role) => {
+    ])('answers that step as attached by the only-step fallback for %s', (_name, role) => {
       expect(decisionStepOf(planText(step('s0'), running('s1', 'dev-a', early)), role)).toEqual(
-        found('s1'),
+        foundByFallback('s1'),
       )
     })
 
     it('answers a step whose start is not an instant', () => {
       expect(decisionStepOf(planText(running('s1', 'dev-a', 'yesterday')), 'qa')).toEqual(
-        found('s1'),
+        foundByFallback('s1'),
       )
     })
   })

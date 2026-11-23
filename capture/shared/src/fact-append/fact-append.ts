@@ -60,6 +60,13 @@ const vitestCountsOf = (io: AppendIo, realWorktree: string): Counts | Rejected =
   return source === 'vitest' ? { passed, total, failedSuites } : refuseReport('is not a vitest JSON report')
 }
 
+// decisionStepOf names decisions.jsonl in the one error of its own refusals (decision-append's
+// file); a fact refusal names the file the writer is writing. A plan refusal stays as it is.
+const relabelled = (refusal: ValidationResult & { accepted: false }): ValidationResult => {
+  const [first] = refusal.errors
+  return first.file === 'decisions.jsonl' ? refuse(first.message, first.field) : refusal
+}
+
 export function createFactAppender(io: AppendIo): Appender {
   return function appendFact(worktree, run) {
     const role = hostRoleOf(run.agentType)
@@ -69,14 +76,14 @@ export function createFactAppender(io: AppendIo): Appender {
     const plan = readPlan(io, join(confined.directory, 'plan.json'))
     if ('accepted' in plan) return plan
     const step = decisionStepOf(plan.text, role)
-    if (!step.accepted) return step
+    if (!step.accepted) return relabelled(step)
     const counts = vitestCountsOf(io, confined.realWorktree)
     if ('accepted' in counts) return counts
     const line = JSON.stringify({
       at: run.at,
       tool: 'vitest',
       step: step.stepId,
-      attachment: 'role',
+      attachment: step.attachment,
       role,
       roleFrom: 'host',
       ...counts,
