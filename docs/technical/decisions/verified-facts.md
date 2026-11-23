@@ -22,6 +22,7 @@ answers:
   - "How many verified facts does a step keep, how many reports does one build read, and what does the host owe before passing them?"
   - "How does the daemon read the CI status with gh, and what does it report when gh fails?"
   - "How does the capture side see a tool run, take its role and report, and what does the sixth .agent-flow file hold?"
+  - "How does the daemon hand the sixth file to core, and how many bytes does it read of it?"
 decided_in:
   - "#108"
   - "#110"
@@ -31,6 +32,7 @@ decided_in:
   - "#115"
   - "#124"
   - "#125"
+  - "#112"
 ---
 
 # Verified facts: sources, capture-time step attachment, separator
@@ -369,6 +371,26 @@ S12 (e) fixed the table of the sixth file; this section records how the contract
 - **Exit**: G4, exit 0 whatever is refused.
 - **Reads**: read no transcript and no `persistedOutputPath` (S12 (b)).
 
+### S14 Daemon reader of the fact file (#112)
+
+S12 (e) left the input shape to slice C: "whether entries come in as a new `SnapshotFiles` list or through `testReports`/`mutationReports` is slice C's call". This section rules it and records the read bound.
+
+**The input shape.** The daemon reads `.agent-flow/verified-facts.jsonl` with the same confined reader as `plan.json` and `decisions.jsonl` (`daemon/src/snapshot/read-agent-flow-file.ts`) and hands core's own `factEntriesOf` output over as `SnapshotFiles.verifiedFacts`, a `FactEntries` (`{entries: {step, text}[], errors}`, `core/src/snapshot/snapshot.ts:42-71`). The daemon parses nothing: core splits the lines, validates them against the sixth file's contract and keeps the attached ones, each with its own line as `text`, in file order.
+
+**Rejected alternatives.**
+- The file text as a `SnapshotFiles` field, split inside `buildSnapshot`: it breaks AC2's array of entries and decides again what S12 (e) left to this slice.
+- Entries through `testReports` and `mutationReports`: one reader would parse two formats, the lines would be sorted by tool, and the error labels would be wrong.
+- The daemon splitting the lines or appending fact errors: it needs `JSON.parse` in `daemon/` (#112 AC4 forbids parsing there) and needs to know whether the plan was usable.
+- A line splitter in `core/src/contracts/`: that folder is frozen.
+
+**Errors.** Two labels. `verified-facts.jsonl`, with its line and field, for an unreadable or over-bound file and for a line the contract refuses; `verified-fact`, with the entry index, for an entry whose step is not a step of `plan.json` or whose own line core refuses, an entry whose step differs from its own line's step included. A step id is never echoed. An unattached line (`step: null`) gives no entry and no error: it is slice D's input (#126).
+
+**The read bound.** Each file name has its own limit in the reader: `MAX_TEXT_LENGTH` bytes for the fact file, 4 times that for `plan.json` and `decisions.jsonl`. Each `readSync` asks for at most `limit + 1 - total` bytes, so a 3 MiB fact file is read for `MAX_TEXT_LENGTH + 1` bytes and no more. A file of exactly `MAX_TEXT_LENGTH` bytes is read whole; one byte more is `too-large`, which core reports as the one error `verified-facts.jsonl`, "exceeds 1048576 characters", with no entry. The bound is in bytes while core's is in UTF-16 length (S7), so a file of `MAX_TEXT_LENGTH + 1` bytes with at most `MAX_TEXT_LENGTH` characters (one line with a multi-byte step) is refused by the byte bound and would pass a reader sized 4 times the bound: `report-feed` S5 pins it. The bound is I/O confinement in the host adapter, not a business rule.
+
+**Accepted consequence (human-approved).** Core's bound of S10 (200 reports per kind) now counts tool runs, one entry per attached run, in one list. Past 200 attached runs in one issue the earliest steps lose their verified facts, and every snapshot carries the bound error. To revisit once real run counts are known.
+
+**The MUSTs of Consequences.** The stop-at-the-bound read, the count and the order, the well-typed entries and the confined read are met by #112: one file, at most `MAX_TEXT_LENGTH` + 1 bytes, at most 200 entries read by core, entries in file order, which is capture order, each a `{step: string, text: string}` out of core's own function, a failed read an error and never an entry, the path derived from the worktree realpath and opened `O_RDONLY|O_NOFOLLOW|O_NONBLOCK` with an `fstat` regular-file check.
+
 ### Consequences per fact kind (AC6)
 
 | Fact kind | Consequence |
@@ -408,18 +430,18 @@ Per slice:
 - **MUST NOT**: write a verified fact into `decisions.jsonl`.
 - **MUST NOT**: persist a tool report as it is; the bound is 1 MiB and the cucumber message stream alone is 146% of it. The capture rule already persists an allowlist of fields only and never tool output text (`docs/technical/capture/events.md:118-119`), so a stored fact is a bounded extract of a report, never the report. The extract never includes the failure message text (vitest `failureMessages`, cucumber `error_message`), `source` or stdout. For a failing test it carries a fixed-length fingerprint of the failure message, a hash taken after the normalisation that Phase 5 story 5 defines, because the loop counter needs "the same failure message" across consecutive runs (`loop-threshold.md:48-49`) and the report itself is not kept. The normalisation is owed to the loop-detector story 5 (`loop-threshold.md:71`, `:84`), its first reader; #110 reads no failure text and builds no fingerprint (S7). This keeps `events.md:119`.
 - **MUST**, met by #110 (S7) and #111 (S8): refuse an over-bound report whole (a size error and no fact, never a truncation or a partial parse), checked before `JSON.parse`. The bound is checked on UTF-16 length (`text.length`, `core/src/contracts/jsonl.ts:45`, `core/src/contracts/plan.ts:74`) while this record measures bytes, so the two differ for non-ASCII text.
-- **MUST** (owed to #112): stop the read at the bound before buffering; core only ever sees text already read (confined read below).
+- **MUST**, met by #112 (S14): stop the read at the bound before buffering; core only ever sees text already read (confined read below).
 - **MUST**, met by #124 (S10): bound the verified facts per step and the reports per build. A step keeps the last `MAX_DECISIONS_PER_STEP` (50) verified facts and counts the rest in `omittedFacts`; decisions keep the first 50 instead, so "as decisions do" (`snapshot-decisions.md:43`) holds for the count only. Core reads at most the last `MAX_REPORTS_PER_BUILD` (200) reports per kind and reports the rest with one bound error per kind. Reviewed by the Security lane on #124 (CWE-770).
-- **MUST** (owed to #112, its host adapter; Security S1 on #124): read at most the latest `MAX_REPORTS_PER_BUILD` reports per kind, each at most `MAX_TEXT_LENGTH`+1 bytes, before buffering them. The core bound (S10) limits parsing CPU only; without the host bound the worst case is 400 parses of up to 1 MiB per poll (CWE-770, CWE-400). This adds a count to the stop-at-the-bound read above and the confined read below.
-- **MUST** (owed to #112, its host adapter; Security S2 on #124): pass reports oldest first, in capture order. "Latest" in S10 means last in the passed order: core reads no instant, so any other order keeps and drops the wrong reports and facts.
-- **MUST** (owed to #112, its host adapter): hand `buildSnapshot` only well-typed reports, a `{step: string, text: string}` per entry in an array. A failed read is an error the adapter reports, never an entry with a `null` text. Today `buildSnapshot` throws on a `null` text, a `null` entry, or a non-array `testReports`/`mutationReports`; no host passes these and TypeScript forbids them (Security S1, low, on #111, inherited from #110). If #112 cannot guarantee the shape at the boundary, core hardens `outcomeOfReport` and `readReports` instead, in #112. The omitted count, deferred from #110 (frozen surface: 4 elements declared, 4 `required_by_hypothesis: false`, S7), is delivered by #124 as `omittedFacts` (S10).
+- **MUST**, met by #112 (S14) (Security S1 on #124): read at most the latest `MAX_REPORTS_PER_BUILD` reports per kind, each at most `MAX_TEXT_LENGTH`+1 bytes, before buffering them. The core bound (S10) limits parsing CPU only; without the host bound the worst case is 400 parses of up to 1 MiB per poll (CWE-770, CWE-400). This adds a count to the stop-at-the-bound read above and the confined read below.
+- **MUST**, met by #112 (S14) (Security S2 on #124): pass reports oldest first, in capture order. "Latest" in S10 means last in the passed order: core reads no instant, so any other order keeps and drops the wrong reports and facts.
+- **MUST**, met by #112 (S14): hand `buildSnapshot` only well-typed reports, a `{step: string, text: string}` per entry in an array. A failed read is an error the adapter reports, never an entry with a `null` text. Today `buildSnapshot` throws on a `null` text, a `null` entry, or a non-array `testReports`/`mutationReports`; no host passes these and TypeScript forbids them (Security S1, low, on #111, inherited from #110). If #112 cannot guarantee the shape at the boundary, core hardens `outcomeOfReport` and `readReports` instead, in #112. The omitted count, deferred from #110 (frozen surface: 4 elements declared, 4 `required_by_hypothesis: false`, S7), is delivered by #124 as `omittedFacts` (S10).
 - **MUST** (owed to #112 or the capture-side slice cut from it, and #109 where it applies): the trust rules of S4 hold for every fact.
 - **MUST** (owed to #112 or the capture-side slice cut from it): an attachment made through the only-step fallback (no step of the role was in progress) carries the marker that says so (rule in S2). Such a fact stays attached with its marker (S12 (c), #125).
 - **MUST** (whoever shows a CI state as the state of the current work, #113 or #115): `headCommit` is the PR head commit on GitHub, not the local `HEAD`. Compare the two before showing `passed` for the current work, or a stale green shows for unpushed commits (Security observation on #114). The same comparison is a partial guard against a wrong pull request (it does not cover a pull request in a repository the agent controls, see S11 Deferred): the daemon's `gh` read takes its repository and branch from the worktree's git config, which the agent can write, so the agent can make another pull request's checks (a third-party fork PR reusing the branch name) the CI fact (Security F1 on #115, S11 row Branch to PR). Compare `headCommit` (`headRefOid`) with the local `HEAD` and show `passed` only when they are equal; otherwise show the CI state as not belonging to the current work. This is owed by the display (#113 or the CI display slice); #115 does not implement it.
 - **MUST**, met by #115 (S11): validate `headRefOid` as a 40- or 64-hex object id before it reaches any `git` or `gh` argument (CWE-88). Met by never putting it in an argument: the argv is fixed. Any later argument built from it validates first. Core accepts any string (Security S1 on #114, low, deferred: the committed Gherkin uses a short fixture value); for display it is untrusted text (`snapshot-contract.md:66`).
 - **MUST**, met by #115 (S11): the raw `gh pr view --json headRefOid,statusCheckRollup` shape, `__typename` presence included, was not recorded in-repo (`evidence/verified-facts/gh-checks-pr93.json` is a curated excerpt). The live read is committed as `evidence/verified-facts/gh-pr-view-raw-pr127.json`: `__typename` is present, `CheckRun`. Core accepts an absent `__typename` and refuses any value other than `CheckRun`.
 - **MUST**, met by #115 (S11): a failed or missing `gh` read (no PR, no auth, a `gh` error) is #115's error to report; core never reports it. Pass the `gh` stdout string or nothing: core reads a non-string as absent, so a `null` would hide the failure (Security S2 on #114, closed in core).
-- **MUST** (owed to #112 or the capture-side slice cut from it): report reads are confined. Open the file with `O_RDONLY|O_NOFOLLOW|O_NONBLOCK`, require an `fstat` regular file, read at most `MAX_TEXT_LENGTH`+1 bytes, derive the path from the worktree realpath. The fact-file writer follows `plan-writer-confinement.md:86`. #112 AC1 still says "at the paths from #108" on poll, which this record rejects (Considered options): its body needs updating.
+- **MUST**, met by #112 (S14) for the read: report reads are confined. Open the file with `O_RDONLY|O_NOFOLLOW|O_NONBLOCK`, require an `fstat` regular file, read at most `MAX_TEXT_LENGTH`+1 bytes, derive the path from the worktree realpath. The fact-file writer follows `plan-writer-confinement.md:86`. #112 AC1 still says "at the paths from #108" on poll, which this record rejects (Considered options): its body needs updating.
 - **Out of scope**: snapshot facts (#109); the name and shape of the new `.agent-flow` fact file and the role-delivery mechanism, out of #108 and decided by #125 (S12), the file still reviewed by the Security lane; glossary terms "verified fact", "declared fact", "unattached fact" (PM gap, `docs/functional/glossary.md:43-58`), the Security-lane routing of the sixth file (carried by #112's re-slice, which does not carry it today; the orchestrator adds it there), ruling on (b).
 
 ## Open questions / Gaps

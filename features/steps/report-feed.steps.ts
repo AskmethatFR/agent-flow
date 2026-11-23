@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { linkSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Given, Then, When } from '@cucumber/cucumber'
+import { MAX_TEXT_LENGTH } from '@agent-flow/core/contracts'
 import type { Snapshot } from '@agent-flow/core/snapshot'
 import { createGetSnapshot } from '@agent-flow/daemon/snapshot'
 import type { AgentSource, WorkspaceSource } from '@agent-flow/daemon/snapshot'
@@ -76,6 +77,19 @@ Given(
     const outside = join(this.worktree, '..', 'outside-facts.jsonl')
     writeFileSync(outside, validLine())
     symlinkSync(outside, factFileOf(this))
+  },
+)
+
+Given(
+  'the verified-fact file of that worktree is one byte over the bound with at most that many characters',
+  function (this: ReportFeedWorld): void {
+    const multiByteStep = 'é'.repeat(1000)
+    const lineWith = (step: string): string => validLine().replace('"s1"', JSON.stringify(step))
+    const missing = MAX_TEXT_LENGTH + 1 - Buffer.byteLength(lineWith(multiByteStep))
+    const line = lineWith(multiByteStep + 'a'.repeat(missing))
+    assert.equal(Buffer.byteLength(line), MAX_TEXT_LENGTH + 1)
+    assert.ok(line.length <= MAX_TEXT_LENGTH)
+    writeFileSync(factFileOf(this), line)
   },
 )
 

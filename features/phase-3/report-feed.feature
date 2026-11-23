@@ -41,3 +41,12 @@ Feature: Verified facts in the snapshot
     Then the plan steps of the snapshot are intact
     And the snapshot carries no verified fact
     And the snapshot has the single error "verified-facts.jsonl" saying "cannot be read"
+
+  @scenario:S5
+  Scenario: An over-bound fact file is refused whole
+    Given a worktree has the step "dev-a" in progress
+    And the verified-fact file of that worktree is one byte over the bound with at most that many characters
+    When the panel asks for the snapshot of that worktree without agents
+    Then the plan steps of the snapshot are intact
+    And the snapshot carries no verified fact
+    And the snapshot has the single error "verified-facts.jsonl" saying "exceeds 1048576 characters"

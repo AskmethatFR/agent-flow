@@ -79,6 +79,44 @@ describe('readAgentFlowFile', () => {
     expect(read()).toEqual({ unavailable: 'too-large' })
   })
 
+  describe('the fact file', () => {
+    const factsPath = (): string => join(directoryOf(), 'verified-facts.jsonl')
+    const withFacts = (text: Buffer): void => {
+      mkdirSync(directoryOf(), { recursive: true })
+      writeFileSync(factsPath(), text)
+    }
+    const readFacts = (io: ReadIo = realIo) => readAgentFlowFile(io, root, 'verified-facts.jsonl')
+
+    it('reads a file of exactly MAX_TEXT_LENGTH bytes whole', () => {
+      withFacts(Buffer.alloc(MAX_TEXT_LENGTH, 0x61))
+      const text = readFacts()
+      expect(typeof text === 'string' && text.length).toBe(MAX_TEXT_LENGTH)
+    })
+
+    it('refuses a file of MAX_TEXT_LENGTH + 1 bytes as too-large', () => {
+      withFacts(Buffer.alloc(MAX_TEXT_LENGTH + 1, 0x61))
+      expect(readFacts()).toEqual({ unavailable: 'too-large' })
+    })
+
+    it('reads at most MAX_TEXT_LENGTH + 1 bytes of a 3 MiB file', () => {
+      withFacts(Buffer.alloc(3 * 1024 * 1024, 0x61))
+      let delivered = 0
+      let asked = 0
+      const spying: ReadIo = {
+        ...realIo,
+        readSync: ((fd, buffer, offset, length, position) => {
+          asked += length
+          const count = fs.readSync(fd, buffer, offset, length, position)
+          delivered += count
+          return count
+        }) as ReadIo['readSync'],
+      }
+      expect(readFacts(spying)).toEqual({ unavailable: 'too-large' })
+      expect(delivered).toBe(MAX_TEXT_LENGTH + 1)
+      expect(asked).toBe(MAX_TEXT_LENGTH + 1)
+    })
+  })
+
   it('reports a missing .agent-flow directory as missing', () => {
     expect(read()).toEqual({ unavailable: 'missing' })
   })
