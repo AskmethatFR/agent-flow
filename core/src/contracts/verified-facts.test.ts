@@ -38,6 +38,19 @@ const factWithout = (key: string): Record<string, unknown> => {
 
 const lineText = (value: unknown): string => JSON.stringify(value)
 
+const toolFact = (tool: string): Record<string, unknown> =>
+  tool === 'stryker' ? { ...unattachedStryker } : { ...attachedVitest, tool }
+
+const shortestLine = (counts: Record<string, unknown>): string =>
+  lineText({
+    at: '2026-11-23T12:00:00.000Z',
+    step: '1',
+    attachment: 'role',
+    role: 'qa',
+    roleFrom: 'host',
+    ...counts,
+  })
+
 const fileText = (...lines: string[]): string => lines.join('\n')
 
 const rejection = (location: number | null, field: string | null, message: string) => ({
@@ -138,10 +151,109 @@ describe('validateVerifiedFacts', () => {
     },
   )
 
-  it('sizes the post-cap prefilter on the shortest valid compact line', () => {
-    const shortest =
-      '{"at":"2026-11-23T12:00:00.000Z","tool":"stryker","step":"1","attachment":"role","role":"qa","roleFrom":"host","detected":0,"surviving":1}'
-    expect(validateVerifiedFacts(shortest)).toEqual({ accepted: true })
-    expect(verifiedFactsContract.minimumRecordLength).toBe(shortest.length)
+  it('sizes the post-cap prefilter on the shortest valid compact line of any tool', () => {
+    const shortest = [
+      { tool: 'vitest', passed: 0, total: 0, failedSuites: 0 },
+      { tool: 'cucumber-js', passed: 0, total: 0, failedSuites: 0 },
+      { tool: 'stryker', detected: 0, surviving: 0 },
+    ].map((counts) => shortestLine(counts))
+    for (const line of shortest) expect(validateVerifiedFacts(line)).toEqual({ accepted: true })
+    expect(verifiedFactsContract.minimumRecordLength).toBe(Math.min(...shortest.map((line) => line.length)))
+  })
+
+  it('refuses the shortest line without its counts, naming its line number and the first missing count', () => {
+    const countless =
+      '{"at":"2026-11-23T12:00:00.000Z","tool":"stryker","step":"1","attachment":"role","role":"qa","roleFrom":"host"}'
+    expect(countless).toHaveLength(111)
+    expect(countless.length).toBeLessThan(verifiedFactsContract.minimumRecordLength)
+    const text = fileText(lineText(attachedVitest), countless)
+    expect(validateVerifiedFacts(text)).toEqual(rejection(2, 'detected', 'is required'))
+  })
+
+  it.each([
+    ['vitest', attachedVitest],
+    ['cucumber-js', { ...attachedVitest, tool: 'cucumber-js' }],
+    ['stryker', unattachedStryker],
+  ])('accepts a %s line with its own counts', (_tool, fact) => {
+    expect(validateVerifiedFacts(lineText(fact))).toEqual({ accepted: true })
+  })
+
+  it.each([
+    ['vitest', 'passed'],
+    ['vitest', 'total'],
+    ['vitest', 'failedSuites'],
+    ['cucumber-js', 'passed'],
+    ['cucumber-js', 'total'],
+    ['cucumber-js', 'failedSuites'],
+    ['stryker', 'detected'],
+    ['stryker', 'surviving'],
+  ])('refuses a %s line without %s, naming its line number and field', (tool, count) => {
+    const { [count]: _removed, ...rest } = toolFact(tool)
+    const text = fileText(lineText(attachedVitest), lineText(rest))
+    expect(validateVerifiedFacts(text)).toEqual(rejection(2, count, 'is required'))
+  })
+
+  it.each([
+    ['vitest', 'passed'],
+    ['vitest', 'total'],
+    ['vitest', 'failedSuites'],
+    ['cucumber-js', 'passed'],
+    ['cucumber-js', 'total'],
+    ['cucumber-js', 'failedSuites'],
+    ['stryker', 'detected'],
+    ['stryker', 'surviving'],
+  ])('refuses a %s %s that is not a safe non-negative integer, naming its line number and field', (tool, count) => {
+    for (const value of [-1, 1.5, '3', null, true, [1], {}, 2 ** 53]) {
+      const text = fileText(lineText(attachedVitest), lineText({ ...toolFact(tool), [count]: value }))
+      expect(validateVerifiedFacts(text)).toEqual(rejection(2, count, 'must be a non-negative integer'))
+    }
+  })
+
+  it('refuses a count that overflows to Infinity', () => {
+    const overflow = lineText(attachedVitest).replace('"passed":1791', '"passed":1e999')
+    expect(validateVerifiedFacts(fileText(lineText(attachedVitest), overflow))).toEqual(
+      rejection(2, 'passed', 'must be a non-negative integer'),
+    )
+  })
+
+  it.each([0, 1, Number.MAX_SAFE_INTEGER])('accepts a count of %d', (value) => {
+    const vitest = factWith({ passed: value, total: value, failedSuites: value })
+    expect(validateVerifiedFacts(lineText(vitest))).toEqual({ accepted: true })
+    const stryker = { ...unattachedStryker, detected: value, surviving: value }
+    expect(validateVerifiedFacts(lineText(stryker))).toEqual({ accepted: true })
+  })
+
+  it.each([
+    ['vitest', 'detected'],
+    ['vitest', 'surviving'],
+    ['cucumber-js', 'detected'],
+    ['cucumber-js', 'surviving'],
+    ['stryker', 'passed'],
+    ['stryker', 'total'],
+    ['stryker', 'failedSuites'],
+  ])('refuses a %s line carrying %s, naming its line number and field', (tool, count) => {
+    const text = fileText(lineText(attachedVitest), lineText({ ...toolFact(tool), [count]: 1 }))
+    expect(validateVerifiedFacts(text)).toEqual(rejection(2, count, 'is not allowed'))
+  })
+
+  it('reports the first failing count of a line: a missing one, then an invalid one, then a foreign one', () => {
+    const missingAndForeign = { ...factWithout('passed'), detected: 1 }
+    expect(validateVerifiedFacts(lineText(missingAndForeign))).toEqual(
+      rejection(1, 'passed', 'is required'),
+    )
+    const invalidAndForeign = factWith({ total: -1, detected: 1 })
+    expect(validateVerifiedFacts(lineText(invalidAndForeign))).toEqual(
+      rejection(1, 'total', 'must be a non-negative integer'),
+    )
+  })
+
+  it('keeps a schema violation ahead of a count violation on the same line', () => {
+    const text = lineText(factWith({ role: 'intern', passed: -1 }))
+    expect(validateVerifiedFacts(text)).toEqual(rejection(1, 'role', expect.any(String)))
+  })
+
+  it('states the count rules in the schema description', () => {
+    expect(verifiedFactsSchema.description).toContain('passed, total and failedSuites')
+    expect(verifiedFactsSchema.description).toContain('detected and surviving')
   })
 })

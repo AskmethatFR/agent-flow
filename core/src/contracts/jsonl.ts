@@ -8,6 +8,7 @@ export type JsonlContract = {
   readonly schema: JsonSchema
   readonly minimumRecordLength: number
   readonly uniqueKey?: string
+  readonly recordRule?: (record: unknown) => SchemaViolation | undefined
 }
 
 export type LocatedRecord = { readonly record: unknown; readonly location: number }
@@ -41,7 +42,7 @@ export const violationError = (
 })
 
 export const readJsonl = (contract: JsonlContract, text: string): JsonlRead => {
-  const { file, schema, minimumRecordLength, uniqueKey } = contract
+  const { file, schema, minimumRecordLength, uniqueKey, recordRule } = contract
   if (text.length > MAX_TEXT_LENGTH) {
     return { records: [], errors: [lineError(file, null, `exceeds ${MAX_TEXT_LENGTH} characters`)] }
   }
@@ -60,7 +61,7 @@ export const readJsonl = (contract: JsonlContract, text: string): JsonlRead => {
       errors.push(lineError(file, location, 'is not valid JSON'))
       continue
     }
-    const violation = firstViolation(schema, document)
+    const violation = firstViolation(schema, document) ?? recordRule?.(document)
     if (violation !== undefined) {
       errors.push(violationError(file, violation, location))
       continue
