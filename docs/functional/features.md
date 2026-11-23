@@ -74,7 +74,7 @@ Every file under `.agent-flow/` is validated against a versioned schema.
 | `requests.jsonl` | One request per line. Each request is validated; a valid file is accepted; a malformed line is reported by its line number and never hides the valid lines around it. | `request-contracts` S1, S2 | `features/phase-0/request-contracts.feature` |
 | `responses.jsonl` | One answer per line, keyed by request id. A valid file is accepted; a malformed line is reported by its line number. | `request-contracts` S1, S2 | `features/phase-0/request-contracts.feature` |
 | `scope.json` | The issue the work derives from plus the repo-relative paths it is expected to touch. A valid file is accepted; an unsafe path entry is rejected by the field `paths`. | `request-contracts` S1, S3 | `features/phase-0/request-contracts.feature` |
-| `verified-facts.jsonl` | One line per observed tool run. Each line is validated; a valid file is accepted; a name that is not a contract file, such as `verified-facts.json`, is still refused; a line carrying a failure text is refused by its key, and the text is never echoed. | `fact-capture` S9-S10; read into the snapshot by `report-feed` S1-S5 | `features/phase-3/fact-capture.feature`, `features/phase-3/report-feed.feature` |
+| `verified-facts.jsonl` | One line per observed tool run. Each line is validated; a valid file is accepted; a name that is not a contract file, such as `verified-facts.json`, is still refused; a line carrying a failure text is refused by its key, and the text is never echoed. | `fact-capture` S9-S10; read into the snapshot by `report-feed` S1-S6 | `features/phase-3/fact-capture.feature`, `features/phase-3/report-feed.feature` |
 
 ### Capability: requests, answers and scope
 

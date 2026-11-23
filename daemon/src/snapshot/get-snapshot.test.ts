@@ -134,11 +134,14 @@ describe('getSnapshot', () => {
             omittedDecisions: 0,
             facts: [],
             omittedFacts: 0,
+            ranTool: false,
           },
         ],
         currentStepId: 's1',
         currentAgent: null,
         ci: passingCi,
+        unattachedFacts: [],
+        omittedUnattachedFacts: 0,
         errors: [],
       },
     })
@@ -175,6 +178,8 @@ describe('getSnapshot', () => {
         currentStepId: null,
         currentAgent: null,
         ci: passingCi,
+        unattachedFacts: [],
+        omittedUnattachedFacts: 0,
         errors: [{ file: 'plan.json', location: null, field: null, message: 'is missing' }],
       },
     })
@@ -269,6 +274,34 @@ describe('getSnapshot', () => {
       expect(snapshot.steps[0]?.facts).toEqual([
         { origin: 'verified', source: 'vitest', label: '1791 of 1791 passed' },
       ])
+    })
+
+    it('carries the step: null lines of verified-facts.jsonl to the issue level, in file order', async () => {
+      const worktree = worktreeWith('a', planWith('#1', 'todo'))
+      const unattached = (tool: string, passed: number): string =>
+        JSON.stringify({
+          at: '2026-11-01T09:10:00.000Z',
+          tool,
+          step: null,
+          attachment: 'unattached',
+          role: null,
+          roleFrom: null,
+          passed,
+          total: 1791,
+          failedSuites: 0,
+        })
+      const lines = [unattached('cucumber-js', 7), factLine('s1'), unattached('vitest', 9)]
+      writeFileSync(join(worktree, '.agent-flow', 'verified-facts.jsonl'), `${lines.join('\n')}\n`)
+      const snapshot = await snapshotOf(worktree)
+      expect(snapshot.errors).toEqual([])
+      expect(snapshot.unattachedFacts).toEqual([
+        { origin: 'verified', source: 'cucumber-js', label: '7 of 1791 passed' },
+        { origin: 'verified', source: 'vitest', label: '9 of 1791 passed' },
+      ])
+      expect(snapshot.steps[0]?.facts).toEqual([
+        { origin: 'verified', source: 'vitest', label: '1791 of 1791 passed' },
+      ])
+      expect(snapshot.steps[0]?.ranTool).toBe(true)
     })
 
     it('gives no fact and no error when verified-facts.jsonl is missing', async () => {

@@ -66,7 +66,13 @@ export const createGetSnapshot =
       agentStatusOf(agents, io, realWorktree),
       ciStatusOf(ciStatus, realWorktree),
     ])
-    const files = { plan, decisions, verifiedFacts, ...('status' in ci ? { ciStatus: ci.status } : {}) }
+    const files = {
+      plan,
+      decisions,
+      verifiedFacts,
+      unattachedEntries: verifiedFacts.unattached,
+      ...('status' in ci ? { ciStatus: ci.status } : {}),
+    }
     const snapshot = buildSnapshot(files, now(), agentStatus)
     return {
       kind: 'snapshot',

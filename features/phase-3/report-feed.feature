@@ -50,3 +50,12 @@ Feature: Verified facts in the snapshot
     Then the plan steps of the snapshot are intact
     And the snapshot carries no verified fact
     And the snapshot has the single error "verified-facts.jsonl" saying "exceeds 1048576 characters"
+
+  @scenario:S6
+  Scenario: An unattached line of the fact file reaches the issue-level place
+    Given a worktree has the step "dev-a" in progress
+    And the verified-fact file of that worktree has an unattached vitest line of 12 passed out of 14
+    When the panel asks for the snapshot of that worktree without agents
+    Then the snapshot carries the issue-level verified fact "12 of 14 passed" from "vitest"
+    And the snapshot carries no verified fact
+    And the snapshot has no error

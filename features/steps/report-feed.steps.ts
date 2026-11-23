@@ -43,6 +43,24 @@ Given(
   },
 )
 
+Given(
+  'the verified-fact file of that worktree has an unattached vitest line of {int} passed out of {int}',
+  function (this: ReportFeedWorld, passed: number, total: number): void {
+    const line = JSON.stringify({
+      at: '2026-11-23T12:00:00.000Z',
+      tool: 'vitest',
+      step: null,
+      attachment: 'unattached',
+      role: null,
+      roleFrom: null,
+      passed,
+      total,
+      failedSuites: 0,
+    })
+    writeFileSync(factFileOf(this), `${line}\n`)
+  },
+)
+
 const obstacles: Record<string, (world: ReportFeedWorld) => void> = {
   'a directory': (world) => mkdirSync(factFileOf(world)),
   'a FIFO': (world) => execFileSync('mkfifo', [factFileOf(world)]),
@@ -105,6 +123,13 @@ Then(
       step.facts.filter(({ origin }) => origin === 'verified'),
       [{ origin: 'verified', source, label }],
     )
+  },
+)
+
+Then(
+  'the snapshot carries the issue-level verified fact {string} from {string}',
+  function (this: ReportFeedWorld, label: string, source: string): void {
+    assert.deepEqual(this.snapshot.unattachedFacts, [{ origin: 'verified', source, label }])
   },
 )
 

@@ -50,7 +50,7 @@ const unattachedLine = (): string =>
   factLine({ step: null, attachment: 'unattached', role: null, roleFrom: null })
 
 const factsOf = (verifiedFacts: readonly { step: string; text: string }[], ...ids: string[]) =>
-  buildSnapshot({ plan: planOf(...ids), verifiedFacts: { entries: verifiedFacts, errors: [] } }, now)
+  buildSnapshot({ plan: planOf(...ids), verifiedFacts: { entries: verifiedFacts, unattached: [], errors: [] } }, now)
 
 describe('factEntriesOf', () => {
   it('keeps the attached lines as step and text, in file order', () => {
@@ -62,12 +62,20 @@ describe('factEntriesOf', () => {
         { step: 's1', text: first },
         { step: 's2', text: second },
       ],
+      unattached: [unattachedLine()],
       errors: [],
     })
   })
 
+  it('keeps the unattached lines exactly as written, in file order', () => {
+    const first = `${unattachedLine()} `
+    const second = factLine({ step: null, attachment: 'unattached', role: null, roleFrom: null, tool: 'cucumber-js' })
+    const file = `${first}\n${factLine()}\n${second}\n`
+    expect(factEntriesOf(file).unattached).toEqual([first, second])
+  })
+
   it('gives no entry and no error for a missing file', () => {
-    expect(factEntriesOf({ unavailable: 'missing' })).toEqual({ entries: [], errors: [] })
+    expect(factEntriesOf({ unavailable: 'missing' })).toEqual({ entries: [], unattached: [], errors: [] })
   })
 
   it.each([
@@ -76,6 +84,7 @@ describe('factEntriesOf', () => {
   ] as const)('gives one verified-facts.jsonl error and no entry for a %s file', (unavailable, message) => {
     expect(factEntriesOf({ unavailable })).toEqual({
       entries: [],
+      unattached: [],
       errors: [{ file: 'verified-facts.jsonl', location: null, field: null, message }],
     })
   })
@@ -84,6 +93,7 @@ describe('factEntriesOf', () => {
     const valid = factLine()
     expect(factEntriesOf(`not json\n${valid}\n`)).toEqual({
       entries: [{ step: 's1', text: valid }],
+      unattached: [],
       errors: [{ file: 'verified-facts.jsonl', location: 1, field: null, message: 'is not valid JSON' }],
     })
   })
@@ -275,7 +285,7 @@ describe('buildSnapshot verified-facts entries', () => {
     const snapshot = buildSnapshot(
       {
         plan: planOf('s1'),
-        verifiedFacts: { entries: [{ step: 'ghost', text: factLine() }], errors: [] },
+        verifiedFacts: { entries: [{ step: 'ghost', text: factLine() }], unattached: [], errors: [] },
         mutationReports: [{ step: 'ghost', text: '{}' }],
         ciStatus: 'not json',
       },
@@ -290,6 +300,7 @@ describe('buildSnapshot verified-facts entries', () => {
         plan: planOf('s1'),
         verifiedFacts: {
           entries: [{ step: 'ghost', text: factLine() }],
+          unattached: [],
           errors: [{ file: 'verified-facts.jsonl', location: null, field: null, message: 'cannot be read' }],
         },
         mutationReports: [{ step: 'ghost', text: '{}' }],
@@ -380,10 +391,67 @@ describe('buildSnapshot verified-facts entries', () => {
             text: JSON.stringify({ numTotalTests: 2, numPassedTests: 2, numFailedTestSuites: 0 }),
           },
         ],
-        verifiedFacts: { entries: [{ step: 's1', text: factLine() }], errors: [] },
+        verifiedFacts: { entries: [{ step: 's1', text: factLine() }], unattached: [], errors: [] },
       },
       now,
     )
     expect(snapshot.steps[0]?.facts.map((fact) => fact.label)).toEqual(['2 of 2 passed', '5 of 5 passed'])
+  })
+
+  it('marks the step of an attached entry as having run a tool, and only that step', () => {
+    const snapshot = buildSnapshot({ plan: planOf('s1', 's2'), verifiedFacts: factEntriesOf(`${factLine()}\n`) }, now)
+    expect(snapshot.steps.map((step) => step.ranTool)).toEqual([true, false])
+  })
+
+  it('gives an unattached line of the file its issue-level fact, through factEntriesOf', () => {
+    const verifiedFacts = factEntriesOf(`${unattachedLine()}\n${factLine()}\n`)
+    const snapshot = buildSnapshot(
+      { plan: planOf('s1'), verifiedFacts, unattachedEntries: verifiedFacts.unattached },
+      now,
+    )
+    expect(snapshot.unattachedFacts).toEqual([{ origin: 'verified', source: 'vitest', label: '5 of 5 passed' }])
+    expect(snapshot.steps[0]?.facts.map((fact) => fact.label)).toEqual(['5 of 5 passed'])
+    expect(snapshot.errors).toEqual([])
+  })
+})
+
+describe('buildSnapshot error order with the fact file and unattached entries', () => {
+  const agentDown = { unavailable: 'host-error' } as const
+
+  const everyFileBroken = (plan: string) =>
+    buildSnapshot(
+      {
+        plan,
+        decisions: '{',
+        testReports: [{ step: 's1', text: '{' }],
+        mutationReports: [{ step: 's1', text: '{' }],
+        verifiedFacts: {
+          entries: [{ step: 's1', text: '{' }],
+          unattached: ['{'],
+          errors: [{ file: 'verified-facts.jsonl', location: null, field: null, message: 'cannot be read' }],
+        },
+        unattachedEntries: ['{'],
+        ciStatus: '{',
+      },
+      now,
+      agentDown,
+    )
+
+  it('lists the errors of a usable plan from decisions to agent-state, the fact file before the unattached entries', () => {
+    expect(everyFileBroken(planOf('s1')).errors.map((error) => error.file)).toEqual([
+      'decisions.jsonl',
+      'test-report',
+      'mutation-report',
+      'verified-facts.jsonl',
+      'verified-fact',
+      'unattached-entry',
+      'ci-status',
+      'agent-state',
+    ])
+  })
+
+  it('lists the errors of an unusable plan as plan, unattached-entry, ci-status, agent-state, with no fact-file error', () => {
+    const snapshot = everyFileBroken('{')
+    expect(snapshot.errors.map((error) => error.file)).toEqual(['plan.json', 'unattached-entry', 'ci-status', 'agent-state'])
   })
 })
