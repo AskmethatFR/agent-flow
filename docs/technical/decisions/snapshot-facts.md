@@ -93,4 +93,4 @@ Closes the CI row above. Unattached facts stay deferred to #112. Parsing rules: 
 
 - [ ] The `source` value of each verified fact kind: owed to #110 and #111.
 - [x] Where CI sits at issue level: top-level `ci` (#114, above).
-- [ ] Where unattached facts sit at issue level: owed to #112.
+- [x] Where unattached facts sit at issue level: top-level `unattachedFacts` (#126, [[verified-facts]] S14).

@@ -134,11 +134,14 @@ describe('getSnapshot', () => {
             omittedDecisions: 0,
             facts: [],
             omittedFacts: 0,
+            ranTool: false,
           },
         ],
         currentStepId: 's1',
         currentAgent: null,
         ci: passingCi,
+        unattachedFacts: [],
+        omittedUnattachedFacts: 0,
         errors: [],
       },
     })
@@ -175,6 +178,8 @@ describe('getSnapshot', () => {
         currentStepId: null,
         currentAgent: null,
         ci: passingCi,
+        unattachedFacts: [],
+        omittedUnattachedFacts: 0,
         errors: [{ file: 'plan.json', location: null, field: null, message: 'is missing' }],
       },
     })

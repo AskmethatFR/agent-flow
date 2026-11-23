@@ -1,4 +1,4 @@
-export { MAX_DECISIONS_PER_STEP, MAX_REPORTS_PER_BUILD, buildSnapshot } from './snapshot'
+export { MAX_DECISIONS_PER_STEP, MAX_REPORTS_PER_BUILD, MAX_UNATTACHED_FACTS, buildSnapshot } from './snapshot'
 export type {
   AgentFlowFile,
   AgentStatusUnavailable,
