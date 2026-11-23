@@ -26,7 +26,8 @@ const refuseReport = refusalFor(reportPath)
 const hostPrefix = 'agentic-team:'
 
 // Ruling G2 (docs/technical/decisions/verified-facts.md S13): a bare role id, or one with the
-// agentic-team: prefix, is host-observed; any other prefix is not.
+// agentic-team: prefix, is host-observed; any other prefix is not. A run with no host role is
+// still asked of decisionStepOf with null, never '' (a role-less step has the role '', S12 (a)).
 const hostRoleOf = (agentType: unknown): string | undefined => {
   if (typeof agentType !== 'string') return undefined
   const name = agentType.startsWith(hostPrefix) ? agentType.slice(hostPrefix.length) : agentType
@@ -69,8 +70,7 @@ const relabelled = (refusal: ValidationResult & { accepted: false }): Validation
 
 export function createFactAppender(io: AppendIo): Appender {
   return function appendFact(worktree, run) {
-    const role = hostRoleOf(run.agentType)
-    if (role === undefined) return refuse('is not host-observed', 'role')
+    const role = hostRoleOf(run.agentType) ?? null
     const confined = confine(worktree)
     if ('accepted' in confined) return confined
     const plan = readPlan(io, join(confined.directory, 'plan.json'))
@@ -85,7 +85,7 @@ export function createFactAppender(io: AppendIo): Appender {
       step: step.stepId,
       attachment: step.attachment,
       role,
-      roleFrom: 'host',
+      roleFrom: role === null ? null : 'host',
       ...counts,
     })
     const checked = checkContractFile(factsFile, line)

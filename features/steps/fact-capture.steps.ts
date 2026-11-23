@@ -109,49 +109,73 @@ const endedEventOf = (outcome: string): object =>
       }
     : { hook_event_name: 'PostToolUseFailure', error: 'Exit code 1', is_interrupt: false }
 
+// The main session's events carry no agent_type (docs/technical/decisions/verified-facts.md S12 (a)).
+const runVitest = (
+  world: FactCaptureWorld,
+  agentType: string | undefined,
+  command: string,
+  outcome: string,
+  passed: number,
+  total: number,
+): void => {
+  const reportDirectory = join(world.worktree, 'reports', 'vitest')
+  mkdirSync(reportDirectory, { recursive: true })
+  const failed = total - passed
+  writeFileSync(
+    join(reportDirectory, 'vitest.json'),
+    JSON.stringify({
+      numTotalTests: total,
+      numPassedTests: passed,
+      numFailedTests: failed,
+      numFailedTestSuites: failed === 0 ? 0 : 1,
+      testResults: [{ name: 'tests/a.test.ts', message: '', assertionResults: [] }],
+    }),
+  )
+  const result = spawnSync(join(repo, 'node_modules/.bin/tsx'), [factHook], {
+    cwd: world.worktree,
+    input: JSON.stringify({
+      ...endedEventOf(outcome),
+      cwd: world.worktree,
+      agent_id: 'a1b2c3',
+      agent_type: agentType,
+      tool_name: 'Bash',
+      tool_input: { command, description: 'Run vitest' },
+      tool_use_id: 'toolu_01',
+      duration_ms: 631,
+    }),
+    encoding: 'utf8',
+    env: { ...process.env, CLAUDE_PROJECT_DIR: world.worktree },
+  })
+  assert.equal(result.status, 0)
+  assert.equal(result.stdout, '')
+  assert.equal(result.stderr, '')
+}
+
 When(
   'a subagent of type {string} runs {string} and it ends {word}, {int} of {int} tests passed',
   function (this: FactCaptureWorld, agentType: string, command: string, outcome: string, passed: number, total: number): void {
-    const reportDirectory = join(this.worktree, 'reports', 'vitest')
-    mkdirSync(reportDirectory, { recursive: true })
-    const failed = total - passed
-    writeFileSync(
-      join(reportDirectory, 'vitest.json'),
-      JSON.stringify({
-        numTotalTests: total,
-        numPassedTests: passed,
-        numFailedTests: failed,
-        numFailedTestSuites: failed === 0 ? 0 : 1,
-        testResults: [{ name: 'tests/a.test.ts', message: '', assertionResults: [] }],
-      }),
-    )
-    const result = spawnSync(join(repo, 'node_modules/.bin/tsx'), [factHook], {
-      cwd: this.worktree,
-      input: JSON.stringify({
-        ...endedEventOf(outcome),
-        cwd: this.worktree,
-        agent_id: 'a1b2c3',
-        agent_type: agentType,
-        tool_name: 'Bash',
-        tool_input: { command, description: 'Run vitest' },
-        tool_use_id: 'toolu_01',
-        duration_ms: 631,
-      }),
-      encoding: 'utf8',
-      env: { ...process.env, CLAUDE_PROJECT_DIR: this.worktree },
-    })
-    assert.equal(result.status, 0)
-    assert.equal(result.stdout, '')
-    assert.equal(result.stderr, '')
+    runVitest(this, agentType, command, outcome, passed, total)
   },
 )
 
+When(
+  'the main session runs {string} and it ends {word}, {int} of {int} tests passed',
+  function (this: FactCaptureWorld, command: string, outcome: string, passed: number, total: number): void {
+    runVitest(this, undefined, command, outcome, passed, total)
+  },
+)
+
+// A role that the host did not observe is written as null in the file; the feature writes it "null".
+const nullable = (word: string): string | null => (word === 'null' ? null : word)
+
 Then(
-  'verified-facts.jsonl holds one line on step {string}, attachment {word}, role qa, roleFrom host, with {int} passed of {int} and {int} failed suites',
+  'verified-facts.jsonl holds one line on step {string}, attachment {word}, role {word}, roleFrom {word}, with {int} passed of {int} and {int} failed suites',
   function (
     this: FactCaptureWorld,
     step: string,
     attachment: string,
+    role: string,
+    roleFrom: string,
     passed: number,
     total: number,
     failedSuites: number,
@@ -165,8 +189,8 @@ Then(
       tool: 'vitest',
       step,
       attachment,
-      role: 'qa',
-      roleFrom: 'host',
+      role: nullable(role),
+      roleFrom: nullable(roleFrom),
       passed,
       total,
       failedSuites,

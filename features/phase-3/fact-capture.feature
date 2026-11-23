@@ -7,14 +7,15 @@ Feature: Capture: verified facts are kept in a sixth contract file
   @scenario:S1
   Scenario Outline: A qa subagent's vitest run leaves one fact on its step
     Given a plan whose step "1" is in progress for the role qa
-    When a subagent of type "qa" runs "npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json" and it ends <outcome>, <passed> of <total> tests passed
+    When a subagent of type "<agentType>" runs "npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json" and it ends <outcome>, <passed> of <total> tests passed
     Then verified-facts.jsonl holds one line on step "1", attachment role, role qa, roleFrom host, with <passed> passed of <total> and <failedSuites> failed suites
     And that line passes the contract check
 
     Examples:
-      | outcome | passed | total | failedSuites |
-      | passing | 3      | 3     | 0            |
-      | failing | 2      | 3     | 1            |
+      | agentType        | outcome | passed | total | failedSuites |
+      | qa               | passing | 3      | 3     | 0            |
+      | qa               | failing | 2      | 3     | 1            |
+      | agentic-team:qa  | passing | 3      | 3     | 0            |
 
   @scenario:S2
   Scenario: Two vitest runs leave two facts, in run order
@@ -25,11 +26,17 @@ Feature: Capture: verified facts are kept in a sixth contract file
     And that line passes the contract check
 
   @scenario:S4
-  Scenario: A qa subagent's vitest run attaches to the only step in progress when it is another role's
+  Scenario Outline: A run attaches to the only step in progress when it is another role's, marked only-step
     Given a plan whose step "1" is in progress for the role dev-a
-    When a subagent of type "qa" runs "npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json" and it ends passing, 3 of 3 tests passed
-    Then verified-facts.jsonl holds one line on step "1", attachment only-step, role qa, roleFrom host, with 3 passed of 3 and 0 failed suites
+    When <runner> runs "npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json" and it ends passing, 3 of 3 tests passed
+    Then verified-facts.jsonl holds one line on step "1", attachment only-step, role <role>, roleFrom <roleFrom>, with 3 passed of 3 and 0 failed suites
     And that line passes the contract check
+
+    Examples:
+      | runner                             | role | roleFrom |
+      | a subagent of type "qa"            | qa   | host     |
+      | a subagent of type "other:qa"      | null | null     |
+      | the main session                   | null | null     |
 
   @scenario:S9
   Scenario: The contract check accepts the sixth file and still refuses other names

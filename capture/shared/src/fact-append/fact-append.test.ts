@@ -93,11 +93,34 @@ describe('appendFact', () => {
     ['an empty agent type', ''],
     ['no agent type (the main session)', undefined],
     ['a non-string agent type', 42],
-  ])('writes nothing for %s, even when one step alone is in progress', (_label, agentType) => {
+  ])('marks the line only-step with no role for %s when one step alone is in progress', (_label, agentType) => {
     writeFileSync(join(agentFlow, 'plan.json'), planWith([stepOf('1', 'qa', 'in_progress')]))
+    expect(appendFact(worktree, { agentType, at })).toEqual({ accepted: true })
+    expect(readFileSync(factsPath, 'utf8')).toBe(
+      `${JSON.stringify({ at, tool: 'vitest', step: '1', attachment: 'only-step', role: null, roleFrom: null, passed: 4, total: 5, failedSuites: 1 })}\n`,
+    )
+  })
+
+  it.each([
+    ['another prefix', 'other:qa'],
+    ['no agent type (the main session)', undefined],
+    ['a non-string agent type', 42],
+  ])('writes nothing for %s when several steps are in progress', (_label, agentType) => {
     expect(appendFact(worktree, { agentType, at })).toEqual({
       accepted: false,
-      errors: [{ file: 'verified-facts.jsonl', location: null, field: 'role', message: 'is not host-observed' }],
+      errors: [{ file: 'verified-facts.jsonl', location: null, field: 'role', message: 'has no step in progress' }],
+    })
+    expect(existsSync(factsPath)).toBe(false)
+  })
+
+  it('asks for the step of no role, never of the empty role, so a role-less step is not matched', () => {
+    writeFileSync(
+      join(agentFlow, 'plan.json'),
+      planWith([{ ...stepOf('1', '', 'in_progress'), title: 'a step with no role id' }, stepOf('2', 'dev-a', 'in_progress')]),
+    )
+    expect(appendFact(worktree, { agentType: undefined, at })).toMatchObject({
+      accepted: false,
+      errors: [{ file: 'verified-facts.jsonl', field: 'role', message: 'has no step in progress' }],
     })
     expect(existsSync(factsPath)).toBe(false)
   })
