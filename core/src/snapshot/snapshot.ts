@@ -5,6 +5,9 @@ import type { ContractError } from '../contracts/contract-error'
 import { readLocatedDecisions } from '../contracts/decisions'
 import { readPlan } from '../contracts/plan'
 import type { PlanStep, ReadPlanResult } from '../contracts/plan'
+import { firstViolation } from '../contracts/jsonl'
+import type { JsonlContract } from '../contracts/jsonl'
+import { verifiedFactsContract } from '../contracts/verified-facts'
 import { readCiStatus } from './ci-status'
 import type { CiState } from './ci-status'
 import { mutationLabelOf, readMutationReport } from './mutation-report'
@@ -15,6 +18,7 @@ import type { TimeSpent } from './time-spent'
 
 export const MAX_DECISIONS_PER_STEP = 50
 export const MAX_REPORTS_PER_BUILD = 200
+export const MAX_UNATTACHED_FACTS = 50
 
 export type FileUnavailable = {
   readonly unavailable: 'missing' | 'unreadable' | 'too-large'
@@ -39,6 +43,7 @@ export type SnapshotFiles = {
   readonly testReports?: readonly TestReport[]
   readonly mutationReports?: readonly MutationReport[]
   readonly ciStatus?: string
+  readonly unattachedEntries?: readonly string[]
 }
 
 export type SnapshotDecision = {
@@ -73,6 +78,7 @@ export type SnapshotStep = {
   readonly omittedDecisions: number
   readonly facts: readonly SnapshotFact[]
   readonly omittedFacts: number
+  readonly ranTool: boolean
 }
 
 export type CurrentAgent = {
@@ -87,6 +93,8 @@ export type Snapshot = {
   readonly currentStepId: string | null
   readonly currentAgent: CurrentAgent | null
   readonly ci: CiFact | null
+  readonly unattachedFacts: readonly SnapshotFact[]
+  readonly omittedUnattachedFacts: number
   readonly errors: readonly ContractError[]
 }
 
@@ -119,6 +127,7 @@ const toSnapshotStep = (
   now: Date,
   { decisions, omitted }: StepDecisions,
   verified: readonly VerifiedFact[],
+  ranSteps: ReadonlySet<string>,
 ): SnapshotStep => {
   const { kept, omitted: omittedFacts } = latestVerifiedFacts(step.id, verified)
   return {
@@ -132,6 +141,7 @@ const toSnapshotStep = (
     omittedDecisions: omitted,
     facts: [...decisions.map(declaredFactOf), ...kept],
     omittedFacts,
+    ranTool: ranSteps.has(step.id),
   }
 }
 
@@ -244,6 +254,7 @@ const mutationReportFile = 'mutation-report'
 type VerifiedFact = { readonly step: string; readonly fact: SnapshotFact }
 
 type ReadReports = {
+  readonly ranSteps: readonly string[]
   readonly verified: readonly VerifiedFact[]
   readonly errors: readonly ContractError[]
 }
@@ -303,10 +314,10 @@ const readReports = (
 ): ReadReports => {
   const stepIds = new Set(steps.map((step) => step.id))
   const skipped = Math.max(0, reports.length - MAX_REPORTS_PER_BUILD)
-  const outcomes = reports
-    .slice(skipped)
-    .map((report, index) => outcomeOfReport(file, read, stepIds, report, skipped + index + 1))
+  const window = reports.slice(skipped)
+  const outcomes = window.map((report, index) => outcomeOfReport(file, read, stepIds, report, skipped + index + 1))
   return {
+    ranSteps: window.map(({ step }) => step),
     verified: outcomes.filter((outcome) => 'verified' in outcome).map((outcome) => outcome.verified),
     errors: [
       ...boundErrorsOf(file, skipped),
@@ -315,6 +326,84 @@ const readReports = (
         outcomes.filter((outcome) => 'error' in outcome).map((outcome) => outcome.error),
       ),
     ],
+  }
+}
+
+const unattachedEntryFile = 'unattached-entry'
+
+// The shape validateVerifiedFacts guarantees, narrowed to what core reads: the tool and its counts.
+type UnattachedEntry =
+  | {
+      readonly tool: 'vitest' | 'cucumber-js'
+      readonly step: string | null
+      readonly passed: number
+      readonly total: number
+      readonly failedSuites: number
+    }
+  | { readonly tool: 'stryker'; readonly step: string | null; readonly detected: number; readonly surviving: number }
+
+type EntryOutcome = { readonly fact: SnapshotFact } | { readonly error: ContractError }
+
+const entryError = (location: number, field: string | null, message: string): EntryOutcome => ({
+  error: { file: unattachedEntryFile, location, field, message },
+})
+
+const factOfEntry = (entry: UnattachedEntry): SnapshotFact =>
+  entry.tool === 'stryker'
+    ? {
+        origin: 'verified',
+        source: entry.tool,
+        label: mutationLabelOf({ source: entry.tool, detected: entry.detected, surviving: entry.surviving }),
+      }
+    : verifiedFactOf({
+        source: entry.tool,
+        passed: entry.passed,
+        total: entry.total,
+        failedSuites: entry.failedSuites,
+      })
+
+// verifiedFactsContract always sets its recordRule; the shared JsonlContract type leaves it optional.
+const { schema: entrySchema, recordRule: entryRule } = verifiedFactsContract as Required<
+  Pick<JsonlContract, 'schema' | 'recordRule'>
+>
+
+// readJsonl's check of one line, run on the document already parsed. readJsonl splits on '\n'
+// and drops one trailing empty line, so a '\n' before the last character makes more than one line.
+const isVerifiedFactsLine = (text: string, document: unknown): boolean =>
+  !text.slice(0, -1).includes('\n') &&
+  firstViolation(entrySchema, document) === undefined &&
+  entryRule(document) === undefined
+
+// Each entry is parsed once (CWE-400): the line check reuses that document.
+const outcomeOfEntry = (text: string, location: number): EntryOutcome => {
+  if (text.length > MAX_TEXT_LENGTH) return entryError(location, null, `exceeds ${MAX_TEXT_LENGTH} characters`)
+  let document: unknown
+  try {
+    document = JSON.parse(text)
+  } catch {
+    return entryError(location, null, 'is not valid JSON')
+  }
+  if (!isVerifiedFactsLine(text, document)) {
+    return entryError(location, null, 'is not a verified-facts.jsonl entry')
+  }
+  const entry = document as UnattachedEntry
+  return entry.step === null ? { fact: factOfEntry(entry) } : entryError(location, 'step', 'must be null')
+}
+
+type ReadUnattached = {
+  readonly facts: readonly SnapshotFact[]
+  readonly omitted: number
+  readonly errors: readonly ContractError[]
+}
+
+// At most MAX_UNATTACHED_FACTS errors, under MAX_ERRORS: no capErrors needed.
+const readUnattached = (entries: readonly string[]): ReadUnattached => {
+  const omitted = Math.max(0, entries.length - MAX_UNATTACHED_FACTS)
+  const outcomes = entries.slice(omitted).map((text, index) => outcomeOfEntry(text, omitted + index + 1))
+  return {
+    facts: outcomes.filter((outcome) => 'fact' in outcome).map((outcome) => outcome.fact),
+    omitted,
+    errors: outcomes.filter((outcome) => 'error' in outcome).map((outcome) => outcome.error),
   }
 }
 
@@ -343,6 +432,7 @@ export const buildSnapshot = (
   const status = unavailable ? undefined : agentStatus
   const result = readPlanFile(files.plan)
   const { ci, errors: ciErrors } = readCi(files.ciStatus)
+  const unattached = readUnattached(files.unattachedEntries ?? [])
   if (!result.accepted) {
     return {
       issue: null,
@@ -351,7 +441,9 @@ export const buildSnapshot = (
       currentStepId: null,
       currentAgent: null,
       ci,
-      errors: [...result.errors, ...ciErrors, ...agentErrors],
+      unattachedFacts: unattached.facts,
+      omittedUnattachedFacts: unattached.omitted,
+      errors: [...result.errors, ...unattached.errors, ...ciErrors, ...agentErrors],
     }
   }
   const { plan } = result
@@ -359,14 +451,24 @@ export const buildSnapshot = (
   const testReports = readReports(testReportFile, readTestReportFact, plan.steps, files.testReports ?? [])
   const mutationReports = readReports(mutationReportFile, readMutationReportFact, plan.steps, files.mutationReports ?? [])
   const verified = [...testReports.verified, ...mutationReports.verified]
+  const ranSteps = new Set([...testReports.ranSteps, ...mutationReports.ranSteps])
   const current = currentStepOf(plan.steps)
   return {
     issue: plan.issue,
     title: plan.title,
-    steps: perStep.map(({ step, bucket }) => toSnapshotStep(step, now, bucket, verified)),
+    steps: perStep.map(({ step, bucket }) => toSnapshotStep(step, now, bucket, verified, ranSteps)),
     currentStepId: current?.id ?? null,
     currentAgent: currentAgentOf(current, status),
     ci,
-    errors: [...errors, ...testReports.errors, ...mutationReports.errors, ...ciErrors, ...agentErrors],
+    unattachedFacts: unattached.facts,
+    omittedUnattachedFacts: unattached.omitted,
+    errors: [
+      ...errors,
+      ...testReports.errors,
+      ...mutationReports.errors,
+      ...unattached.errors,
+      ...ciErrors,
+      ...agentErrors,
+    ],
   }
 }

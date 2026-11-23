@@ -22,6 +22,7 @@ answers:
   - "How many verified facts does a step keep, how many reports does one build read, and what does the host owe before passing them?"
   - "How does the daemon read the CI status with gh, and what does it report when gh fails?"
   - "How does the capture side see a tool run, take its role and report, and what does the sixth .agent-flow file hold?"
+  - "Does a snapshot step say whether it ran a tool, and where do the facts capture could not attach sit?"
 decided_in:
   - "#108"
   - "#110"
@@ -31,6 +32,7 @@ decided_in:
   - "#115"
   - "#124"
   - "#125"
+  - "#126"
 ---
 
 # Verified facts: sources, capture-time step attachment, separator
@@ -369,6 +371,37 @@ S12 (e) fixed the table of the sixth file; this section records how the contract
 - **Exit**: G4, exit 0 whatever is refused.
 - **Reads**: read no transcript and no `persistedOutputPath` (S12 (b)).
 
+### S14 Tool-run signal and unattached facts in the snapshot (#126)
+
+Core turns what it is given into two signals; it attaches nothing and calls no `decisionStepOf` (S2, S12 (c), (d)). Every symbol is in `core/src/snapshot/snapshot.ts`; the wire mirror is `panel/shared/snapshot-rpc.ts`.
+
+| Concern | Rule | Anchor |
+|---|---|---|
+| Tool-run signal | `SnapshotStep.ranTool: boolean`, after `omittedFacts`, required, never `null`. `true` exactly when a step-level report core reads names the step: any `testReports` or `mutationReports` entry, and any later step-level kind read through `readReports`, whether it yields a fact, is refused (malformed, over the bound, unknown shape, no mutant) or its fact is cut by the per-step cap. No new input: a `{step, text}` entry is the run | `readReports`, `toSnapshotStep` |
+| Not a run | a report before the last `MAX_REPORTS_PER_BUILD` of its kind (not read, S10); a report naming no plan step (its error as in S7); a decision; an unattached entry | |
+| Unattached input | `SnapshotFiles.unattachedEntries?: readonly string[]`, additive and optional: each item one `verified-facts.jsonl` line whose `step` is `null` (S12 (e)), as written, oldest first. No host passes it before #112 | `SnapshotFiles` |
+| Reading an entry | first failure wins, one error `{file: 'unattached-entry', location: <1-based index in the list>, field: null, message}` and no fact: `exceeds 1048576 characters` (before `JSON.parse`), `is not valid JSON` (two lines in one item, an empty item and a lone `\n` included), `is not a verified-facts.jsonl entry` (the sixth file's own check, schema then count and pairing rules, S13, run on that one parsed document; a line rule mirrors `readJsonl`'s split on `\n`, which drops one trailing empty line: a `\n` before the last character makes more than one line, so a leading `\n`, a trailing `\n\n` or an entry spread over several lines gets this message, while one trailing `\n` or `\r\n` is accepted). Each entry is parsed once (CWE-400). A valid line whose `step` is not `null` gives `field: 'step'`, `must be null`, and is never put on a step. Fixed messages, never the entry | `isVerifiedFactsLine` (newline rule, `firstViolation` on `verifiedFactsContract.schema`, then its `recordRule`), `outcomeOfEntry` |
+| Unattached fact | the #109 `SnapshotFact`: `origin: 'verified'`, `source` the entry's `tool`, `label` from `verifiedFactOf` (vitest, cucumber-js) or `mutationLabelOf` (stryker), so an entry reads as the report it was extracted from. Only `tool` and the counts are read: `at`, `role`, `roleFrom`, `attachment` never reach the snapshot | `verifiedFactOf`, `mutationLabelOf` |
+| Issue-level place | `Snapshot.unattachedFacts: readonly SnapshotFact[]` and `Snapshot.omittedUnattachedFacts: number`, after `ci`, required: `[]` and `0` when none, never `null`. An unattached fact is never on a step and never sets `ranTool` | `Snapshot` |
+| Bound | `MAX_UNATTACHED_FACTS` = 50. Core reads only the last 50 entries, in input order; `omittedUnattachedFacts` counts the entries before them, which are not read (no parse, no fact, no error). Each entry is a fact, an error or a count, never lost. At most 50 entry errors, under `MAX_ERRORS`, so no `capErrors` | `MAX_UNATTACHED_FACTS` |
+| Why one bound | one cut bounds both the list and the parsing; the writer appends only lines that pass the contract (S13), so an unread entry is a fact in practice. Unlike `omittedFacts` (S10), the count is of entries, not of parsed facts | |
+| Unusable plan | entries are still read and their facts kept, as `ci` (S9): neither needs a step | `buildSnapshot` |
+| Error order | decisions, test-report, mutation-report, unattached-entry, ci-status, agent-state; on an unusable plan: plan, unattached-entry, ci-status, agent-state | `buildSnapshot` |
+| Wire | `ranTool: z.boolean()`, `unattachedFacts: z.array(SnapshotFactSchema).readonly()`, `omittedUnattachedFacts: z.number().int().nonnegative()`, required, no `.default`: `z.object` drops an unknown key and the type pin fails without them ([[snapshot-rpc]] `:114`) | `SnapshotStepSchema`, `SnapshotSchema` |
+
+**A place, not a kind.** S12 (d) rules an unattached run "never issue-level": it is not an issue-level fact kind like CI, which covers a commit and is keyed by it (glossary, `unattached fact`, `issue-level fact`). `unattachedFacts` is the place S3 owes ("counted at issue level and reported"): a top-level list of step-level facts whose step is unknown, with the label and source they would carry on a step and no key. CI stays the one issue-level fact.
+
+Rejected: a host tool-run list beside the reports (the `{step, text}` entry already is the run, and two lists can disagree); a signal read from a step's facts (a refused report gives none); unattached raw reports (no report is kept after capture, S12 (e)); typed counts as input (core takes text, S7); a cap after parsing plus the build bound (two bounds and a bound error for contract-valid lines); `MAX_DECISIONS_PER_STEP` for an issue-level list; `role` or `attachment` on an unattached fact (not asked; the role is agent-reachable, S4).
+
+Frozen surface of #126: `SnapshotStep.ranTool`, `Snapshot.unattachedFacts`, `Snapshot.omittedUnattachedFacts`, required by the hypothesis; the wire mirror, kept now because the type pin requires it. `SnapshotFiles.unattachedEntries`, the value of `MAX_UNATTACHED_FACTS`, the error label and the messages are not frozen.
+
+MUSTs owed to #112 (its host adapter):
+- Pass `unattachedEntries` in file order, oldest first: "latest" is last in the passed order; core reads no `at`.
+- Pass each `step: null` line as written, one line per item, never `null`.
+- Feed each attached line through a step-level `{step, text}` kind read by `readReports`, so its run sets `ranTool`.
+
+Known limit. Core counts a refused or over-bound report as a run (AC2 of #126), but under S12 (e) the writer appends no line for a run whose report core's readers refuse or that exceeds the bound ("Reconciling with core's `{step, text}`", above; #131 AC2). Such a run never reaches core, so its step shows `ranTool: false`. Counting it needs a line for a run without counts in the sixth file: a frozen-contract change, Security lane, not decided here. Accepted by the human on 2026-11-23 as a core-only property of AC2.
+
 ### Consequences per fact kind (AC6)
 
 | Fact kind | Consequence |
@@ -377,13 +410,13 @@ S12 (e) fixed the table of the sixth file; this section records how the contract
 | Stryker report | Step-level only when the role that ran it has a step. #111 parses it (S8); the single report path is overwritten on every run, so it must be captured at run end, never read on poll (`json-reporter.js:23`). Carries no instant: the run-end instant is the capture instant. The same size rule applies: a whole-repo report is 279.7% of the bound and yields no fact (#125, S12 (f)) |
 | CI status | Issue-level, keyed by head commit, shown apart from the steps. #114 maps every check run of `statusCheckRollup` to the top-level `ci` fact (S9); #115 reads it with `gh` for the head commit. It is never attached to a step by instant |
 | Declared fact | Unchanged: `decisions.jsonl`, attached by `decisionStepOf` at write time |
-| Unattached fact | Counted at issue level and reported; the slice that first produces one shapes where, additively (#112 re-slice) |
+| Unattached fact | Counted at issue level and reported: `Snapshot.unattachedFacts` and `omittedUnattachedFacts` (#126, S14), a place and not an issue-level kind (S12 (d)) |
 
 Per slice:
 - **#109**: facts per step, additive; per fact `origin: verified|declared`; declared first, derived from `decisions.jsonl` only (`declaredFactOf`, `toSnapshotStep`, `core/src/snapshot/snapshot.ts`). The snapshot has no issue-level place for unattached facts or CI (`Snapshot`, same file): the slice that first produces such a fact adds it, additively (#112 re-slice for unattached facts, #114 for CI). The sixth `.agent-flow` file moves with the verified-fact writer to #112's re-slice, Security lane.
 - **#112**: its title assumes the daemon reads report files on poll. Capture-time attachment means the fact-file writer is capture-side and runs when a tool run ends; #112 stays the reader of that file and needs re-slicing (its Touches are `daemon/**` and its AC4 says no parsing in `daemon/`). It also owns how the role reaches the writer. The PM re-slices; this record does not edit #112.
 - **#113**: panel only, computes nothing. Step detail lists each fact after the decisions block, in snapshot order, as three lines: the badge `Verified` or `Declared` (a fixed lookup over the wire `origin` enum, `panel/client/step-detail.tsx:10`), the label verbatim and `Source: <source>`, both through `toDisplayText` (`:33-37`). An empty `facts` list renders nothing, no placeholder; the decisions empty copy (`:21`) is unchanged. No verified-fact producer exists yet, so the acceptance fixture's verified fact is a snapshot reply checked by the RPC schema (`features/support/panel-host.ts:108`).
-- **Deferred from #113 until the snapshot carries the data**: the exemption copy for a step that ran no tool (decision (a)) and the issue-level display of unattached facts and CI. The snapshot has no ran-a-tool signal per step and, until #114 added `ci` (S9), had no issue-level fact field (`SnapshotStep`, `Snapshot`, `core/src/snapshot/snapshot.ts`; `panel/shared/snapshot-rpc.ts`), so a panel could show either only by computing. Each display follows the slice that adds its data: the ran-a-tool signal and unattached facts with the #112 re-slice (the capture-side writer sees the tool runs), CI with #114.
+- **Deferred from #113 until the snapshot carries the data**: the exemption copy for a step that ran no tool (decision (a)) and the issue-level display of unattached facts and CI. The data exists since #114 (`ci`) and #126 (`ranTool`, `unattachedFacts`, S14); each display is a panel follow-up of #113.
 - **#116**: asserts the amended outcome, not "every completed step": every completed step that ran a test or mutation tool shows at least one verified fact with its source, and a step that ran no tool shows none and says so. The "says so" half needs the ran-a-tool signal deferred above.
 - **Phase 5 loop detector**: input is the stored fingerprint of the failure message (never its text) of vitest and cucumber-js test runs only (`loop-threshold.md:50`, `:69`); the normalisation behind the fingerprint is owed to Phase 5 story 5 (`loop-threshold.md:71`, `:84`); #110 reads no failure message and builds no fingerprint (S7). Stryker and CI are excluded: neither is a per-test pass/fail run.
 
@@ -434,4 +467,6 @@ Per slice:
 - [x] The sixth file's name and shape, and how an entry meets core's `{step, text}` input. **Answered by #125 (S12 (e))**: `.agent-flow/verified-facts.jsonl`, one bounded extract per observed run (the counts core's readers return), handed to core as `{step, text}` with `text` the entry line, never the report.
 - [x] A whole-repo Stryker run yields no verified fact: its report is 279.7% of the bound (S12 (f)). **Ruled by the human, 2026-11-23 (G1)**: accepted. A whole-repo Stryker report is never a fact; only scoped `--mutate` runs count. The bound stays as AC7 states; no larger capture-side read bound.
 - [ ] The test reports grow with the suite: extrapolated, vitest reaches the bound near 3,200 tests and cucumber-js near 250 scenarios (S12 (f)); past that a full run yields no fact. Owner and remedy not decided here.
+- [ ] A run refused or over the bound at capture leaves no line, so its step shows `ranTool: false` (S14, Known limit). Whether to record such runs is a human decision (sixth-file contract change).
+- [ ] Who splits `verified-facts.jsonl` into step-level `{step, text}` entries and `unattachedEntries`: #112 lists no core file, and its AC4 forbids parsing in `daemon/`. Owed to #112's Tech Spec.
 - [ ] Each decision shows twice in step detail. With real `.agent-flow/` files every decision is also a Declared fact (`declaredFactOf`, `toSnapshotStep`, `core/src/snapshot/snapshot.ts`), so its title appears once as a decision and once as `Declared` with `Source: decisions.jsonl`. The panel must not filter it (it computes nothing); deduplication, if wanted, belongs to the producer or core. Product call for the human, not decided here.

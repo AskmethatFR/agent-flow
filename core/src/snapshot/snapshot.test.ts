@@ -1,5 +1,5 @@
-import { describe, expect, expectTypeOf, it } from 'vitest'
-import { MAX_DECISIONS_PER_STEP, MAX_REPORTS_PER_BUILD, buildSnapshot } from './index'
+import { describe, expect, expectTypeOf, it, vi } from 'vitest'
+import { MAX_DECISIONS_PER_STEP, MAX_REPORTS_PER_BUILD, MAX_UNATTACHED_FACTS, buildSnapshot } from './index'
 import type { AgentStatusUnavailable, Snapshot, SnapshotStep } from './index'
 
 const now = new Date('2026-10-22T10:38:00Z')
@@ -47,12 +47,14 @@ describe('buildSnapshot', () => {
       issue: '#38',
       title: 'Core snapshot',
       steps: [
-        { id: 's1', title: 'Design', role: 'architect', status: 'todo', origin: 'planned', timeSpent: null, decisions: [], omittedDecisions: 0, facts: [], omittedFacts: 0 },
-        { id: 's2', title: 'Build', role: 'dev-a', status: 'todo', origin: 'proposed', timeSpent: null, decisions: [], omittedDecisions: 0, facts: [], omittedFacts: 0 },
+        { id: 's1', title: 'Design', role: 'architect', status: 'todo', origin: 'planned', timeSpent: null, decisions: [], omittedDecisions: 0, facts: [], omittedFacts: 0, ranTool: false },
+        { id: 's2', title: 'Build', role: 'dev-a', status: 'todo', origin: 'proposed', timeSpent: null, decisions: [], omittedDecisions: 0, facts: [], omittedFacts: 0, ranTool: false },
       ],
       currentStepId: null,
       currentAgent: null,
       ci: null,
+      unattachedFacts: [],
+      omittedUnattachedFacts: 0,
       errors: [],
     })
   })
@@ -64,6 +66,8 @@ describe('buildSnapshot', () => {
     currentStepId: null,
     currentAgent: null,
     ci: null,
+    unattachedFacts: [],
+    omittedUnattachedFacts: 0,
     errors: [{ file: 'plan.json', location, field, message }],
   })
 
@@ -396,10 +400,18 @@ describe('buildSnapshot', () => {
 
   it('carries no estimate or budget field', () => {
     expectTypeOf<keyof Snapshot>().toEqualTypeOf<
-      'issue' | 'title' | 'steps' | 'currentStepId' | 'currentAgent' | 'ci' | 'errors'
+      | 'issue'
+      | 'title'
+      | 'steps'
+      | 'currentStepId'
+      | 'currentAgent'
+      | 'ci'
+      | 'unattachedFacts'
+      | 'omittedUnattachedFacts'
+      | 'errors'
     >()
     expectTypeOf<keyof SnapshotStep>().toEqualTypeOf<
-      'id' | 'title' | 'role' | 'status' | 'origin' | 'timeSpent' | 'decisions' | 'omittedDecisions' | 'facts' | 'omittedFacts'
+      'id' | 'title' | 'role' | 'status' | 'origin' | 'timeSpent' | 'decisions' | 'omittedDecisions' | 'facts' | 'omittedFacts' | 'ranTool'
     >()
   })
 
@@ -1619,5 +1631,433 @@ describe('buildSnapshot with a bound on reports per build', () => {
     const over = Array.from({ length: MAX_REPORTS_PER_BUILD + 1 }, () => ({ step: 'secret-step', text: 'secret-text' }))
     const snapshot = buildSnapshot({ plan: planOf('s1'), testReports: over }, now)
     expect(JSON.stringify(snapshot.errors[0])).toBe(JSON.stringify(boundError('test-report')))
+  })
+})
+
+describe('buildSnapshot with a tool-run signal per step', () => {
+  const MAX_TEXT = 1_048_576
+  const vitestText = JSON.stringify({ numTotalTests: 5, numPassedTests: 3, numFailedTestSuites: 1 })
+  const strykerText = JSON.stringify({
+    schemaVersion: '1.0',
+    files: { 'src/a.ts': { language: 'typescript', mutants: [{ status: 'Killed' }, { status: 'Survived' }] } },
+  })
+  const strykerWithoutMutant = JSON.stringify({
+    schemaVersion: '1.0',
+    files: { 'src/a.ts': { language: 'typescript', mutants: [{ status: 'Ignored' }] } },
+  })
+
+  const kinds = [
+    {
+      kind: 'test',
+      file: 'test-report',
+      validText: vitestText,
+      filesOf: (testReports: { step: string; text: string }[]) => ({ testReports }),
+      refusedTexts: [
+        ['not JSON', '{'],
+        ['over the bound', `${vitestText}${' '.repeat(MAX_TEXT)}`],
+        ['of an unknown shape', '{}'],
+      ],
+    },
+    {
+      kind: 'mutation',
+      file: 'mutation-report',
+      validText: strykerText,
+      filesOf: (mutationReports: { step: string; text: string }[]) => ({ mutationReports }),
+      refusedTexts: [
+        ['not JSON', '{'],
+        ['over the bound', `${strykerText}${' '.repeat(MAX_TEXT)}`],
+        ['of an unknown shape', '{}'],
+        ['without a counted mutant', strykerWithoutMutant],
+      ],
+    },
+  ] as const
+
+  const ranToolOf = (snapshot: Snapshot): boolean[] => snapshot.steps.map((built) => built.ranTool)
+
+  it.each([
+    ['absent', {}],
+    ['empty', { testReports: [], mutationReports: [] }],
+  ])('gives every step false when both report kinds are %s', (_, reports) => {
+    expect(ranToolOf(buildSnapshot({ plan: planOf('s1', 's2'), ...reports }, now))).toStrictEqual([false, false])
+  })
+
+  it('gives false to a step with only declared facts', () => {
+    const snapshot = buildSnapshot({ plan: planOf('s1'), decisions: decisionLine('s1', 'a') }, now)
+    expect(snapshot.steps[0]?.facts).toHaveLength(1)
+    expect(snapshot.steps[0]?.ranTool).toBe(false)
+  })
+
+  it('gives true to a step with a test report and to another with a mutation report', () => {
+    const snapshot = buildSnapshot(
+      {
+        plan: planOf('s1', 's2', 's3'),
+        testReports: [{ step: 's1', text: vitestText }],
+        mutationReports: [{ step: 's3', text: strykerText }],
+      },
+      now,
+    )
+    expect(ranToolOf(snapshot)).toStrictEqual([true, false, true])
+  })
+
+  describe.each(kinds)('for $kind reports', ({ file, validText, filesOf, refusedTexts }) => {
+    it('gives the step of the report true and the other step false', () => {
+      const snapshot = buildSnapshot({ plan: planOf('s1', 's2'), ...filesOf([{ step: 's2', text: validText }]) }, now)
+      expect(snapshot.steps[0]?.ranTool).toBe(false)
+      expect(snapshot.steps[1]?.ranTool).toBe(true)
+    })
+
+    it.each(refusedTexts)('gives true and no fact to the step of a report %s', (_, text) => {
+      const snapshot = buildSnapshot({ plan: planOf('s1', 's2'), ...filesOf([{ step: 's1', text }]) }, now)
+      expect(ranToolOf(snapshot)).toStrictEqual([true, false])
+      expect(snapshot.steps[0]?.facts).toStrictEqual([])
+      expect(snapshot.errors).toHaveLength(1)
+      expect(snapshot.errors[0]).toMatchObject({ file, location: 1, field: null })
+    })
+
+    it('marks no step for a report naming no plan step and keeps its error', () => {
+      const snapshot = buildSnapshot({ plan: planOf('s1', 's2'), ...filesOf([{ step: 's9', text: validText }]) }, now)
+      expect(ranToolOf(snapshot)).toStrictEqual([false, false])
+      expect(snapshot.errors).toStrictEqual([unknownStepError(file, 1)])
+    })
+
+    it('gives true to a step with two reports', () => {
+      const report = { step: 's1', text: validText }
+      expect(ranToolOf(buildSnapshot({ plan: planOf('s1'), ...filesOf([report, report]) }, now))).toStrictEqual([true])
+    })
+
+    it.each(['constructor', '__proto__', 'toString', 'hasOwnProperty'])(
+      'gives a step named %s false without a report and true with one',
+      (id) => {
+        expect(ranToolOf(buildSnapshot({ plan: planOf('s1', id) }, now))).toStrictEqual([false, false])
+        const snapshot = buildSnapshot({ plan: planOf('s1', id), ...filesOf([{ step: id, text: validText }]) }, now)
+        expect(ranToolOf(snapshot)).toStrictEqual([false, true])
+      },
+    )
+
+    it('keeps a step true when its facts go over the cap', () => {
+      const reports = Array.from({ length: MAX_DECISIONS_PER_STEP + 1 }, () => ({ step: 's1', text: validText }))
+      const snapshot = buildSnapshot({ plan: planOf('s1'), ...filesOf(reports) }, now)
+      expect(snapshot.steps[0]?.omittedFacts).toBe(1)
+      expect(snapshot.steps[0]?.ranTool).toBe(true)
+    })
+
+    it.each([
+      [MAX_REPORTS_PER_BUILD + 1, false],
+      [MAX_REPORTS_PER_BUILD, true],
+    ])('reads the run of a step from the read window only: %i reports, the first naming s2, give it %s', (count, expected) => {
+      const reports = [
+        { step: 's2', text: validText },
+        ...Array.from({ length: count - 1 }, () => ({ step: 's1', text: validText })),
+      ]
+      const snapshot = buildSnapshot({ plan: planOf('s1', 's2'), ...filesOf(reports) }, now)
+      expect(snapshot.steps[0]?.ranTool).toBe(true)
+      expect(snapshot.steps[1]?.ranTool).toBe(expected)
+    })
+  })
+})
+
+describe('buildSnapshot with unattached entries', () => {
+  const MAX_TEXT = 1_048_576
+
+  const entryOf = (fields: Record<string, unknown>): string =>
+    JSON.stringify({
+      at: '2026-11-23T10:00:00.000Z',
+      step: null,
+      attachment: 'unattached',
+      role: null,
+      roleFrom: null,
+      ...fields,
+    })
+
+  const vitestEntry = (overlay: Record<string, unknown> = {}): string =>
+    entryOf({ tool: 'vitest', passed: 3, total: 5, failedSuites: 1, ...overlay })
+
+  const cucumberEntry = (passed: number, total: number): string =>
+    entryOf({ tool: 'cucumber-js', passed, total, failedSuites: 0 })
+
+  const strykerEntry = (detected: number, surviving: number): string =>
+    entryOf({ tool: 'stryker', detected, surviving })
+
+  const unattachedOf = (...entries: string[]): Snapshot =>
+    buildSnapshot({ plan: planOf('s1'), unattachedEntries: entries }, now)
+
+  const entryError = (location: number, message: string, field: string | null = null) => ({
+    file: 'unattached-entry',
+    location,
+    field,
+    message,
+  })
+
+  const notAnEntry = 'is not a verified-facts.jsonl entry'
+
+  it.each([
+    ['a vitest entry', vitestEntry(), 'vitest', '3 of 5 passed'],
+    ['a vitest entry whose run failed', vitestEntry({ passed: 5, total: 5, failedSuites: 2 }), 'vitest', '5 of 5 passed, run failed'],
+    ['a cucumber-js entry', cucumberEntry(2, 3), 'cucumber-js', '2 of 3 passed'],
+    ['a stryker entry', strykerEntry(47, 1), 'stryker', '97.91% mutation score, 1 surviving'],
+    ['a stryker entry with no survivor', strykerEntry(7, 0), 'stryker', '100.00% mutation score, 0 surviving'],
+  ])('lists %s as a verified fact with its tool as source', (_, entry, source, label) => {
+    const snapshot = unattachedOf(entry)
+    expect(snapshot.unattachedFacts).toStrictEqual([{ origin: 'verified', source, label }])
+    expect(snapshot.errors).toStrictEqual([])
+  })
+
+  it.each([
+    [5, 3, 1],
+    [5, 5, 0],
+    [5, 5, 2],
+    [0, 0, 0],
+    [7, 7, 1],
+  ])('labels a vitest entry like the report of the same counts: %i total, %i passed, %i failed suites', (total, passed, failedSuites) => {
+    const report = { step: 's1', text: JSON.stringify({ numTotalTests: total, numPassedTests: passed, numFailedTestSuites: failedSuites }) }
+    const fromReport = buildSnapshot({ plan: planOf('s1'), testReports: [report] }, now).steps[0]?.facts
+    expect(unattachedOf(vitestEntry({ passed, total, failedSuites })).unattachedFacts).toStrictEqual(fromReport)
+  })
+
+  it.each([
+    [47, 1],
+    [1, 19],
+    [7, 0],
+    [0, 3],
+  ])('labels a stryker entry of %i detected and %i surviving like the report of the same mutants', (detected, surviving) => {
+    const mutants = [
+      ...Array.from({ length: detected }, () => ({ status: 'Killed' })),
+      ...Array.from({ length: surviving }, () => ({ status: 'Survived' })),
+    ]
+    const text = JSON.stringify({ schemaVersion: '1.0', files: { 'src/a.ts': { language: 'typescript', mutants } } })
+    const fromReport = buildSnapshot({ plan: planOf('s1'), mutationReports: [{ step: 's1', text }] }, now).steps[0]?.facts
+    expect(unattachedOf(strykerEntry(detected, surviving)).unattachedFacts).toStrictEqual(fromReport)
+  })
+
+  it('keeps the input order across tools and lists two identical entries twice', () => {
+    const snapshot = unattachedOf(strykerEntry(1, 1), vitestEntry(), cucumberEntry(1, 1), vitestEntry())
+    expect(snapshot.unattachedFacts.map(({ source, label }) => `${source}: ${label}`)).toStrictEqual([
+      'stryker: 50.00% mutation score, 1 surviving',
+      'vitest: 3 of 5 passed',
+      'cucumber-js: 1 of 1 passed',
+      'vitest: 3 of 5 passed',
+    ])
+  })
+
+  it('leaves the steps identical with and without entries', () => {
+    const files = { plan: planOf('s1', 's2'), decisions: decisionLine('s1', 'a') }
+    const without = buildSnapshot(files, now)
+    const withEntries = buildSnapshot({ ...files, unattachedEntries: [vitestEntry(), strykerEntry(1, 1)] }, now)
+    expect(withEntries.steps).toStrictEqual(without.steps)
+    expect(withEntries.steps.map((built) => built.ranTool)).toStrictEqual([false, false])
+  })
+
+  it.each([
+    ['text that is not JSON', '{', 'is not valid JSON'],
+    ['two lines in one item', `${vitestEntry()}\n${vitestEntry()}`, 'is not valid JSON'],
+    ['an empty item', '', 'is not valid JSON'],
+    ['null', 'null', notAnEntry],
+    ['an array', '[]', notAnEntry],
+    ['a line with an extra key', vitestEntry({ stdout: 'x' }), notAnEntry],
+    ['a stryker line with nothing detected nor surviving', strykerEntry(0, 0), notAnEntry],
+    ['a vitest line with more passed than total', vitestEntry({ passed: 6 }), notAnEntry],
+    ['a null step with the attachment role', vitestEntry({ attachment: 'role', role: 'qa', roleFrom: 'host' }), notAnEntry],
+    ['a null step with the attachment only-step', vitestEntry({ attachment: 'only-step' }), notAnEntry],
+  ])('refuses %s with one error at its position and no fact', (_, entry, message) => {
+    const snapshot = unattachedOf(vitestEntry(), entry)
+    expect(snapshot.errors).toStrictEqual([entryError(2, message)])
+    expect(snapshot.unattachedFacts).toStrictEqual([{ origin: 'verified', source: 'vitest', label: '3 of 5 passed' }])
+  })
+
+  it.each([
+    ['a valid line after a leading newline', `\n${vitestEntry()}`, notAnEntry],
+    ['a valid line followed by an empty line', `${vitestEntry()}\n\n`, notAnEntry],
+    ['a valid entry spread over several lines', JSON.stringify(JSON.parse(vitestEntry()), null, 2), notAnEntry],
+    ['a lone newline', '\n', 'is not valid JSON'],
+  ])('refuses %s as one line would be read', (_, entry, message) => {
+    const snapshot = unattachedOf(vitestEntry(), entry)
+    expect(snapshot.errors).toStrictEqual([entryError(2, message)])
+    expect(snapshot.unattachedFacts).toStrictEqual([{ origin: 'verified', source: 'vitest', label: '3 of 5 passed' }])
+  })
+
+  it.each([
+    ['a trailing newline', '\n'],
+    ['a trailing carriage return and newline', '\r\n'],
+  ])('accepts a valid line with %s', (_, ending) => {
+    const snapshot = unattachedOf(`${strykerEntry(7, 0)}${ending}`)
+    expect(snapshot.errors).toStrictEqual([])
+    expect(snapshot.unattachedFacts).toStrictEqual([{ origin: 'verified', source: 'stryker', label: '100.00% mutation score, 0 surviving' }])
+  })
+
+  it.each([
+    ['a valid line', vitestEntry()],
+    ['a line with an extra key', vitestEntry({ stdout: 'x' })],
+    ['an attached line', vitestEntry({ step: 's1', attachment: 'only-step' })],
+  ])('parses %s once', (_, entry) => {
+    const parse = vi.spyOn(JSON, 'parse')
+    try {
+      unattachedOf(entry)
+      expect(parse.mock.calls.filter(([text]) => text === entry)).toHaveLength(1)
+    } finally {
+      parse.mockRestore()
+    }
+  })
+
+  it('refuses a valid attached line as not unattached and puts it on no step', () => {
+    const snapshot = unattachedOf(vitestEntry({ step: 's1', attachment: 'only-step' }))
+    expect(snapshot.errors).toStrictEqual([entryError(1, 'must be null', 'step')])
+    expect(snapshot.unattachedFacts).toStrictEqual([])
+    expect(snapshot.steps[0]?.facts).toStrictEqual([])
+    expect(snapshot.steps[0]?.ranTool).toBe(false)
+  })
+
+  it('accepts a valid line padded to the text bound and refuses one character more before parsing', () => {
+    const body = vitestEntry()
+    const atBound = unattachedOf(`${body}${' '.repeat(MAX_TEXT - body.length)}`)
+    expect(atBound.errors).toStrictEqual([])
+    expect(atBound.unattachedFacts).toHaveLength(1)
+    const overBound = unattachedOf(`${body}${' '.repeat(MAX_TEXT - body.length + 1)}`)
+    expect(overBound.errors).toStrictEqual([entryError(1, `exceeds ${MAX_TEXT} characters`)])
+    expect(overBound.unattachedFacts).toStrictEqual([])
+    expect(unattachedOf('x'.repeat(MAX_TEXT + 1)).errors).toStrictEqual([entryError(1, `exceeds ${MAX_TEXT} characters`)])
+  })
+
+  it('echoes no entry text in an error', () => {
+    const secret = 'sentinel-secret'
+    const snapshot = unattachedOf(
+      vitestEntry({ stdout: secret }),
+      `{"tool":"${secret}`,
+      vitestEntry({ step: secret, attachment: 'only-step' }),
+    )
+    expect(snapshot.errors).toHaveLength(3)
+    expect(JSON.stringify(snapshot)).not.toContain(secret)
+  })
+
+  it('carries neither the role nor the time of a valid unattached entry', () => {
+    const snapshot = unattachedOf(vitestEntry({ role: 'security', roleFrom: 'agent', at: '2031-01-02T03:04:05.678Z' }))
+    expect(snapshot.errors).toStrictEqual([])
+    expect(snapshot.unattachedFacts).toStrictEqual([{ origin: 'verified', source: 'vitest', label: '3 of 5 passed' }])
+    const text = JSON.stringify(snapshot)
+    expect(text).not.toContain('security')
+    expect(text).not.toContain('2031')
+  })
+
+  it('reads the entries and keeps their facts on an unusable plan, after the plan errors', () => {
+    const snapshot = buildSnapshot(
+      { plan: '{', unattachedEntries: [vitestEntry(), '{'], ciStatus: '{' },
+      now,
+      { unavailable: 'host-error' },
+    )
+    expect(snapshot.unattachedFacts).toStrictEqual([{ origin: 'verified', source: 'vitest', label: '3 of 5 passed' }])
+    expect(snapshot.errors.map(({ file }) => file)).toStrictEqual(['plan.json', 'unattached-entry', 'ci-status', 'agent-state'])
+  })
+
+  it('orders the entry errors after the report errors and before the CI and agent errors', () => {
+    const snapshot = buildSnapshot(
+      {
+        plan: planOf('s1'),
+        decisions: '{',
+        testReports: [{ step: 's9', text: '{' }],
+        mutationReports: [{ step: 's9', text: '{' }],
+        unattachedEntries: ['{'],
+        ciStatus: '{',
+      },
+      now,
+      { unavailable: 'host-error' },
+    )
+    expect(snapshot.errors.map(({ file }) => file)).toStrictEqual([
+      'decisions.jsonl',
+      'test-report',
+      'mutation-report',
+      'unattached-entry',
+      'ci-status',
+      'agent-state',
+    ])
+  })
+})
+
+describe('buildSnapshot with a bound on unattached entries', () => {
+  const numberedEntry = (run: number): string =>
+    JSON.stringify({
+      at: '2026-11-23T10:00:00.000Z',
+      tool: 'vitest',
+      step: null,
+      attachment: 'unattached',
+      role: null,
+      roleFrom: null,
+      passed: run,
+      total: run,
+      failedSuites: 0,
+    })
+
+  const runs = (first: number, last: number): number[] =>
+    Array.from({ length: Math.max(0, last - first + 1) }, (_, index) => first + index)
+
+  const numbered = (first: number, last: number): string[] => runs(first, last).map(numberedEntry)
+
+  const labelsOf = (snapshot: Snapshot): string[] => snapshot.unattachedFacts.map(({ label }) => label)
+
+  const labelsOfRuns = (first: number, last: number): string[] => runs(first, last).map((run) => `${run} of ${run} passed`)
+
+  const buildWith = (unattachedEntries?: readonly string[]): Snapshot =>
+    buildSnapshot({ plan: planOf('s1'), unattachedEntries }, now)
+
+  it('bounds the unattached facts at 50', () => {
+    expect(MAX_UNATTACHED_FACTS).toBe(50)
+  })
+
+  it('gives an empty list and a zero count whether the entries are absent or empty', () => {
+    const absent = buildWith()
+    expect(absent.unattachedFacts).toStrictEqual([])
+    expect(absent.omittedUnattachedFacts).toBe(0)
+    expect(buildWith([])).toStrictEqual(absent)
+  })
+
+  it.each([
+    [0, 1, 0],
+    [1, 1, 0],
+    [49, 1, 0],
+    [50, 1, 0],
+    [51, 2, 1],
+    [60, 11, 10],
+  ])('keeps the latest of %i entries, from run %i, and counts %i omitted', (count, first, omitted) => {
+    const snapshot = buildWith(numbered(1, count))
+    expect(labelsOf(snapshot)).toStrictEqual(labelsOfRuns(first, count))
+    expect(snapshot.omittedUnattachedFacts).toBe(omitted)
+    expect(snapshot.errors).toStrictEqual([])
+  })
+
+  it('reads none of the entries before the last 50, a malformed one included', () => {
+    const snapshot = buildWith(['{', ...numbered(1, 50)])
+    expect(snapshot.omittedUnattachedFacts).toBe(1)
+    expect(snapshot.errors).toStrictEqual([])
+    expect(labelsOf(snapshot)).toStrictEqual(labelsOfRuns(1, 50))
+  })
+
+  it('reads the first of exactly 50 entries and locates its error at 1', () => {
+    const snapshot = buildWith(['{', ...numbered(2, 50)])
+    expect(snapshot.errors).toStrictEqual([
+      { file: 'unattached-entry', location: 1, field: null, message: 'is not valid JSON' },
+    ])
+    expect(labelsOf(snapshot)).toStrictEqual(labelsOfRuns(2, 50))
+    expect(snapshot.omittedUnattachedFacts).toBe(0)
+  })
+
+  it('locates an error by its position in the whole list when earlier entries are omitted', () => {
+    const snapshot = buildWith([...numbered(1, 2), '{', ...numbered(4, 52)])
+    expect(snapshot.omittedUnattachedFacts).toBe(2)
+    expect(snapshot.errors).toStrictEqual([
+      { file: 'unattached-entry', location: 3, field: null, message: 'is not valid JSON' },
+    ])
+    expect(labelsOf(snapshot)).toStrictEqual(labelsOfRuns(4, 52))
+  })
+
+  it('gives 50 errors and no too-many-errors marker for 50 malformed entries', () => {
+    const snapshot = buildWith(Array.from({ length: 50 }, () => '{'))
+    expect(snapshot.errors).toStrictEqual(
+      runs(1, 50).map((location) => ({ file: 'unattached-entry', location, field: null, message: 'is not valid JSON' })),
+    )
+    expect(snapshot.unattachedFacts).toStrictEqual([])
+  })
+
+  it('keeps the latest and counts the omitted entries on an unusable plan too', () => {
+    const snapshot = buildSnapshot({ plan: '{', unattachedEntries: numbered(1, 55) }, now)
+    expect(snapshot.omittedUnattachedFacts).toBe(5)
+    expect(labelsOf(snapshot)).toStrictEqual(labelsOfRuns(6, 55))
   })
 })

@@ -13,6 +13,7 @@ const step = (id: string, title: string, status = 'todo', timeSpent: { milliseco
   omittedDecisions: 0,
   facts: [],
   omittedFacts: 0,
+  ranTool: false,
 })
 
 const snapshotReply = (overrides: Record<string, unknown> = {}) => ({
@@ -24,6 +25,8 @@ const snapshotReply = (overrides: Record<string, unknown> = {}) => ({
     currentStepId: null,
     currentAgent: null,
     ci: null,
+    unattachedFacts: [],
+    omittedUnattachedFacts: 0,
     errors: [],
     ...overrides,
   },

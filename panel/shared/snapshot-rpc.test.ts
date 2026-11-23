@@ -24,11 +24,14 @@ const snapshot: Snapshot = {
       omittedDecisions: 4,
       facts: [{ origin: 'declared', source: 'decisions.jsonl', label: 'Use a Map' }],
       omittedFacts: 6,
+      ranTool: true,
     },
   ],
   currentStepId: 's1',
   currentAgent: { role: 'dev-a', state: 'running' },
   ci: { origin: 'verified', source: 'gh', headCommit: 'abc123', state: 'passed' },
+  unattachedFacts: [{ origin: 'verified', source: 'vitest', label: '3 of 5 passed' }],
+  omittedUnattachedFacts: 2,
   errors: [
     { file: 'plan.json', location: 3, field: 'status', message: 'bad' },
     { file: 'plan.json', location: 'steps', field: null, message: 'bad' },
@@ -83,6 +86,51 @@ describe('getSnapshotRpc', () => {
     ['a fractional count', 1.5],
   ])('rejects %s of omitted facts', (_, omittedFacts) => {
     const bad = { ...snapshot, steps: [{ ...snapshot.steps[0], omittedFacts }] }
+    expect(getSnapshotRpc.output.safeParse({ kind: 'snapshot', snapshot: bad }).success).toBe(false)
+  })
+
+  it('keeps the tool-run signal of a step and rejects a step without it', () => {
+    const parsed = getSnapshotRpc.output.parse({ kind: 'snapshot', snapshot })
+    expect(parsed).toMatchObject({ snapshot: { steps: [{ ranTool: true }] } })
+    const { ranTool: _, ...withoutSignal } = snapshot.steps[0] as Snapshot['steps'][number]
+    const bad = { ...snapshot, steps: [withoutSignal] }
+    expect(getSnapshotRpc.output.safeParse({ kind: 'snapshot', snapshot: bad }).success).toBe(false)
+  })
+
+  it.each([
+    ['null', null],
+    ['a number', 1],
+    ['a string', 'true'],
+  ])('rejects %s as the tool-run signal of a step', (_, ranTool) => {
+    const bad = { ...snapshot, steps: [{ ...snapshot.steps[0], ranTool }] }
+    expect(getSnapshotRpc.output.safeParse({ kind: 'snapshot', snapshot: bad }).success).toBe(false)
+  })
+
+  it('keeps the unattached facts intact and rejects a snapshot without them', () => {
+    const parsed = getSnapshotRpc.output.parse({ kind: 'snapshot', snapshot })
+    expect(parsed).toMatchObject({ snapshot: { unattachedFacts: snapshot.unattachedFacts } })
+    const { unattachedFacts: _, ...withoutFacts } = snapshot
+    expect(getSnapshotRpc.output.safeParse({ kind: 'snapshot', snapshot: withoutFacts }).success).toBe(false)
+  })
+
+  it('rejects an unattached fact with an unknown origin', () => {
+    const bad = { ...snapshot, unattachedFacts: [{ origin: 'maybe', source: 'vitest', label: '3 of 5 passed' }] }
+    expect(getSnapshotRpc.output.safeParse({ kind: 'snapshot', snapshot: bad }).success).toBe(false)
+  })
+
+  it('keeps the omitted unattached facts count and rejects a snapshot without it', () => {
+    const parsed = getSnapshotRpc.output.parse({ kind: 'snapshot', snapshot })
+    expect(parsed).toMatchObject({ snapshot: { omittedUnattachedFacts: 2 } })
+    const { omittedUnattachedFacts: _, ...withoutCount } = snapshot
+    expect(getSnapshotRpc.output.safeParse({ kind: 'snapshot', snapshot: withoutCount }).success).toBe(false)
+  })
+
+  it.each([
+    ['a negative count', -1],
+    ['a fractional count', 1.5],
+    ['null', null],
+  ])('rejects %s of omitted unattached facts', (_, omittedUnattachedFacts) => {
+    const bad = { ...snapshot, omittedUnattachedFacts }
     expect(getSnapshotRpc.output.safeParse({ kind: 'snapshot', snapshot: bad }).success).toBe(false)
   })
 
