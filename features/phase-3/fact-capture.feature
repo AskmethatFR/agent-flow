@@ -16,6 +16,14 @@ Feature: Capture: verified facts are kept in a sixth contract file
       | passing | 3      | 3     | 0            |
       | failing | 2      | 3     | 1            |
 
+  @scenario:S2
+  Scenario: Two vitest runs leave two facts, in run order
+    Given a plan whose step "1" is in progress for the role qa
+    And a subagent of type "qa" runs "npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json" and it ends passing, 3 of 3 tests passed
+    When a subagent of type "qa" runs "npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json" and it ends failing, 2 of 5 tests passed
+    Then verified-facts.jsonl holds two lines in run order, on step "1", the first with 3 passed of 3 and the second with 2 passed of 5
+    And that line passes the contract check
+
   @scenario:S9
   Scenario: The contract check accepts the sixth file and still refuses other names
     Given a worktree whose .agent-flow holds a valid verified-facts.jsonl and a stray verified-facts.json

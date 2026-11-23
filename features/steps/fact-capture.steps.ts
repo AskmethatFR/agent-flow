@@ -167,6 +167,37 @@ Then(
   },
 )
 
+Then(
+  'verified-facts.jsonl holds two lines in run order, on step {string}, the first with {int} passed of {int} and the second with {int} passed of {int}',
+  function (
+    this: FactCaptureWorld,
+    step: string,
+    firstPassed: number,
+    firstTotal: number,
+    secondPassed: number,
+    secondTotal: number,
+  ): void {
+    const content = readFileSync(factsPathOf(this), 'utf8')
+    assert.ok(content.endsWith('\n'), 'the file ends with a newline')
+    const lines = content.slice(0, -1).split('\n')
+    assert.equal(lines.length, 2, 'exactly two lines, none empty')
+    const facts = lines.map((line) => JSON.parse(line))
+    const withoutAt = ({ at: _at, ...rest }: Record<string, unknown>): Record<string, unknown> => rest
+    const expected = (passed: number, total: number): Record<string, unknown> => ({
+      tool: 'vitest',
+      step,
+      attachment: 'role',
+      role: 'qa',
+      roleFrom: 'host',
+      passed,
+      total,
+      failedSuites: total === passed ? 0 : 1,
+    })
+    assert.deepEqual(facts.map(withoutAt), [expected(firstPassed, firstTotal), expected(secondPassed, secondTotal)])
+    assert.ok(facts[0].at <= facts[1].at, 'the second line was written after the first')
+  },
+)
+
 Then('that line passes the contract check', function (this: FactCaptureWorld): void {
   assert.deepEqual(checkContractFile('verified-facts.jsonl', readFileSync(factsPathOf(this), 'utf8')), { accepted: true })
 })
