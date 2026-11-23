@@ -36,7 +36,7 @@ const unattachedLine = (): string =>
   factLine({ step: null, attachment: 'unattached', role: null, roleFrom: null })
 
 const factsOf = (verifiedFacts: readonly { step: string; text: string }[], ...ids: string[]) =>
-  buildSnapshot({ plan: planOf(...ids), verifiedFacts }, now)
+  buildSnapshot({ plan: planOf(...ids), verifiedFacts: { entries: verifiedFacts, errors: [] } }, now)
 
 describe('factEntriesOf', () => {
   it('keeps the attached lines as step and text, in file order', () => {
@@ -149,7 +149,7 @@ describe('buildSnapshot verified-facts entries', () => {
     const snapshot = buildSnapshot(
       {
         plan: planOf('s1'),
-        verifiedFacts: [{ step: 'ghost', text: factLine() }],
+        verifiedFacts: { entries: [{ step: 'ghost', text: factLine() }], errors: [] },
         mutationReports: [{ step: 'ghost', text: '{}' }],
         ciStatus: 'not json',
       },
@@ -168,7 +168,7 @@ describe('buildSnapshot verified-facts entries', () => {
             text: JSON.stringify({ numTotalTests: 2, numPassedTests: 2, numFailedTestSuites: 0 }),
           },
         ],
-        verifiedFacts: [{ step: 's1', text: factLine() }],
+        verifiedFacts: { entries: [{ step: 's1', text: factLine() }], errors: [] },
       },
       now,
     )

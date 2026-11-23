@@ -43,7 +43,7 @@ export type SnapshotFiles = {
   readonly decisions?: AgentFlowFile
   readonly testReports?: readonly TestReport[]
   readonly mutationReports?: readonly MutationReport[]
-  readonly verifiedFacts?: readonly VerifiedFactEntry[]
+  readonly verifiedFacts?: FactEntries
   readonly ciStatus?: string
 }
 
@@ -387,7 +387,7 @@ export const buildSnapshot = (
   const { perStep, errors } = groupDecisions(plan.steps, files.decisions)
   const testReports = readReports(testReportFile, readTestReportFact, plan.steps, files.testReports ?? [])
   const mutationReports = readReports(mutationReportFile, readMutationReportFact, plan.steps, files.mutationReports ?? [])
-  const factLines = readReports(verifiedFactFile, readFactLineFact, plan.steps, files.verifiedFacts ?? [])
+  const factLines = readReports(verifiedFactFile, readFactLineFact, plan.steps, files.verifiedFacts?.entries ?? [])
   const verified = [...testReports.verified, ...mutationReports.verified, ...factLines.verified]
   const current = currentStepOf(plan.steps)
   return {

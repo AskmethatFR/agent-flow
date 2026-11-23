@@ -239,6 +239,59 @@ describe('getSnapshot', () => {
     })
   })
 
+  describe('verified facts', () => {
+    const factLine = (step: string): string =>
+      JSON.stringify({
+        at: '2026-11-01T09:10:00.000Z',
+        tool: 'vitest',
+        step,
+        attachment: 'role',
+        role: 'dev-a',
+        roleFrom: 'agent',
+        passed: 1791,
+        total: 1791,
+        failedSuites: 0,
+      })
+
+    const vitestReport = JSON.stringify({ numTotalTests: 3, numPassedTests: 3, numFailedTestSuites: 0 })
+
+    const snapshotOf = async (worktree: string) => {
+      const reply = await getSnapshot({ workspaceId: 'w1' }, sourceOf({ w1: at(worktree) }))
+      if (reply.kind !== 'snapshot') throw new Error('expected a snapshot')
+      return reply.snapshot
+    }
+
+    it('carries the verified fact of verified-facts.jsonl on its step', async () => {
+      const worktree = worktreeWith('a', planWith('#1', 'todo'))
+      writeFileSync(join(worktree, '.agent-flow', 'verified-facts.jsonl'), `${factLine('s1')}\n`)
+      const snapshot = await snapshotOf(worktree)
+      expect(snapshot.errors).toEqual([])
+      expect(snapshot.steps[0]?.facts).toEqual([
+        { origin: 'verified', source: 'vitest', label: '1791 of 1791 passed' },
+      ])
+    })
+
+    it('gives no fact and no error when verified-facts.jsonl is missing', async () => {
+      const snapshot = await snapshotOf(worktreeWith('a', planWith('#1', 'todo')))
+      expect(snapshot.errors).toEqual([])
+      expect(snapshot.steps[0]?.facts).toEqual([])
+    })
+
+    it('opens only the three agent-flow files and reads no report at a default tool path', async () => {
+      const worktree = worktreeWith('a', planWith('#1', 'todo'))
+      for (const report of ['reports/vitest/vitest.json', 'reports/mutation/mutation.json', '.vitest/json/output.json']) {
+        mkdirSync(join(worktree, report, '..'), { recursive: true })
+        writeFileSync(join(worktree, report), vitestReport)
+      }
+      const snapshot = await snapshotOf(worktree)
+      expect([...opened].sort()).toEqual(
+        ['plan.json', 'decisions.jsonl', 'verified-facts.jsonl'].map((name) => join(worktree, '.agent-flow', name)).sort(),
+      )
+      expect(snapshot.errors).toEqual([])
+      expect(snapshot.steps[0]?.facts).toEqual([])
+    })
+  })
+
   describe('agent state', () => {
     const agentAt = (
       worktreeRoot: string | null | undefined,
