@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import verifiedFactsSchema from '../../schemas/verified-facts.schema.json' with { type: 'json' }
+import { ROLE_IDS } from '../lifecycle/roles'
 import { validateVerifiedFacts, verifiedFactsContract } from './verified-facts'
 
 const attachedVitest = {
@@ -80,6 +81,50 @@ describe('validateVerifiedFacts', () => {
     expect(validateVerifiedFacts(text)).toEqual(
       rejection(2, 'attachment', 'must be one of role, only-step, unattached'),
     )
+  })
+
+  it('pins the role pattern to ROLE_IDS', () => {
+    expect(verifiedFactsSchema.properties.role.pattern).toBe(`^(${ROLE_IDS.join('|')})$`)
+  })
+
+  it.each(ROLE_IDS)('accepts the role %s', (role) => {
+    const text = fileText(lineText(factWith({ role })))
+    expect(validateVerifiedFacts(text)).toEqual({ accepted: true })
+  })
+
+  it('refuses a role outside ROLE_IDS, naming its line number and field', () => {
+    const text = fileText(lineText(attachedVitest), lineText(factWith({ role: 'intern' })))
+    expect(validateVerifiedFacts(text)).toEqual(rejection(2, 'role', expect.any(String)))
+  })
+
+  it.each(['user', 'Host', ' host'])(
+    'refuses a roleFrom of %j, which is not host or agent, naming its line number and field',
+    (roleFrom) => {
+      const text = fileText(lineText(attachedVitest), lineText(factWith({ roleFrom })))
+      expect(validateVerifiedFacts(text)).toEqual(rejection(2, 'roleFrom', expect.any(String)))
+    },
+  )
+
+  it.each(['host', 'agent'])('accepts a roleFrom of %s', (roleFrom) => {
+    const text = fileText(lineText(factWith({ roleFrom })))
+    expect(validateVerifiedFacts(text)).toEqual({ accepted: true })
+  })
+
+  it.each([
+    '2026-11-23 12:00:00.000Z',
+    '2026-11-23T12:00:00Z',
+    '2026-11-23T12:00:00.0Z',
+    '2026-11-23T12:00:00.000+00:00',
+    '2026-13-23T12:00:00.000Z',
+    'yesterday',
+  ])('refuses an at of %j that is not the toISOString form, naming its line number and field', (at) => {
+    const text = fileText(lineText(attachedVitest), lineText(factWith({ at })))
+    expect(validateVerifiedFacts(text)).toEqual(rejection(2, 'at', expect.any(String)))
+  })
+
+  it('refuses an empty step, naming its line number and field', () => {
+    const text = fileText(lineText(attachedVitest), lineText(factWith({ step: '' })))
+    expect(validateVerifiedFacts(text)).toEqual(rejection(2, 'step', expect.any(String)))
   })
 
   it.each(['source', 'stdout', 'command', 'session_id', 'agent_id', 'fingerprint'])(

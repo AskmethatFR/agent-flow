@@ -7,12 +7,15 @@
   "required": ["at", "tool", "step", "attachment", "role", "roleFrom"],
   "additionalProperties": false,
   "properties": {
-    "at": { "type": "string", "minLength": 1 },
+    "at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$"
+    },
     "tool": { "type": "string", "enum": ["vitest", "cucumber-js", "stryker"] },
     "step": { "type": ["string", "null"], "minLength": 1 },
     "attachment": { "type": "string", "enum": ["role", "only-step", "unattached"] },
-    "role": { "type": ["string", "null"], "minLength": 1 },
-    "roleFrom": { "type": ["string", "null"], "minLength": 1 },
+    "role": { "type": ["string", "null"], "pattern": "^(pm|architect|dev-a|dev-b|qa|security)$" },
+    "roleFrom": { "type": ["string", "null"], "pattern": "^(host|agent)$" },
     "passed": {},
     "total": {},
     "failedSuites": {},
