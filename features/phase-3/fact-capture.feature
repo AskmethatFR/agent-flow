@@ -74,6 +74,20 @@ Feature: Capture: verified facts are kept in a sixth contract file
     And decisions.jsonl is byte-identical to what it was
     And the contract check accepts the worktree
 
+  @scenario:S8
+  Scenario: A verified-facts.jsonl that is a link leaves no line and its target unchanged
+    Given a plan whose step "1" is in progress for the role qa
+    And a verified-facts.jsonl that is a link to a file outside the worktree
+    When a subagent of type "qa" runs "npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json" and it ends passing, 3 of 3 tests passed
+    Then the file outside the worktree is byte-identical to what it was
+
+  @scenario:S14
+  Scenario: An append that would pass the size ceiling is refused whole
+    Given a plan whose step "1" is in progress for the role qa
+    And a verified-facts.jsonl of valid lines, too full for one more line
+    When a subagent of type "qa" runs "npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json" and it ends passing, 3 of 3 tests passed
+    Then verified-facts.jsonl is byte-identical to what it was
+
   @scenario:S11
   Scenario: A cucumber-shaped report at the vitest path leaves no fact
     Given a plan whose step "1" is in progress for the role qa

@@ -21,6 +21,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { MAX_TEXT_LENGTH } from '@agent-flow/core/contracts'
 import { createFactAppender } from './fact-append'
 import { appendFact as appendFactOf } from './index'
 
@@ -177,6 +178,27 @@ describe('appendFact', () => {
       errors: [{ file: 'verified-facts.jsonl', location: null, field: null, message: '.agent-flow must be a real directory' }],
     })
     expect(readdirSync(elsewhere)).toEqual(['plan.json'])
+  })
+
+  it('refuses a symlinked verified-facts.jsonl and leaves its target untouched', () => {
+    const outside = join(root, 'outside.jsonl')
+    writeFileSync(outside, 'secret\n')
+    symlinkSync(outside, factsPath)
+    expect(appendFact(worktree, { agentType: 'qa', at })).toEqual({
+      accepted: false,
+      errors: [{ file: 'verified-facts.jsonl', location: null, field: null, message: 'must be a regular file, not a link' }],
+    })
+    expect(readFileSync(outside, 'utf8')).toBe('secret\n')
+  })
+
+  it('refuses whole an append that would pass MAX_TEXT_LENGTH and leaves the existing lines intact', () => {
+    const existing = `${'x'.repeat(MAX_TEXT_LENGTH - 10)}\n`
+    writeFileSync(factsPath, existing)
+    expect(appendFact(worktree, { agentType: 'qa', at })).toEqual({
+      accepted: false,
+      errors: [{ file: 'verified-facts.jsonl', location: null, field: null, message: `exceeds ${MAX_TEXT_LENGTH} characters` }],
+    })
+    expect(readFileSync(factsPath, 'utf8')).toBe(existing)
   })
 
   // Folders (docs verified-facts.md S12, F5): reports/ and reports/vitest/ are lstat'ed, and O_NOFOLLOW

@@ -1,11 +1,20 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, utimesSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Given, Then, When } from '@cucumber/cucumber'
-import { checkContractFile } from '@agent-flow/core/contracts'
+import { MAX_TEXT_LENGTH, checkContractFile } from '@agent-flow/core/contracts'
 
 // The When step and the cleanup are those of contract-check.steps.ts: the two files share the
 // World fields root, worktree, status, stdout and stderr.
@@ -285,6 +294,30 @@ Then('that line carries none of the failure text', function (this: FactCaptureWo
 
 Then('decisions.jsonl is byte-identical to what it was', function (this: FactCaptureWorld): void {
   assert.equal(readFileSync(decisionsPathOf(this), 'utf8'), `${decisionsLine}\n`)
+})
+
+const outsidePathOf = (world: FactCaptureWorld): string => join(world.root, 'outside.jsonl')
+const outsideContent = 'a file outside the worktree\n'
+
+Given('a verified-facts.jsonl that is a link to a file outside the worktree', function (this: FactCaptureWorld): void {
+  writeFileSync(outsidePathOf(this), outsideContent)
+  symlinkSync(outsidePathOf(this), factsPathOf(this))
+})
+
+Then('the file outside the worktree is byte-identical to what it was', function (this: FactCaptureWorld): void {
+  assert.equal(readFileSync(outsidePathOf(this), 'utf8'), outsideContent)
+})
+
+// Valid lines (the contract accepts the file), a few bytes under the ceiling: one more fact line
+// does not fit. The content is kept to compare after the run.
+const nearlyFullFacts = `${attachedVitestLine}\n`.repeat(Math.floor((MAX_TEXT_LENGTH - 100) / (attachedVitestLine.length + 1)))
+
+Given('a verified-facts.jsonl of valid lines, too full for one more line', function (this: FactCaptureWorld): void {
+  writeFileSync(factsPathOf(this), nearlyFullFacts)
+})
+
+Then('verified-facts.jsonl is byte-identical to what it was', function (this: FactCaptureWorld): void {
+  assert.equal(readFileSync(factsPathOf(this), 'utf8'), nearlyFullFacts)
 })
 
 const launcher = join(repo, 'capture/shared/bin/agent-flow-check.mjs')
