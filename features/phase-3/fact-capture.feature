@@ -64,6 +64,22 @@ Feature: Capture: verified facts are kept in a sixth contract file
       | a configuration file         | npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json --config x                      | passing     |
       | a leading NODE_OPTIONS       | NODE_OPTIONS=--require=./x.cjs npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json | passing     |
 
+  @scenario:S7
+  Scenario: A red report carrying failure messages leaves a counts-only line and leaves decisions.jsonl untouched
+    Given a plan whose step "1" is in progress for the role qa
+    And a decisions.jsonl holding one valid line
+    When a subagent of type "qa" runs "npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json" and it ends failing, 2 of 3 tests passed, the report carrying failure messages
+    Then verified-facts.jsonl holds one line on step "1", attachment role, role qa, roleFrom host, with 2 passed of 3 and 1 failed suites
+    And that line carries none of the failure text
+    And decisions.jsonl is byte-identical to what it was
+    And the contract check accepts the worktree
+
+  @scenario:S11
+  Scenario: A cucumber-shaped report at the vitest path leaves no fact
+    Given a plan whose step "1" is in progress for the role qa
+    When a subagent of type "qa" runs "npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json" and it ends failing, with a cucumber-shaped report
+    Then verified-facts.jsonl holds no line
+
   @scenario:S9
   Scenario: The contract check accepts the sixth file and still refuses other names
     Given a worktree whose .agent-flow holds a valid verified-facts.jsonl and a stray verified-facts.json

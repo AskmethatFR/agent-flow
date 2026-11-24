@@ -115,7 +115,13 @@ const interruptOf = (outcome: string): object => (outcome === 'interrupted' ? { 
 
 const reportPathOf = (world: FactCaptureWorld): string => join(world.worktree, 'reports', 'vitest', 'vitest.json')
 
-const writeReport = (world: FactCaptureWorld, passed: number, total: number): void => {
+const writeReport = (
+  world: FactCaptureWorld,
+  passed: number,
+  total: number,
+  assertionResults: readonly object[] = [],
+  message = '',
+): void => {
   mkdirSync(join(world.worktree, 'reports', 'vitest'), { recursive: true })
   const failed = total - passed
   writeFileSync(
@@ -125,7 +131,7 @@ const writeReport = (world: FactCaptureWorld, passed: number, total: number): vo
       numPassedTests: passed,
       numFailedTests: failed,
       numFailedTestSuites: failed === 0 ? 0 : 1,
-      testResults: [{ name: 'tests/a.test.ts', message: '', assertionResults: [] }],
+      testResults: [{ name: 'tests/a.test.ts', message, assertionResults }],
     }),
   )
 }
@@ -223,6 +229,72 @@ When(
     runVitest(this, undefined, command, outcome, passed, total)
   },
 )
+
+// A red vitest report as the reporter writes it: each failed assertion carries its failure messages.
+const reportFailureText = 'AssertionError: expected 1 to be 2 at /home/runner/work/report-marker/path.test.ts:7'
+
+When(
+  'a subagent of type {string} runs {string} and it ends {word}, {int} of {int} tests passed, the report carrying failure messages',
+  function (this: FactCaptureWorld, agentType: string, command: string, outcome: string, passed: number, total: number): void {
+    const failedAssertion = {
+      ancestorTitles: [],
+      fullName: 'a fails',
+      status: 'failed',
+      title: 'a fails',
+      failureMessages: [reportFailureText],
+    }
+    writeReport(this, passed, total, [failedAssertion], reportFailureText)
+    spawnHook(this, agentType, command, outcome, freshRunDuration)
+  },
+)
+
+// A cucumber-js JSON report is a top-level array of features (core/src/snapshot/test-report.ts).
+When(
+  'a subagent of type {string} runs {string} and it ends {word}, with a cucumber-shaped report',
+  function (this: FactCaptureWorld, agentType: string, command: string, outcome: string): void {
+    mkdirSync(join(this.worktree, 'reports', 'vitest'), { recursive: true })
+    const step = { name: 'a step', result: { status: 'failed', error_message: reportFailureText } }
+    writeFileSync(reportPathOf(this), JSON.stringify([{ uri: 'a.feature', elements: [{ steps: [step] }] }]))
+    spawnHook(this, agentType, command, outcome, freshRunDuration)
+  },
+)
+
+const decisionsLine = JSON.stringify({
+  at: '2026-11-23T11:30:00.000Z',
+  step: '1',
+  role: 'qa',
+  kind: 'decision',
+  title: 'Keep the counts only',
+  why: 'A fact must not carry failure text',
+  confidence: 'high',
+})
+
+const decisionsPathOf = (world: FactCaptureWorld): string => join(world.worktree, '.agent-flow', 'decisions.jsonl')
+
+Given('a decisions.jsonl holding one valid line', function (this: FactCaptureWorld): void {
+  writeFileSync(decisionsPathOf(this), `${decisionsLine}\n`)
+})
+
+Then('that line carries none of the failure text', function (this: FactCaptureWorld): void {
+  const content = readFileSync(factsPathOf(this), 'utf8')
+  assert.ok(!content.includes(reportFailureText), 'the failure text reached the fact')
+  assert.ok(!content.includes('report-marker'), 'a fragment of the failure text reached the fact')
+  assert.ok(!content.includes('source'), 'the report source reached the fact')
+  assert.ok(!content.includes('JSON report written'), 'the run output reached the fact')
+})
+
+Then('decisions.jsonl is byte-identical to what it was', function (this: FactCaptureWorld): void {
+  assert.equal(readFileSync(decisionsPathOf(this), 'utf8'), `${decisionsLine}\n`)
+})
+
+const launcher = join(repo, 'capture/shared/bin/agent-flow-check.mjs')
+
+Then('the contract check accepts the worktree', function (this: FactCaptureWorld): void {
+  const result = spawnSync(process.execPath, [launcher, this.worktree], { cwd: this.root, encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  assert.deepEqual(JSON.parse(result.stdout), { checked: ['decisions.jsonl', 'plan.json', 'verified-facts.jsonl'] })
+  assert.equal(result.stderr, '')
+})
 
 // A role that the host did not observe is written as null in the file; the feature writes it "null".
 const nullable = (word: string): string | null => (word === 'null' ? null : word)
