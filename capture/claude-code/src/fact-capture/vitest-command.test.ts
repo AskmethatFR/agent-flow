@@ -101,6 +101,16 @@ describe('isVitestCommand', () => {
     expect(isVitestCommand(command)).toBe(false)
   })
 
+  // A project name never starts with a dash, so it is never read as a flag (Security F3 on #128).
+  it.each([
+    ['the core project', `${fixed} --project=core`, true],
+    ['the capture-shared project', `${fixed} --project=capture-shared`, true],
+    ['a project named like the config flag', `${fixed} --project=--config`, false],
+    ['a project starting with a dash', `${fixed} --project=-x`, false],
+  ])('judges %s by its first character', (_label, command, accepted) => {
+    expect(isVitestCommand(command)).toBe(accepted)
+  })
+
   it.each([
     ['a one-character path filter', `${fixed} a`],
     ['a path filter starting with a digit', `${fixed} 0`],

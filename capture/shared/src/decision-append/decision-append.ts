@@ -4,19 +4,13 @@ import type { ValidationResult } from '@agent-flow/core/contracts'
 import { decisionStepOf } from '@agent-flow/core/lifecycle'
 import { appendLine } from '../shared/confined-append'
 import type { AppendIo } from '../shared/confined-append'
-import {
-  inspectAgentFlowDirectory,
-  isConfinableWorktree,
-  readPlan,
-  refusalFor,
-  resolveWorktree,
-} from '../shared/confinement'
+import { confineAgentFlow, decisionsFile, readPlan, refusalFor } from '../shared/confinement'
 
 export type DecisionAppenderIo = AppendIo
 
 type Appender = (worktree: string, decision: unknown) => ValidationResult
 
-const refuse = refusalFor('decisions.jsonl')
+const refuse = refusalFor(decisionsFile)
 
 type Completed = { readonly decision: unknown }
 
@@ -40,18 +34,13 @@ const withDecisionStep = (
 
 export function createDecisionAppender(io: DecisionAppenderIo): Appender {
   return function appendDecision(worktree, decision) {
-    if (!isConfinableWorktree(worktree)) {
-      return refuse('worktree must be an absolute path without . or .. segments')
-    }
-    const realWorktree = resolveWorktree(worktree, refuse)
-    if (typeof realWorktree !== 'string') return realWorktree
-    const directory = join(realWorktree, '.agent-flow')
-    const directoryRefusal = inspectAgentFlowDirectory(directory, refuse)
-    if (directoryRefusal !== undefined) return directoryRefusal
+    const confined = confineAgentFlow(worktree, refuse)
+    if ('accepted' in confined) return confined
+    const { directory } = confined
     const completed = withDecisionStep(io, directory, decision)
     if (!('decision' in completed)) return completed
     const serialized = serializeDecision(completed.decision)
     if (!serialized.accepted) return { accepted: false, errors: [serialized.error] }
-    return appendLine(io, directory, join(directory, 'decisions.jsonl'), serialized.line, refuse)
+    return appendLine(io, directory, join(directory, decisionsFile), serialized.line, refuse)
   }
 }

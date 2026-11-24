@@ -1,6 +1,6 @@
 import { constants, fstatSync, lstatSync, realpathSync } from 'node:fs'
 import type * as NodeFs from 'node:fs'
-import { isAbsolute } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { MAX_TEXT_LENGTH } from '@agent-flow/core/contracts'
 import type { ValidationResult } from '@agent-flow/core/contracts'
 
@@ -21,6 +21,9 @@ export const refusalFor =
   })
 
 const refusePlan = refusalFor('plan.json')
+
+// The decisions file, as core's decisionStepOf names it in its own refusals.
+export const decisionsFile = 'decisions.jsonl'
 
 export const attempt = (action: () => void): void => {
   try {
@@ -65,6 +68,20 @@ export const inspectFolder = (
 export const inspectAgentFlowDirectory = (directory: string, refuse: Refuse): Rejected | undefined =>
   inspectFolder(lstatSync, directory, '.agent-flow', refuse)
 
+export type Confined = { readonly realWorktree: string; readonly directory: string }
+
+// The paths derive from the worktree realpath, and .agent-flow must be a real directory
+// (docs/technical/decisions/plan-writer-confinement.md:86). Shared by the decision and fact writers.
+export const confineAgentFlow = (worktree: string, refuse: Refuse): Confined | Rejected => {
+  if (!isConfinableWorktree(worktree)) {
+    return refuse('worktree must be an absolute path without . or .. segments')
+  }
+  const realWorktree = resolveWorktree(worktree, refuse)
+  if (typeof realWorktree !== 'string') return realWorktree
+  const directory = join(realWorktree, '.agent-flow')
+  return inspectAgentFlowDirectory(directory, refuse) ?? { realWorktree, directory }
+}
+
 export const confirmAgentFlowDirectory = (directory: string, refuse: Refuse): Rejected | undefined => {
   try {
     if (realpathSync(directory) !== directory) return refuse('.agent-flow must be a real directory')
@@ -92,12 +109,15 @@ const readBounded = (io: ReadIo, fd: number, refuse: Refuse): string | Rejected 
   return total > readLimit ? refuse('is too large') : buffer.toString('utf8', 0, total)
 }
 
-// mtimeMs and ctimeMs come from the fstat of the opened file, the one the text is read from.
+// mtimeMs, ctimeMs, dev and ino come from the fstat of the opened file, the one the text is read
+// from: dev and ino let a caller check that its path still names that file once read.
 export type ContractFile = {
   readonly text: string
   readonly mode: number
   readonly mtimeMs: number
   readonly ctimeMs: number
+  readonly dev: number
+  readonly ino: number
 }
 
 export const readContractFile = (io: ReadIo, path: string, refuse: Refuse): ContractFile | Rejected => {
@@ -112,7 +132,14 @@ export const readContractFile = (io: ReadIo, path: string, refuse: Refuse): Cont
     if (!stats.isFile()) return refuse(notRegularFile)
     const text = readBounded(io, fd, refuse)
     return typeof text === 'string'
-      ? { text, mode: stats.mode & 0o777, mtimeMs: stats.mtimeMs, ctimeMs: stats.ctimeMs }
+      ? {
+          text,
+          mode: stats.mode & 0o777,
+          mtimeMs: stats.mtimeMs,
+          ctimeMs: stats.ctimeMs,
+          dev: stats.dev,
+          ino: stats.ino,
+        }
       : text
   } catch {
     return refuse('cannot be read')

@@ -7,13 +7,12 @@ import { readTestReport } from '@agent-flow/core/snapshot'
 import { appendLine } from '../shared/confined-append'
 import type { AppendIo } from '../shared/confined-append'
 import {
-  inspectAgentFlowDirectory,
+  confineAgentFlow,
+  decisionsFile,
   inspectFolder,
-  isConfinableWorktree,
   readContractFile,
   readPlan,
   refusalFor,
-  resolveWorktree,
 } from '../shared/confinement'
 import type { ContractFile, Rejected } from '../shared/confinement'
 
@@ -35,20 +34,6 @@ const hostRoleOf = (agentType: unknown): string | undefined => {
   if (typeof agentType !== 'string') return undefined
   const name = agentType.startsWith(hostPrefix) ? agentType.slice(hostPrefix.length) : agentType
   return ROLE_IDS.find((role) => role === name)
-}
-
-type Confined = { readonly realWorktree: string; readonly directory: string }
-
-// The paths derive from the worktree realpath, and .agent-flow must be a real directory
-// (docs/technical/decisions/plan-writer-confinement.md:86).
-const confine = (worktree: string): Confined | Rejected => {
-  if (!isConfinableWorktree(worktree)) {
-    return refuse('worktree must be an absolute path without . or .. segments')
-  }
-  const realWorktree = resolveWorktree(worktree, refuse)
-  if (typeof realWorktree !== 'string') return realWorktree
-  const directory = join(realWorktree, '.agent-flow')
-  return inspectAgentFlowDirectory(directory, refuse) ?? { realWorktree, directory }
 }
 
 type Counts = { readonly passed: number; readonly total: number; readonly failedSuites: number }
@@ -77,8 +62,7 @@ const inspectReportFolders = (io: AppendIo, realWorktree: string): Rejected | un
 
 // A folder swapped for a link after its lstat is caught here, once the report is open: the folder
 // chain must still resolve to itself, as confined-append checks .agent-flow after its open. A swap
-// undone before this check cannot be seen: the counts it let through stay bound by freshness and
-// by the report parser (docs verified-facts.md S12, residual risk).
+// undone before this check is not seen here: confirmReportFile catches it.
 const confirmReportFolder = (realWorktree: string): Rejected | undefined => {
   const folder = join(realWorktree, 'reports/vitest')
   try {
@@ -89,14 +73,25 @@ const confirmReportFolder = (realWorktree: string): Rejected | undefined => {
   return undefined
 }
 
+// A swap undone before confirmReportFolder leaves the path on another file than the one read
+// (Security F4 on #128): the path must still name the read file, by dev and inode.
+const confirmReportFile = (io: AppendIo, path: string, read: ContractFile): Rejected | undefined => {
+  try {
+    const linked = io.lstatSync(path)
+    if (linked.dev === read.dev && linked.ino === read.ino) return undefined
+  } catch {}
+  return refuseReport('was replaced once read')
+}
+
 // Read from the fixed path under the worktree, never from a path in the command, and parsed by
 // core's own reader, so the host holds no parsing rule.
 const vitestCountsOf = (io: AppendIo, realWorktree: string, run: ObservedRun): Counts | Rejected => {
   const unsafe = inspectReportFolders(io, realWorktree)
   if (unsafe !== undefined) return unsafe
-  const report = readContractFile(io, join(realWorktree, reportPath), refuseReport)
+  const path = join(realWorktree, reportPath)
+  const report = readContractFile(io, path, refuseReport)
   if ('accepted' in report) return report
-  const swapped = confirmReportFolder(realWorktree)
+  const swapped = confirmReportFolder(realWorktree) ?? confirmReportFile(io, path, report)
   if (swapped !== undefined) return swapped
   if (!writtenDuring(run, report)) return refuseReport('was not written during the run')
   const parsed = readTestReport(report.text)
@@ -105,17 +100,17 @@ const vitestCountsOf = (io: AppendIo, realWorktree: string, run: ObservedRun): C
   return source === 'vitest' ? { passed, total, failedSuites } : refuseReport('is not a vitest JSON report')
 }
 
-// decisionStepOf names decisions.jsonl in the one error of its own refusals (decision-append's
+// decisionStepOf names the decisions file in the one error of its own refusals (decision-append's
 // file); a fact refusal names the file the writer is writing. A plan refusal stays as it is.
 const relabelled = (refusal: ValidationResult & { accepted: false }): ValidationResult => {
   const [first] = refusal.errors
-  return first.file === 'decisions.jsonl' ? refuse(first.message, first.field) : refusal
+  return first.file === decisionsFile ? refuse(first.message, first.field) : refusal
 }
 
 export function createFactAppender(io: AppendIo): Appender {
   return function appendFact(worktree, run) {
     const role = hostRoleOf(run.agentType) ?? null
-    const confined = confine(worktree)
+    const confined = confineAgentFlow(worktree, refuse)
     if ('accepted' in confined) return confined
     const plan = readPlan(io, join(confined.directory, 'plan.json'))
     if ('accepted' in plan) return plan

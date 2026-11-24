@@ -6,7 +6,8 @@
 const reporter = '--reporter=json'
 const outputFile = '--outputFile=reports/vitest/vitest.json'
 
-const project = /^--project=[A-Za-z0-9_-]{1,64}$/
+// A project name never starts with a dash, so `--project=--config` is not a project.
+const project = /^--project=[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/
 
 // Two dots anywhere refuse a path filter, `a..b` included: no filter needs them.
 const pathFilter = /^[A-Za-z0-9_][A-Za-z0-9_./-]{0,255}$/

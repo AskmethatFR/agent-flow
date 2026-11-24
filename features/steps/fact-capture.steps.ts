@@ -286,7 +286,7 @@ Given('a decisions.jsonl holding one valid line', function (this: FactCaptureWor
   writeFileSync(decisionsPathOf(this), `${decisionsLine}\n`)
 })
 
-Then('that line carries none of the failure text', function (this: FactCaptureWorld): void {
+Then('that line carries none of the failure text, the report source or the run output', function (this: FactCaptureWorld): void {
   const content = readFileSync(factsPathOf(this), 'utf8')
   assert.ok(!content.includes(reportFailureText), 'the failure text reached the fact')
   assert.ok(!content.includes('report-marker'), 'a fragment of the failure text reached the fact')
@@ -399,7 +399,7 @@ Then('verified-facts.jsonl holds no line', function (this: FactCaptureWorld): vo
   assert.equal(existsSync(factsPathOf(this)), false, 'verified-facts.jsonl was written')
 })
 
-Then('that line passes the contract check', function (this: FactCaptureWorld): void {
+Then('the whole verified-facts.jsonl passes the contract check', function (this: FactCaptureWorld): void {
   assert.deepEqual(checkContractFile('verified-facts.jsonl', readFileSync(factsPathOf(this), 'utf8')), { accepted: true })
 })
 

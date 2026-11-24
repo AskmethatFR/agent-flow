@@ -9,7 +9,7 @@ Feature: Capture: verified facts are kept in a sixth contract file
     Given a plan whose step "1" is in progress for the role qa
     When a subagent of type "<agentType>" runs "npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json" and it ends <outcome>, <passed> of <total> tests passed
     Then verified-facts.jsonl holds one line on step "1", attachment role, role qa, roleFrom host, with <passed> passed of <total> and <failedSuites> failed suites
-    And that line passes the contract check
+    And the whole verified-facts.jsonl passes the contract check
 
     Examples:
       | agentType        | outcome | passed | total | failedSuites |
@@ -23,14 +23,14 @@ Feature: Capture: verified facts are kept in a sixth contract file
     And a subagent of type "qa" runs "npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json" and it ends passing, 3 of 3 tests passed
     When a subagent of type "qa" runs "npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json" and it ends failing, 2 of 5 tests passed
     Then verified-facts.jsonl holds two lines in run order, on step "1", the first with 3 passed of 3 and the second with 2 passed of 5
-    And that line passes the contract check
+    And the whole verified-facts.jsonl passes the contract check
 
   @scenario:S4
   Scenario Outline: A run attaches to the only step in progress when it is another role's, marked only-step
     Given a plan whose step "1" is in progress for the role dev-a
     When <runner> runs "npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json" and it ends passing, 3 of 3 tests passed
     Then verified-facts.jsonl holds one line on step "1", attachment only-step, role <role>, roleFrom <roleFrom>, with 3 passed of 3 and 0 failed suites
-    And that line passes the contract check
+    And the whole verified-facts.jsonl passes the contract check
 
     Examples:
       | runner                             | role | roleFrom |
@@ -70,7 +70,7 @@ Feature: Capture: verified facts are kept in a sixth contract file
     And a decisions.jsonl holding one valid line
     When a subagent of type "qa" runs "npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json" and it ends failing, 2 of 3 tests passed, the report carrying failure messages
     Then verified-facts.jsonl holds one line on step "1", attachment role, role qa, roleFrom host, with 2 passed of 3 and 1 failed suites
-    And that line carries none of the failure text
+    And that line carries none of the failure text, the report source or the run output
     And decisions.jsonl is byte-identical to what it was
     And the contract check accepts the worktree
 
@@ -80,19 +80,6 @@ Feature: Capture: verified facts are kept in a sixth contract file
     And a verified-facts.jsonl that is a link to a file outside the worktree
     When a subagent of type "qa" runs "npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json" and it ends passing, 3 of 3 tests passed
     Then the file outside the worktree is byte-identical to what it was
-
-  @scenario:S14
-  Scenario: An append that would pass the size ceiling is refused whole
-    Given a plan whose step "1" is in progress for the role qa
-    And a verified-facts.jsonl of valid lines, too full for one more line
-    When a subagent of type "qa" runs "npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json" and it ends passing, 3 of 3 tests passed
-    Then verified-facts.jsonl is byte-identical to what it was
-
-  @scenario:S11
-  Scenario: A cucumber-shaped report at the vitest path leaves no fact
-    Given a plan whose step "1" is in progress for the role qa
-    When a subagent of type "qa" runs "npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json" and it ends failing, with a cucumber-shaped report
-    Then verified-facts.jsonl holds no line
 
   @scenario:S9
   Scenario: The contract check accepts the sixth file and still refuses other names
@@ -112,6 +99,13 @@ Feature: Capture: verified facts are kept in a sixth contract file
       | failureMessages |
       | error_message   |
 
+  @scenario:S14
+  Scenario: An append that would pass the size ceiling is refused whole
+    Given a plan whose step "1" is in progress for the role qa
+    And a verified-facts.jsonl of valid lines, too full for one more line
+    When a subagent of type "qa" runs "npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json" and it ends passing, 3 of 3 tests passed
+    Then verified-facts.jsonl is byte-identical to what it was
+
   @scenario:S15
   Scenario Outline: A run in a worktree with no valid plan, or with no .agent-flow, leaves nothing and prints nothing
     Given a worktree in the state "<state>"
@@ -125,3 +119,9 @@ Feature: Capture: verified facts are kept in a sixth contract file
       | with no plan.json                 |
       | with a contract-invalid plan.json |
       | with no .agent-flow               |
+
+  @scenario:S16
+  Scenario: A cucumber-shaped report at the vitest path leaves no fact
+    Given a plan whose step "1" is in progress for the role qa
+    When a subagent of type "qa" runs "npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json" and it ends failing, with a cucumber-shaped report
+    Then verified-facts.jsonl holds no line

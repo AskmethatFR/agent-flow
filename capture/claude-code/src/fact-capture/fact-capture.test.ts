@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -6,9 +7,9 @@ import { MAX_TEXT_LENGTH } from '@agent-flow/core/contracts'
 import { captureFact } from './fact-capture'
 
 const literal = 'npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json'
-// The run ends five seconds after this module loads and lasts a minute: the report written in
-// beforeEach falls inside it, mtime and ctime both.
-const end = new Date(Date.now() + 5000)
+// Each test's run ends five seconds after its own fixture is written and lasts a minute: the report
+// written in beforeEach falls inside it, mtime and ctime both, whatever the suite's duration.
+let end: Date
 const now = () => end
 
 const qaStep = {
@@ -33,13 +34,15 @@ const passing = (overlays: Record<string, unknown> = {}, response: Record<string
     ...overlays,
   })
 
-// The paths are fixed at load: the event tables below are built at collection, before any test runs,
-// and each event carries the worktree as its cwd. The tree itself is made and removed per test.
-const root = realpathSync(mkdtempSync(join(tmpdir(), 'fact-capture-')))
+// The paths are named at load, nothing is created then: the event tables below are built at
+// collection, before any test runs, and each event carries the worktree as its cwd. Each test makes
+// the tree, its root created exclusively (a directory already there fails the test), and removes it.
+const root = join(realpathSync(tmpdir()), `fact-capture-${randomUUID()}`)
 const worktree = join(root, 'worktree')
 const factsPath = join(worktree, '.agent-flow', 'verified-facts.jsonl')
 
 beforeEach(() => {
+  mkdirSync(root, { mode: 0o700 })
   mkdirSync(join(worktree, '.agent-flow'), { recursive: true })
   mkdirSync(join(worktree, 'reports', 'vitest'), { recursive: true })
   writeFileSync(join(worktree, '.agent-flow', 'plan.json'), JSON.stringify({ issue: '#128', title: 'Facts', steps: [qaStep] }))
@@ -47,6 +50,7 @@ beforeEach(() => {
     join(worktree, 'reports', 'vitest', 'vitest.json'),
     JSON.stringify({ numTotalTests: 9, numPassedTests: 8, numFailedTestSuites: 1 }),
   )
+  end = new Date(Date.now() + 5000)
 })
 
 afterEach(() => {

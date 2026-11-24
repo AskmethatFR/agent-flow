@@ -27,10 +27,11 @@ import { appendFact as appendFactOf } from './index'
 
 const realIo = { openSync, readSync, writeSync, closeSync, fstatSync, lstatSync }
 
-// The run ends five seconds after this module loads and lasts a minute: the report (written in
-// beforeEach, rewritten by a few tests) falls inside the run, mtime and ctime both.
+// Each test's run ends five seconds after its own fixture is written and lasts a minute: the report
+// (written in beforeEach, rewritten by a few tests) falls inside the run, mtime and ctime both,
+// whatever the suite's duration.
 const durationMs = 60_000
-const at = new Date(Date.now() + 5000).toISOString()
+let at: string
 
 const appendFact = (worktree: string, run: { agentType: unknown; at: string; durationMs?: number }) =>
   appendFactOf(worktree, { durationMs, ...run })
@@ -71,6 +72,7 @@ beforeEach(() => {
   mkdirSync(join(worktree, 'reports', 'vitest'), { recursive: true })
   writeFileSync(join(agentFlow, 'plan.json'), planWith([stepOf('1', 'dev-a', 'in_progress'), stepOf('2', 'qa', 'in_progress')]))
   writeFileSync(join(worktree, 'reports', 'vitest', 'vitest.json'), vitestReport(5, 4, 1))
+  at = new Date(Date.now() + 5000).toISOString()
 })
 
 afterEach(() => {
@@ -293,6 +295,84 @@ describe('appendFact', () => {
     expect(moving(worktree, { agentType: 'qa', at, durationMs })).toMatchObject({
       accepted: false,
       errors: [{ file: 'reports/vitest/vitest.json', message: 'reports/vitest cannot be read' }],
+    })
+    expect(existsSync(factsPath)).toBe(false)
+  })
+
+  // TOCTOU, swap and revert (Security F4 on #128): the path the folder chain resolves to after the
+  // read must still be the file that was read. The dev and inode of the read fd are compared with
+  // the lstat of the report path once the folders are confirmed.
+  const swapReport = (name: string): void => {
+    const report = join(worktree, 'reports', 'vitest', 'vitest.json')
+    writeFileSync(join(root, name), vitestReport(5, 4, 1))
+    renameSync(join(root, name), report)
+  }
+
+  it.each<[string, () => void, (path: string, open: () => number) => number]>([
+    [
+      'the report replaced once opened',
+      () => undefined,
+      (_path, open) => {
+        const fd = open()
+        swapReport('replacement.json')
+        return fd
+      },
+    ],
+    [
+      'the report removed once opened',
+      () => undefined,
+      (path, open) => {
+        const fd = open()
+        rmSync(path)
+        return fd
+      },
+    ],
+    [
+      'reports/vitest/ swapped for a link to another report, then restored, around the open',
+      () => {
+        mkdirSync(join(root, 'outside', 'vitest'), { recursive: true })
+        writeFileSync(join(root, 'outside', 'vitest', 'vitest.json'), vitestReport(100, 99, 0))
+      },
+      (_path, open) => {
+        const folder = join(worktree, 'reports', 'vitest')
+        renameSync(folder, join(root, 'moved'))
+        symlinkSync(join(root, 'outside', 'vitest'), folder)
+        const fd = open()
+        rmSync(folder)
+        renameSync(join(root, 'moved'), folder)
+        return fd
+      },
+    ],
+  ])('writes nothing for %s', (_label, arrange, aroundOpen) => {
+    arrange()
+    const swapping = createFactAppender({
+      ...realIo,
+      openSync: ((path: string, ...rest: never[]) => {
+        const open = () => (realIo.openSync as (path: string, ...rest: never[]) => number)(path, ...rest)
+        return path.endsWith('vitest.json') ? aroundOpen(path, open) : open()
+      }) as typeof openSync,
+    })
+    expect(swapping(worktree, { agentType: 'qa', at, durationMs })).toEqual({
+      accepted: false,
+      errors: [{ file: 'reports/vitest/vitest.json', location: null, field: null, message: 'was replaced once read' }],
+    })
+    expect(existsSync(factsPath)).toBe(false)
+  })
+
+  // An inode number is unique on one device only: a file of another device with the same inode
+  // number is another file.
+  it('writes nothing when the report path names a file of another device once read', () => {
+    const report = join(worktree, 'reports', 'vitest', 'vitest.json')
+    const otherDevice = createFactAppender({
+      ...realIo,
+      lstatSync: ((path: string) => {
+        const stats = lstatSync(path)
+        return path === report ? Object.assign(stats, { dev: stats.dev + 1 }) : stats
+      }) as typeof lstatSync,
+    })
+    expect(otherDevice(worktree, { agentType: 'qa', at, durationMs })).toMatchObject({
+      accepted: false,
+      errors: [{ file: 'reports/vitest/vitest.json', message: 'was replaced once read' }],
     })
     expect(existsSync(factsPath)).toBe(false)
   })
