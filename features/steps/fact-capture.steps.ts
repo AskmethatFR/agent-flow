@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   symlinkSync,
@@ -24,6 +25,7 @@ type FactCaptureWorld = {
   status: number | null
   stdout: string
   stderr: string
+  agentFlowBefore?: readonly string[] | null
 }
 
 const attachedVitestLine = JSON.stringify({
@@ -417,3 +419,86 @@ Then(
     ])
   },
 )
+
+// S15: the hook runs as capture/claude-code/settings.json registers it, through sh, with the event on stdin.
+const vitestCommand = 'npx vitest run --reporter=json --outputFile=reports/vitest/vitest.json'
+
+const registeredFactCommand = (): string => {
+  const settings = JSON.parse(readFileSync(join(repo, 'capture/claude-code/settings.json'), 'utf8')) as {
+    hooks: { PostToolUse: { matcher: string; hooks: { command: string }[] }[] }
+  }
+  const commands = settings.hooks.PostToolUse.filter((entry) => entry.matcher === 'Bash')
+    .flatMap((entry) => entry.hooks.map((hook) => hook.command))
+    .filter((command) => command.includes('fact-capture/hook.ts'))
+  assert.equal(commands.length, 1, 'one fact hook is registered on Bash')
+  return commands[0] as string
+}
+
+const contractInvalidPlan = JSON.stringify({
+  issue: '#128',
+  title: 'Vitest fact capture',
+  steps: [{ id: '1', title: 'qa: work', role: 'qa', status: 'started', origin: 'planned', startedAt: null, endedAt: null }],
+})
+
+const worktreeStates: Record<string, (worktree: string) => void> = {
+  'with no plan.json': (worktree) => mkdirSync(join(worktree, '.agent-flow'), { recursive: true }),
+  'with a contract-invalid plan.json': (worktree) => {
+    mkdirSync(join(worktree, '.agent-flow'), { recursive: true })
+    writeFileSync(join(worktree, '.agent-flow', 'plan.json'), contractInvalidPlan)
+  },
+  'with no .agent-flow': () => {},
+}
+
+Given('a worktree in the state {string}', function (this: FactCaptureWorld, state: string): void {
+  this.root = realpathSync(mkdtempSync(join(tmpdir(), 'fact-capture-')))
+  this.worktree = join(this.root, 'worktree')
+  mkdirSync(this.worktree, { recursive: true })
+  const prepare = worktreeStates[state]
+  assert.ok(prepare, `unknown worktree state ${state}`)
+  prepare(this.worktree)
+})
+
+Given('a fresh vitest report of {int} of {int} tests passed', function (this: FactCaptureWorld, passed: number, total: number): void {
+  writeReport(this, passed, total)
+})
+
+// The sorted entries of .agent-flow, or null when the directory does not exist.
+const agentFlowListingOf = (world: FactCaptureWorld): readonly string[] | null => {
+  const directory = join(world.worktree, '.agent-flow')
+  return existsSync(directory) ? readdirSync(directory).sort() : null
+}
+
+When('the fact hook runs through its registered command on a passing vitest run', function (this: FactCaptureWorld): void {
+  this.agentFlowBefore = agentFlowListingOf(this)
+  const event = {
+    ...endedEventOf('passing'),
+    cwd: this.worktree,
+    agent_id: 'a1b2c3',
+    agent_type: 'qa',
+    tool_name: 'Bash',
+    tool_input: { command: vitestCommand, description: 'Run vitest' },
+    tool_use_id: 'toolu_01',
+    duration_ms: freshRunDuration,
+  }
+  const result = spawnSync('sh', ['-c', registeredFactCommand()], {
+    cwd: this.worktree,
+    input: JSON.stringify(event),
+    timeout: 10_000,
+    encoding: 'utf8',
+    env: { ...process.env, AGENT_FLOW_HOME: repo, CLAUDE_PROJECT_DIR: this.worktree },
+  })
+  this.status = result.status
+  this.stdout = result.stdout
+  this.stderr = result.stderr
+})
+
+Then('nothing is created under .agent-flow', function (this: FactCaptureWorld): void {
+  assert.deepEqual(agentFlowListingOf(this), this.agentFlowBefore, '.agent-flow changed')
+  assert.equal(existsSync(factsPathOf(this)), false, 'verified-facts.jsonl was written')
+})
+
+Then('the hook exits with status 0 and prints nothing on stdout or stderr', function (this: FactCaptureWorld): void {
+  assert.equal(this.status, 0)
+  assert.equal(this.stdout, '')
+  assert.equal(this.stderr, '')
+})

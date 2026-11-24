@@ -111,3 +111,17 @@ Feature: Capture: verified facts are kept in a sixth contract file
       | key             |
       | failureMessages |
       | error_message   |
+
+  @scenario:S15
+  Scenario Outline: A run in a worktree with no valid plan, or with no .agent-flow, leaves nothing and prints nothing
+    Given a worktree in the state "<state>"
+    And a fresh vitest report of 3 of 3 tests passed
+    When the fact hook runs through its registered command on a passing vitest run
+    Then nothing is created under .agent-flow
+    And the hook exits with status 0 and prints nothing on stdout or stderr
+
+    Examples:
+      | state                             |
+      | with no plan.json                 |
+      | with a contract-invalid plan.json |
+      | with no .agent-flow               |
